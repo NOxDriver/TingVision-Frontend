@@ -19,15 +19,25 @@ const LiveStream = () => {
   }, [streamUrl]);
 
   const handleConnect = () => {
-    if (!streamInput.trim()) {
+    const trimmedInput = streamInput.trim();
+
+    if (!trimmedInput) {
       setError('Please enter a stream URL');
       return;
     }
-    
+
     // Validate URL format
     try {
-      new URL(streamInput);
-      setStreamUrl(streamInput);
+      const parsedUrl = new URL(trimmedInput);
+
+      if (parsedUrl.protocol === 'rtsp:') {
+        setError('Browsers cannot play RTSP streams directly. Please provide an HLS/DASH URL (http/https).');
+        setStreamUrl(null);
+        setIsPlaying(false);
+        return;
+      }
+
+      setStreamUrl(trimmedInput);
       setError('');
     } catch (e) {
       setError('Invalid URL format');
