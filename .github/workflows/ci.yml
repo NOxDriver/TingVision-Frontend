@@ -1,0 +1,70 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests
+      run: npm test -- --watchAll=false
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build
+        path: build/
+        retention-days: 7
+
+  # Uncomment to enable automatic deployment to Firebase
+  # deploy:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v3
+  #   
+  #   - name: Setup Node.js
+  #     uses: actions/setup-node@v3
+  #     with:
+  #       node-version: '18'
+  #   
+  #   - name: Install dependencies
+  #     run: npm ci
+  #   
+  #   - name: Build application
+  #     run: npm run build
+  #   
+  #   - name: Deploy to Firebase
+  #     uses: FirebaseExtended/action-hosting-deploy@v0
+  #     with:
+  #       repoToken: '${{ secrets.GITHUB_TOKEN }}'
+  #       firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+  #       projectId: ting-vision
