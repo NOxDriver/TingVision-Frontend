@@ -85,11 +85,16 @@
   max-width: 100%;
 }
 
-.video-player {
+.video-player,
+.mjpeg-player {
   width: 100%;
   max-height: 500px;
   background: #000;
   border-radius: 5px;
+}
+
+.mjpeg-player {
+  object-fit: contain;
 }
 
 .stream-controls {
