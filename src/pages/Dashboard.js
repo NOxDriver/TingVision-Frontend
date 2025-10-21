@@ -31,7 +31,27 @@ const Dashboard = () => {
     if (!isAuthenticated) {
       navigate('/login');
     } else {
-      fetchSightings();
+      const loadSightings = async () => {
+        try {
+          await fetchSightings();
+        } catch (err) {
+          const lowerCaseMessage = err?.message?.toLowerCase?.();
+          const isAbortError =
+            err?.name === 'AbortError' ||
+            err?.code === 'aborted' ||
+            err?.code === 'cancelled' ||
+            lowerCaseMessage?.includes('aborted') ||
+            lowerCaseMessage?.includes('cancelled');
+
+          if (isAbortError) {
+            return;
+          }
+
+          console.error('Failed to fetch sightings:', err);
+        }
+      };
+
+      loadSightings();
     }
   }, [authChecked, isAuthenticated, navigate, fetchSightings]);
 

@@ -48,16 +48,31 @@ export const getSightings = async () => {
     const sightingsRef = collection(db, 'sightings');
     const q = query(sightingsRef, orderBy('timestamp', 'desc'));
     const querySnapshot = await getDocs(q);
-    
+
     const sightings = [];
     querySnapshot.forEach((doc) => {
       sightings.push({ id: doc.id, ...doc.data() });
     });
-    
+
     return { sightings, error: null };
   } catch (error) {
-    console.error('Error getting sightings:', error);
-    return { sightings: [], error: error.message };
+    const isAbortError =
+      error?.code === 'aborted' ||
+      error?.code === 'cancelled' ||
+      error?.name === 'AbortError';
+
+    if (!isAbortError) {
+      console.error('Error getting sightings:', error);
+    }
+
+    return {
+      sightings: [],
+      error: {
+        code: error?.code ?? null,
+        message: error?.message ?? 'Failed to fetch sightings',
+        isAbortError,
+      },
+    };
   }
 };
 

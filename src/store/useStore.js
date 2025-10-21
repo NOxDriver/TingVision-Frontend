@@ -24,9 +24,35 @@ const useStore = create((set, get) => ({
 
     try {
       const { sightings, error } = await getSightings();
-      set({ sightings, loading: false, error });
+
+      const errorMessage = typeof error === 'string' ? error : error?.message;
+      const lowerCaseMessage = errorMessage?.toLowerCase?.();
+      const isAbortError =
+        (typeof error === 'object' && error?.isAbortError === true) ||
+        lowerCaseMessage?.includes('aborted') ||
+        lowerCaseMessage?.includes('cancelled');
+
+      if (error && !isAbortError) {
+        set({ sightings: sightings ?? [], loading: false, error: errorMessage || 'Failed to fetch sightings' });
+        return;
+      }
+
+      if (error && isAbortError) {
+        set({ loading: false });
+        return;
+      }
+
+      set({ sightings: sightings ?? [], loading: false, error: null });
     } catch (error) {
-      if (error?.name === 'AbortError') {
+      const lowerCaseMessage = error?.message?.toLowerCase?.();
+      const isAbortError =
+        error?.name === 'AbortError' ||
+        error?.code === 'aborted' ||
+        error?.code === 'cancelled' ||
+        lowerCaseMessage?.includes('aborted') ||
+        lowerCaseMessage?.includes('cancelled');
+
+      if (isAbortError) {
         set({ loading: false });
         return;
       }
