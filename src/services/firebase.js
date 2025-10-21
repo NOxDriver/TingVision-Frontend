@@ -56,6 +56,16 @@ export const getSightings = async () => {
     
     return { sightings, error: null };
   } catch (error) {
+    const isAbortError =
+      error?.name === 'AbortError' ||
+      error?.code === 'aborted' ||
+      error?.code === 'cancelled' ||
+      (typeof error?.message === 'string' && error.message.toLowerCase().includes('aborted'));
+
+    if (isAbortError) {
+      return { sightings: [], error: null };
+    }
+
     console.error('Error getting sightings:', error);
     return { sightings: [], error: error.message };
   }

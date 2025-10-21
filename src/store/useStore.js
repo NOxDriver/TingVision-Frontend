@@ -26,7 +26,13 @@ const useStore = create((set, get) => ({
       const { sightings, error } = await getSightings();
       set({ sightings, loading: false, error });
     } catch (error) {
-      if (error?.name === 'AbortError') {
+      if (
+        error?.name === 'AbortError' ||
+        error?.code === 'aborted' ||
+        error?.code === 'cancelled' ||
+        (typeof error?.message === 'string' &&
+          error.message.toLowerCase().includes('aborted'))
+      ) {
         set({ loading: false });
         return;
       }
