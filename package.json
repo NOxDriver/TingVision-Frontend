@@ -1,0 +1,47 @@
+{
+  "name": "tingvision-frontend",
+  "version": "1.0.0",
+  "description": "Front end for CCTV footage",
+  "private": true,
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "deploy": "npm run build && firebase deploy",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:functions": "firebase deploy --only functions",
+    "serve": "npm run build && serve -s build"
+  },
+  "keywords": [
+    "wildlife",
+    "sightings",
+    "firebase",
+    "react",
+    "rtsp",
+    "camera",
+    "monitoring"
+  ],
+  "author": "TingVision Team",
+  "license": "ISC",
+  "dependencies": {
+    "firebase": "^12.4.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.4",
+    "react-scripts": "^5.0.1",
+    "zustand": "^5.0.8"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

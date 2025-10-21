@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Sightings media files
+    match /sightings/{species}/{fileName} {
+      // Anyone can read media files
+      allow read: if true;
+      
+      // Only authenticated users can write media files
+      allow write: if isAuthenticated();
+      
+      // Only authenticated users can delete media files
+      allow delete: if isAuthenticated();
+    }
+
+    // Allow all authenticated users to upload to temp folder
+    match /temp/{allPaths=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
