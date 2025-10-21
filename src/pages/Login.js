@@ -26,6 +26,7 @@ const Login = () => {
     } else {
       setUser(user);
       navigate('/');
+      setLoading(false);
     }
   };
 

@@ -19,16 +19,21 @@ const Dashboard = () => {
     error,
     fetchSightings,
     getSightingsBySpecies,
-    logout
+    logout,
+    authChecked
   } = useStore();
 
   useEffect(() => {
+    if (!authChecked) {
+      return;
+    }
+
     if (!isAuthenticated) {
       navigate('/login');
     } else {
       fetchSightings();
     }
-  }, [isAuthenticated, navigate, fetchSightings]);
+  }, [authChecked, isAuthenticated, navigate, fetchSightings]);
 
   const handleLogout = async () => {
     await logoutUser();

@@ -6,12 +6,13 @@ const useStore = create((set, get) => ({
   user: null,
   isAuthenticated: false,
   facebookConnected: false,
-  
-  setUser: (user) => set({ user, isAuthenticated: !!user }),
-  
+  authChecked: false,
+
+  setUser: (user) => set({ user, isAuthenticated: !!user, authChecked: true }),
+
   setFacebookConnected: (connected) => set({ facebookConnected: connected }),
-  
-  logout: () => set({ user: null, isAuthenticated: false, facebookConnected: false }),
+
+  logout: () => set({ user: null, isAuthenticated: false, facebookConnected: false, authChecked: true }),
 
   // Sightings state
   sightings: [],
@@ -20,8 +21,18 @@ const useStore = create((set, get) => ({
   
   fetchSightings: async () => {
     set({ loading: true, error: null });
-    const { sightings, error } = await getSightings();
-    set({ sightings, loading: false, error });
+
+    try {
+      const { sightings, error } = await getSightings();
+      set({ sightings, loading: false, error });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        set({ loading: false });
+        return;
+      }
+
+      set({ sightings: [], loading: false, error: error?.message || 'Failed to fetch sightings' });
+    }
   },
   
   // Group sightings by species
