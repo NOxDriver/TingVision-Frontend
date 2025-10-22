@@ -1,0 +1,65 @@
+.account__container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px;
+  font-family: system-ui, sans-serif;
+  background: #fff;
+}
+
+.account__heading {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.account__container p {
+  font-size: 1rem;
+  margin: 8px 0;
+}
+
+.primary-button {
+  padding: 10px 20px;
+  background-color: #3182ce;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: background-color 0.2s ease;
+}
+
+.primary-button:hover {
+  background-color: #2b6cb0;
+}
+
+.earnings-check-table {
+  width: 100%;
+  margin-top: 30px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.earnings-check-table th,
+.earnings-check-table td {
+  padding: 12px 16px;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.earnings-check-table th {
+  background-color: #f7fafc;
+  font-weight: bold;
+}
+
+.earnings-check-table tbody tr:nth-child(odd) {
+  background-color: #f9f9f9;
+}
+
+.earnings-check-table td:last-child {
+  font-weight: 600;
+}
+
+.earnings-check-table td:last-child:contains("⚠️") {
+  color: #c53030;
+}

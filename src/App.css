@@ -1,17 +1,51 @@
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  margin: 0
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.app {
+  background-color: #fafafa;
+  height: 100vh;
 }
 
-.App {
-  min-height: 100vh;
+.app__heading {
+  background-color: white;
+  padding: 20px;
+  border-bottom: 1px solid lightgray;
+  object-fit: contain;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.5em;
+}
+
+.app__signup {
+  background-color: #fafafa;
+  padding: 20px;
+  border-bottom: 1px solid lightgray;
+  object-fit: contain;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__calculations {
+  padding: 10px;
+  border: 1px solid lightgray;
+  border-radius: 5px;
+  margin-bottom: 10px;
+  display: flex;
+}
+
+.app__input {
+  padding: 10px;
+  margin-right: 10px;
+  border: 1px solid lightgray;
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+
+.app__output {
+  padding: 10px;
+  margin-right: 10px;
+  border: 1px solid lightgray;
+  border-radius: 5px;
+  margin-bottom: 10px;
 }
