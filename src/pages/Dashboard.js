@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 import { logoutUser } from '../services/firebase';
@@ -10,6 +10,7 @@ import './Dashboard.css';
 const Dashboard = () => {
   const navigate = useNavigate();
   const [showStream, setShowStream] = useState(false);
+  const hasFetchedRef = useRef(false);
   
   const {
     user,
@@ -30,7 +31,8 @@ const Dashboard = () => {
 
     if (!isAuthenticated) {
       navigate('/login');
-    } else {
+    } else if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchSightings();
     }
   }, [authChecked, isAuthenticated, navigate, fetchSightings]);
