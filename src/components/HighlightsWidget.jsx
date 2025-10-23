@@ -79,10 +79,25 @@ function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
-  const previewUrl = parentDoc?.rawPreviewUrl || parentDoc?.debugPreviewUrl || null;
-  const videoUrl = parentDoc?.rawVideoUrl
+  const previewUrl = parentDoc?.rawPreviewUrl
+    || parentDoc?.previewUrl
+    || parentDoc?.debugPreviewUrl
+    || null;
+  const debugPreviewUrl = parentDoc?.debugPreviewUrl
+    || parentDoc?.rawPreviewUrl
+    || parentDoc?.previewUrl
+    || null;
+  const videoUrl = parentDoc?.mediaUrl
+    || parentDoc?.rawVideoUrl
     || parentDoc?.rawMediaUrl
+    || parentDoc?.debugVideoUrl
+    || parentDoc?.debugMediaUrl
+    || null;
+  const debugVideoUrl = parentDoc?.debugVideoUrl
+    || parentDoc?.debugMediaUrl
     || parentDoc?.mediaUrl
+    || parentDoc?.rawVideoUrl
+    || parentDoc?.rawMediaUrl
     || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
   return {
@@ -92,6 +107,7 @@ function buildHighlightEntry({
     description: CATEGORY_META[category]?.description || '',
     species: speciesDoc?.species || 'Unknown',
     previewUrl,
+    debugPreviewUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
     createdAt,
     count: speciesDoc?.count ?? null,
@@ -101,6 +117,7 @@ function buildHighlightEntry({
     mediaType: parentDoc?.mediaType || 'image',
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
+    debugVideoUrl,
     extra: extra || {},
   };
 }
@@ -120,6 +137,7 @@ export default function HighlightsWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
+  const [modalViewMode, setModalViewMode] = useState('standard');
 
   useEffect(() => {
     let isMounted = true;
@@ -278,6 +296,7 @@ export default function HighlightsWidget() {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setActiveEntry(null);
+        setModalViewMode('standard');
       }
     };
 
@@ -290,6 +309,138 @@ export default function HighlightsWidget() {
   const speciesList = useMemo(() => Object.entries(highlights || {}), [highlights]);
   const hasHighlights = speciesList.some(([, categories]) =>
     Object.values(categories).some((entry) => Boolean(entry)),
+  );
+
+  const handleOpenEntry = (entry) => {
+    setActiveEntry(entry);
+    setModalViewMode('standard');
+  };
+
+  const handleCloseModal = () => {
+    setActiveEntry(null);
+    setModalViewMode('standard');
+  };
+
+  const isDebugMode = modalViewMode === 'debug';
+
+  const renderModalMedia = () => {
+    if (!activeEntry) {
+      return <div className="highlightCard__placeholder">No preview available</div>;
+    }
+
+    const isVideo = activeEntry.mediaType === 'video';
+    if (isVideo) {
+      const primaryVideo = activeEntry.videoUrl;
+      const debugVideo = activeEntry.debugVideoUrl;
+      const debugImage = activeEntry.debugPreviewUrl;
+
+      if (isDebugMode && debugVideo) {
+        return (
+          <video
+            key={`debug-${debugVideo}`}
+            src={debugVideo}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      if (isDebugMode && !debugVideo && debugImage) {
+        return (
+          <img
+            key={`debugimg-${debugImage}`}
+            src={debugImage}
+            alt={`${activeEntry.species} highlight debug`}
+          />
+        );
+      }
+
+      if (primaryVideo) {
+        return (
+          <video
+            key={`primary-${primaryVideo}`}
+            src={primaryVideo}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      if (debugVideo) {
+        return (
+          <video
+            key={`fallback-debug-${debugVideo}`}
+            src={debugVideo}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      if (debugImage) {
+        return (
+          <img
+            key={`fallback-debugimg-${debugImage}`}
+            src={debugImage}
+            alt={`${activeEntry.species} highlight debug`}
+          />
+        );
+      }
+
+      if (activeEntry.previewUrl) {
+        return (
+          <img
+            key={`preview-${activeEntry.previewUrl}`}
+            src={activeEntry.previewUrl}
+            alt={`${activeEntry.species} highlight enlarged`}
+          />
+        );
+      }
+
+      return <div className="highlightCard__placeholder">No preview available</div>;
+    }
+
+    const primaryPreview = activeEntry.previewUrl;
+    const debugPreview = activeEntry.debugPreviewUrl;
+    const displayDetails = (() => {
+      if (isDebugMode && debugPreview) {
+        return { src: debugPreview, isDebug: true };
+      }
+      if (primaryPreview) {
+        return { src: primaryPreview, isDebug: false };
+      }
+      if (debugPreview) {
+        return { src: debugPreview, isDebug: true };
+      }
+      return null;
+    })();
+
+    if (!displayDetails) {
+      return <div className="highlightCard__placeholder">No preview available</div>;
+    }
+
+    const { src: displaySrc, isDebug } = displayDetails;
+    return (
+      <img
+        key={`image-${displaySrc}`}
+        src={displaySrc}
+        alt={`${activeEntry.species} highlight ${isDebug ? 'debug ' : ''}enlarged`}
+      />
+    );
+  };
+
+  const hasModalMedia = Boolean(
+    activeEntry
+    && ((activeEntry.mediaType === 'video'
+      && (activeEntry.videoUrl
+        || activeEntry.debugVideoUrl
+        || activeEntry.previewUrl
+        || activeEntry.debugPreviewUrl))
+      || (activeEntry.mediaType !== 'video'
+        && (activeEntry.previewUrl || activeEntry.debugPreviewUrl))),
   );
 
   return (
@@ -340,7 +491,7 @@ export default function HighlightsWidget() {
                     <button
                       type="button"
                       className="highlightCard__mediaButton"
-                      onClick={() => setActiveEntry(entry)}
+                      onClick={() => handleOpenEntry(entry)}
                       aria-label={`Open highlight preview for ${entry.species}`}
                     >
                       {entry.previewUrl ? (
@@ -387,7 +538,7 @@ export default function HighlightsWidget() {
           aria-modal="true"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              setActiveEntry(null);
+              handleCloseModal();
             }
           }}
         >
@@ -395,20 +546,25 @@ export default function HighlightsWidget() {
             <button
               type="button"
               className="highlightModal__close"
-              onClick={() => setActiveEntry(null)}
+              onClick={handleCloseModal}
               aria-label="Close highlight preview"
             >
               ×
             </button>
-            <div className="highlightModal__media">
-              {activeEntry.mediaType === 'video' && activeEntry.videoUrl ? (
-                <video src={activeEntry.videoUrl} controls autoPlay playsInline />
-              ) : activeEntry.previewUrl ? (
-                <img src={activeEntry.previewUrl} alt={`${activeEntry.species} highlight enlarged`} />
-              ) : (
-                <div className="highlightCard__placeholder">No preview available</div>
-              )}
-            </div>
+            {hasModalMedia && (
+              <div className="highlightModal__controls">
+                {(activeEntry.debugVideoUrl || activeEntry.debugPreviewUrl) && (
+                  <button
+                    type="button"
+                    className={`highlightModal__toggle${isDebugMode ? ' is-active' : ''}`}
+                    onClick={() => setModalViewMode((prev) => (prev === 'debug' ? 'standard' : 'debug'))}
+                  >
+                    {isDebugMode ? 'Standard View' : 'Debug'}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="highlightModal__media">{renderModalMedia()}</div>
             <div className="highlightModal__details">
               <h4>{activeEntry.species}</h4>
               <p>{activeEntry.label}</p>
