@@ -58,8 +58,8 @@
 
 .highlights__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
 }
 
 .highlightCard {
@@ -69,6 +69,7 @@
   display: flex;
   flex-direction: column;
   background: #fafafa;
+  min-height: 320px;
 }
 
 .highlightCard__media {
@@ -117,23 +118,23 @@
 }
 
 .highlightCard__body {
-  padding: 12px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .highlightCard__label {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 16px;
   color: #1f2933;
 }
 
 .highlightCard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  font-size: 13px;
+  gap: 10px;
+  font-size: 14px;
   color: #4a5568;
 }
 
@@ -141,7 +142,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 13px;
   color: #6b7280;
 }
 
@@ -172,6 +173,34 @@
   gap: 16px;
   color: #f1f5f9;
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+}
+
+.highlightModal__controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.highlightModal__toggle {
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(30, 41, 59, 0.7);
+  color: #e2e8f0;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.highlightModal__toggle:hover {
+  background: rgba(59, 130, 246, 0.75);
+}
+
+.highlightModal__toggle.is-active {
+  background: rgba(59, 130, 246, 0.95);
+  border-color: rgba(59, 130, 246, 0.95);
+  transform: translateY(-1px);
 }
 
 .highlightModal__close {
