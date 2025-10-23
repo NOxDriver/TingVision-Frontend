@@ -33,6 +33,31 @@ const CATEGORY_META = {
   },
 };
 
+function normalizeMediaUrl(candidate) {
+  if (typeof candidate !== 'string') return null;
+  const trimmed = candidate.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('gs://')) {
+    const withoutScheme = trimmed.substring(5);
+    const [bucket, ...pathParts] = withoutScheme.split('/').filter(Boolean);
+    if (!bucket) return null;
+    const encodedPath = pathParts.map((part) => encodeURIComponent(part)).join('/');
+    return `https://storage.googleapis.com/${bucket}${encodedPath ? `/${encodedPath}` : ''}`;
+  }
+  return null;
+}
+
+function pickMediaUrl(...candidates) {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const normalized = normalizeMediaUrl(candidates[index]);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function getBestCenterDist(topBoxes) {
   if (!Array.isArray(topBoxes) || topBoxes.length === 0) {
     return null;
@@ -79,11 +104,21 @@ function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
-  const previewUrl = parentDoc?.rawPreviewUrl || parentDoc?.debugPreviewUrl || null;
-  const videoUrl = parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
-    || parentDoc?.mediaUrl
-    || null;
+  const previewUrl = pickMediaUrl(
+    parentDoc?.rawPreviewUrl,
+    parentDoc?.previewUrl,
+    parentDoc?.debugPreviewUrl,
+  );
+  const debugPreviewUrl = pickMediaUrl(parentDoc?.debugPreviewUrl);
+  const videoUrl = pickMediaUrl(
+    parentDoc?.rawVideoUrl,
+    parentDoc?.rawMediaUrl,
+    parentDoc?.mediaUrl,
+  );
+  const debugVideoUrl = pickMediaUrl(
+    parentDoc?.debugVideoUrl,
+    parentDoc?.debugMediaUrl,
+  );
   const createdAt = normalizeDate(parentDoc?.createdAt);
   return {
     id: `${parentDoc?.sightingId || parentDoc?.id || parentDoc?.storagePathMedia || ''}::${category}`,
@@ -92,6 +127,7 @@ function buildHighlightEntry({
     description: CATEGORY_META[category]?.description || '',
     species: speciesDoc?.species || 'Unknown',
     previewUrl,
+    debugPreviewUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
     createdAt,
     count: speciesDoc?.count ?? null,
@@ -101,6 +137,7 @@ function buildHighlightEntry({
     mediaType: parentDoc?.mediaType || 'image',
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
+    debugVideoUrl,
     extra: extra || {},
   };
 }
@@ -120,6 +157,7 @@ export default function HighlightsWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
+  const [showDebugMedia, setShowDebugMedia] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -292,6 +330,12 @@ export default function HighlightsWidget() {
     Object.values(categories).some((entry) => Boolean(entry)),
   );
 
+  const handleOpenEntry = (entry, options = {}) => {
+    const { debug = false } = options;
+    setActiveEntry(entry);
+    setShowDebugMedia(Boolean(debug));
+  };
+
   return (
     <section className="highlights">
       <header className="highlights__header">
@@ -340,7 +384,7 @@ export default function HighlightsWidget() {
                     <button
                       type="button"
                       className="highlightCard__mediaButton"
-                      onClick={() => setActiveEntry(entry)}
+                      onClick={() => handleOpenEntry(entry)}
                       aria-label={`Open highlight preview for ${entry.species}`}
                     >
                       {entry.previewUrl ? (
@@ -372,6 +416,17 @@ export default function HighlightsWidget() {
                         <time dateTime={entry.createdAt.toISOString()}>{formatTime(entry.createdAt)}</time>
                       )}
                     </div>
+                    {(entry.debugVideoUrl || entry.debugPreviewUrl) && (
+                      <div className="highlightCard__actions">
+                        <button
+                          type="button"
+                          className="highlightCard__debugButton"
+                          onClick={() => handleOpenEntry(entry, { debug: true })}
+                        >
+                          Debug
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </article>
               ))}
@@ -400,11 +455,30 @@ export default function HighlightsWidget() {
             >
               ×
             </button>
+            {(activeEntry.debugVideoUrl || activeEntry.debugPreviewUrl) && (
+              <div className="highlightModal__controls">
+                <button
+                  type="button"
+                  className="highlightModal__toggleDebug"
+                  onClick={() => setShowDebugMedia((prev) => !prev)}
+                >
+                  {showDebugMedia ? 'Show Original' : 'Debug'}
+                </button>
+              </div>
+            )}
             <div className="highlightModal__media">
-              {activeEntry.mediaType === 'video' && activeEntry.videoUrl ? (
-                <video src={activeEntry.videoUrl} controls autoPlay playsInline />
+              {activeEntry.mediaType === 'video' && (showDebugMedia ? activeEntry.debugVideoUrl || activeEntry.videoUrl : activeEntry.videoUrl) ? (
+                <video
+                  src={showDebugMedia ? activeEntry.debugVideoUrl || activeEntry.videoUrl : activeEntry.videoUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                />
               ) : activeEntry.previewUrl ? (
-                <img src={activeEntry.previewUrl} alt={`${activeEntry.species} highlight enlarged`} />
+                <img
+                  src={showDebugMedia ? activeEntry.debugPreviewUrl || activeEntry.previewUrl : activeEntry.previewUrl}
+                  alt={`${activeEntry.species} highlight enlarged`}
+                />
               ) : (
                 <div className="highlightCard__placeholder">No preview available</div>
               )}

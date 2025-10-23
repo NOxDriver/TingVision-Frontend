@@ -58,8 +58,8 @@
 
 .highlights__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
 }
 
 .highlightCard {
@@ -69,12 +69,14 @@
   display: flex;
   flex-direction: column;
   background: #fafafa;
+  min-height: 340px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
 .highlightCard__media {
   position: relative;
   background: #101010;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
 }
 
 .highlightCard__mediaButton {
@@ -121,6 +123,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
 }
 
 .highlightCard__label {
@@ -147,6 +150,31 @@
 
 .highlightCard__footer time {
   font-variant-numeric: tabular-nums;
+}
+
+.highlightCard__actions {
+  margin-top: 12px;
+}
+
+.highlightCard__debugButton {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #1d4ed8;
+  background: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.highlightCard__debugButton:hover {
+  background: #1e3a8a;
+  transform: translateY(-1px);
+}
+
+.highlightCard__debugButton:focus-visible {
+  outline: 2px solid #1e40af;
+  outline-offset: 2px;
 }
 
 .highlightModal {
@@ -184,6 +212,32 @@
   font-size: 24px;
   cursor: pointer;
   line-height: 1;
+}
+
+.highlightModal__controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.highlightModal__toggleDebug {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #38bdf8;
+  background: transparent;
+  color: #38bdf8;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.highlightModal__toggleDebug:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: #bae6fd;
+}
+
+.highlightModal__toggleDebug:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
 }
 
 .highlightModal__media {
