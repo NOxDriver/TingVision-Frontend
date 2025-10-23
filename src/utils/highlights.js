@@ -74,6 +74,12 @@ export function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
+  const formatSpeciesName = (value) => {
+    if (typeof value !== 'string' || value.length === 0) {
+      return 'Unknown';
+    }
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
   const previewUrl = parentDoc?.rawPreviewUrl
     || parentDoc?.previewUrl
     || parentDoc?.debugPreviewUrl
@@ -101,7 +107,7 @@ export function buildHighlightEntry({
     category,
     label: extra?.label || meta.label || category,
     description: extra?.description || meta.description || '',
-    species: speciesDoc?.species || 'Unknown',
+    species: formatSpeciesName(speciesDoc?.species || 'Unknown'),
     previewUrl,
     debugPreviewUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
@@ -114,6 +120,8 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     debugVideoUrl,
+    rawMediaUrl: parentDoc?.rawMediaUrl || null,
+    rawPreviewUrl: parentDoc?.rawPreviewUrl || null,
     extra: extra || {},
   };
 }

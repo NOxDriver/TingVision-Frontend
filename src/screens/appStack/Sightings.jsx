@@ -32,6 +32,7 @@ export default function Sightings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
+  const [activeSighting, setActiveSighting] = useState(null);
 
   const loadSightings = useCallback(async () => {
     setLoading(true);
@@ -92,7 +93,6 @@ export default function Sightings() {
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
-            label: entry.mediaType === 'video' ? 'Video Sighting' : 'Sighting',
           };
         })
         .filter(Boolean)
@@ -127,6 +127,72 @@ export default function Sightings() {
 
   const hasSightings = sightings.length > 0;
 
+  const handleOpenSighting = (entry) => {
+    setActiveSighting(entry);
+  };
+
+  const handleCloseSighting = () => {
+    setActiveSighting(null);
+  };
+
+  useEffect(() => {
+    if (!activeSighting) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setActiveSighting(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeSighting]);
+
+  const renderModalContent = () => {
+    if (!activeSighting) {
+      return null;
+    }
+
+    const isVideo = activeSighting.mediaType === 'video';
+    if (isVideo) {
+      const videoSrc = activeSighting.rawMediaUrl
+        || activeSighting.videoUrl
+        || activeSighting.debugVideoUrl
+        || activeSighting.previewUrl
+        || activeSighting.debugPreviewUrl;
+      if (videoSrc) {
+        return (
+          <video
+            key={`video-${videoSrc}`}
+            src={videoSrc}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+    }
+
+    const imageSrc = activeSighting.rawPreviewUrl
+      || activeSighting.previewUrl
+      || activeSighting.debugPreviewUrl;
+    if (imageSrc) {
+      return (
+        <img
+          key={`img-${imageSrc}`}
+          src={imageSrc}
+          alt={`${activeSighting.species} sighting enlarged`}
+        />
+      );
+    }
+
+    return <div className="sightingModal__placeholder">No media available</div>;
+  };
+
   return (
     <div className="sightingsPage">
       <div className="sightingsPage__inner">
@@ -159,19 +225,25 @@ export default function Sightings() {
           {sightings.map((entry) => (
             <article className="sightingCard" key={entry.id}>
               <div className="sightingCard__media">
-                {entry.previewUrl ? (
-                  <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
-                ) : (
-                  <div className="sightingCard__placeholder">No preview available</div>
-                )}
-                {entry.mediaType === 'video' && (
-                  <span className="sightingCard__badge">Video</span>
-                )}
+                <button
+                  type="button"
+                  className="sightingCard__mediaButton"
+                  onClick={() => handleOpenSighting(entry)}
+                  aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+                >
+                  {entry.previewUrl ? (
+                    <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
+                  ) : (
+                    <div className="sightingCard__placeholder">No preview available</div>
+                  )}
+                  <span className="sightingCard__badge">
+                    {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                  </span>
+                </button>
               </div>
               <div className="sightingCard__body">
                 <div className="sightingCard__header">
                   <h3>{entry.species}</h3>
-                  <span className="sightingCard__label">{entry.label}</span>
                 </div>
                 <div className="sightingCard__meta">
                   {typeof entry.count === 'number' && (
@@ -193,7 +265,9 @@ export default function Sightings() {
                   )}
                 </div>
                 {(() => {
-                  const detailUrl = entry.videoUrl
+                  const detailUrl = entry.rawMediaUrl
+                    || entry.videoUrl
+                    || entry.rawPreviewUrl
                     || entry.previewUrl
                     || entry.debugVideoUrl
                     || entry.debugPreviewUrl;
@@ -217,6 +291,37 @@ export default function Sightings() {
           ))}
         </div>
       </div>
+      {activeSighting && (
+        <div
+          className="sightingModal"
+          role="dialog"
+          aria-modal="true"
+          onClick={handleCloseSighting}
+        >
+          <div
+            className="sightingModal__content"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="sightingModal__close"
+              onClick={handleCloseSighting}
+              aria-label="Close sighting preview"
+            >
+              Close
+            </button>
+            <div className="sightingModal__media">{renderModalContent()}</div>
+            <div className="sightingModal__details">
+              <h3>{activeSighting.species}</h3>
+              {activeSighting.createdAt && (
+                <time dateTime={activeSighting.createdAt.toISOString()}>
+                  {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                </time>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
