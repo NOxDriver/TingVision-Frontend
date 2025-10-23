@@ -23,7 +23,7 @@ const SiteHeader = ({ mode = 'light' }) => {
                                 <FiHome className="nav-icon" />
                                 <span>Home</span>
                             </button>
-                            <button className="nav-link" onClick={() => navigate('/reports')}>
+                            <button className="nav-link" onClick={() => navigate('/sightings')}>
                                 <FiFileText className="nav-icon" />
                                 <span>Sightings</span>
                             </button>

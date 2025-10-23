@@ -64,8 +64,11 @@ const Header = () => {
               <MenuItem
                 active={window.location.pathname === "/"}
                 onClick={() => navigate("/")} icon={<FiHome />}>Dashboard</MenuItem>
-              <MenuItem active={window.location.pathname === "/reports"}
-                icon={<BsFillPeopleFill />}>Reports</MenuItem>
+              <MenuItem
+                active={window.location.pathname === "/sightings"}
+                onClick={() => navigate("/sightings")}
+                icon={<BsFillPeopleFill />}
+              >Sightings</MenuItem>
               <MenuItem active={window.location.pathname === "/video"} icon={<FaList />}>Videos</MenuItem>
               <MenuItem active={window.location.pathname === "/pages"}
                 onClick={() => navigate("/pages")} icon={<BsFillPinAngleFill />}>Pages</MenuItem>
