@@ -80,6 +80,10 @@ function buildHighlightEntry({
   extra,
 }) {
   const previewUrl = parentDoc?.rawPreviewUrl || parentDoc?.debugPreviewUrl || null;
+  const videoUrl = parentDoc?.rawVideoUrl
+    || parentDoc?.rawMediaUrl
+    || parentDoc?.mediaUrl
+    || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
   return {
     id: `${parentDoc?.sightingId || parentDoc?.id || parentDoc?.storagePathMedia || ''}::${category}`,
@@ -96,6 +100,7 @@ function buildHighlightEntry({
     bestCenterDist: getBestCenterDist(speciesDoc?.topBoxes),
     mediaType: parentDoc?.mediaType || 'image',
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
+    videoUrl,
     extra: extra || {},
   };
 }
@@ -114,6 +119,7 @@ export default function HighlightsWidget() {
   const [highlights, setHighlights] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeEntry, setActiveEntry] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -264,6 +270,23 @@ export default function HighlightsWidget() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!activeEntry) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setActiveEntry(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeEntry]);
+
   const speciesList = useMemo(() => Object.entries(highlights || {}), [highlights]);
   const hasHighlights = speciesList.some(([, categories]) =>
     Object.values(categories).some((entry) => Boolean(entry)),
@@ -288,7 +311,20 @@ export default function HighlightsWidget() {
         const entries = Object.values(CATEGORY_META)
           .map(({ key }) => categories[key])
           .filter(Boolean);
-        if (entries.length === 0) {
+
+        const uniqueEntries = [];
+        const seenParents = new Set();
+
+        entries.forEach((entry) => {
+          const parentKey = entry.parentId || entry.id;
+          if (seenParents.has(parentKey)) {
+            return;
+          }
+          seenParents.add(parentKey);
+          uniqueEntries.push(entry);
+        });
+
+        if (uniqueEntries.length === 0) {
           return null;
         }
 
@@ -298,17 +334,24 @@ export default function HighlightsWidget() {
               <h3>{species}</h3>
             </div>
             <div className="highlights__grid">
-              {entries.map((entry) => (
-                <article className="highlightCard" key={entry.id}>
+              {uniqueEntries.map((entry) => (
+                <article className="highlightCard" key={entry.parentId || entry.id}>
                   <div className="highlightCard__media">
-                    {entry.previewUrl ? (
-                      <img src={entry.previewUrl} alt={`${entry.species} highlight`} />
-                    ) : (
-                      <div className="highlightCard__placeholder">No preview available</div>
-                    )}
-                    {entry.mediaType === 'video' && (
-                      <span className="highlightCard__badge">Video</span>
-                    )}
+                    <button
+                      type="button"
+                      className="highlightCard__mediaButton"
+                      onClick={() => setActiveEntry(entry)}
+                      aria-label={`Open highlight preview for ${entry.species}`}
+                    >
+                      {entry.previewUrl ? (
+                        <img src={entry.previewUrl} alt={`${entry.species} highlight`} />
+                      ) : (
+                        <div className="highlightCard__placeholder">No preview available</div>
+                      )}
+                      {entry.mediaType === 'video' && (
+                        <span className="highlightCard__badge">Video</span>
+                      )}
+                    </button>
                   </div>
                   <div className="highlightCard__body">
                     <div className="highlightCard__label">{entry.label}</div>
@@ -316,8 +359,8 @@ export default function HighlightsWidget() {
                       {typeof entry.count === 'number' && (
                         <span>Count: {entry.count}</span>
                       )}
-                      {typeof entry.maxArea === 'number' && entry.category === 'biggestBoundingBox' && (
-                        <span>Area: {formatPercent(entry.maxArea)}</span>
+                      {typeof entry.maxConf === 'number' && (
+                        <span>Confidence: {formatPercent(entry.maxConf)}</span>
                       )}
                       {entry.category === 'mostCentered' && typeof entry.bestCenterDist === 'number' && (
                         <span>{formatOffset(entry.bestCenterDist)}</span>
@@ -336,6 +379,59 @@ export default function HighlightsWidget() {
           </div>
         );
       })}
+
+      {activeEntry && (
+        <div
+          className="highlightModal"
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setActiveEntry(null);
+            }
+          }}
+        >
+          <div className="highlightModal__content">
+            <button
+              type="button"
+              className="highlightModal__close"
+              onClick={() => setActiveEntry(null)}
+              aria-label="Close highlight preview"
+            >
+              ×
+            </button>
+            <div className="highlightModal__media">
+              {activeEntry.mediaType === 'video' && activeEntry.videoUrl ? (
+                <video src={activeEntry.videoUrl} controls autoPlay playsInline />
+              ) : activeEntry.previewUrl ? (
+                <img src={activeEntry.previewUrl} alt={`${activeEntry.species} highlight enlarged`} />
+              ) : (
+                <div className="highlightCard__placeholder">No preview available</div>
+              )}
+            </div>
+            <div className="highlightModal__details">
+              <h4>{activeEntry.species}</h4>
+              <p>{activeEntry.label}</p>
+              <div className="highlightModal__meta">
+                {typeof activeEntry.count === 'number' && (
+                  <span>Count: {activeEntry.count}</span>
+                )}
+                {typeof activeEntry.maxConf === 'number' && (
+                  <span>Confidence: {formatPercent(activeEntry.maxConf)}</span>
+                )}
+                {activeEntry.category === 'mostCentered' && typeof activeEntry.bestCenterDist === 'number' && (
+                  <span>{formatOffset(activeEntry.bestCenterDist)}</span>
+                )}
+                {activeEntry.createdAt && (
+                  <time dateTime={activeEntry.createdAt.toISOString()}>
+                    {`${activeEntry.createdAt.toLocaleDateString()} ${formatTime(activeEntry.createdAt)}`}
+                  </time>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
