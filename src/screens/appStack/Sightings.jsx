@@ -31,6 +31,7 @@ export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeSighting, setActiveSighting] = useState(null);
   const isMountedRef = useRef(true);
 
   const loadSightings = useCallback(async () => {
@@ -127,6 +128,78 @@ export default function Sightings() {
 
   const hasSightings = sightings.length > 0;
 
+  const handleOpenSighting = (entry) => {
+    setActiveSighting(entry);
+  };
+
+  const handleCloseSighting = () => {
+    setActiveSighting(null);
+  };
+
+  const renderActiveSightingMedia = () => {
+    if (!activeSighting) {
+      return <div className="sightingModal__placeholder">No media available</div>;
+    }
+
+    if (activeSighting.mediaType === 'video') {
+      const videoSrc = activeSighting.rawMediaUrl
+        || activeSighting.videoUrl
+        || activeSighting.debugVideoUrl;
+      if (videoSrc) {
+        return (
+          <video
+            key={`sighting-video-${videoSrc}`}
+            src={videoSrc}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      const fallbackImage = activeSighting.previewUrl || activeSighting.debugPreviewUrl;
+      if (fallbackImage) {
+        return (
+          <img
+            key={`sighting-fallback-${fallbackImage}`}
+            src={fallbackImage}
+            alt={`${activeSighting.species} sighting frame`}
+          />
+        );
+      }
+
+      return <div className="sightingModal__placeholder">No media available</div>;
+    }
+
+    const imageSrc = activeSighting.previewUrl || activeSighting.debugPreviewUrl;
+    if (imageSrc) {
+      return (
+        <img
+          key={`sighting-image-${imageSrc}`}
+          src={imageSrc}
+          alt={`${activeSighting.species} sighting enlarged`}
+        />
+      );
+    }
+
+    const fallbackVideo = activeSighting.rawMediaUrl
+      || activeSighting.videoUrl
+      || activeSighting.debugVideoUrl;
+    if (fallbackVideo) {
+      return (
+        <video
+          key={`sighting-image-fallback-${fallbackVideo}`}
+          src={fallbackVideo}
+          controls
+          autoPlay
+          playsInline
+        />
+      );
+    }
+
+    return <div className="sightingModal__placeholder">No media available</div>;
+  };
+
   return (
     <div className="sightingsPage">
       <div className="sightingsPage__inner">
@@ -156,51 +229,71 @@ export default function Sightings() {
         )}
 
         <div className="sightingsPage__list">
-          {sightings.map((entry) => (
-            <article className="sightingCard" key={entry.id}>
-              <div className="sightingCard__media">
-                {entry.previewUrl ? (
-                  <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
-                ) : (
-                  <div className="sightingCard__placeholder">No preview available</div>
-                )}
-                {entry.mediaType === 'video' && (
-                  <span className="sightingCard__badge">Video</span>
-                )}
-              </div>
-              <div className="sightingCard__body">
-                <div className="sightingCard__header">
-                  <h3>{entry.species}</h3>
-                  <span className="sightingCard__label">{entry.label}</span>
+          {sightings.map((entry) => {
+            const canOpenModal = entry.mediaType === 'video'
+              ? Boolean(
+                entry.rawMediaUrl
+                || entry.videoUrl
+                || entry.debugVideoUrl
+                || entry.previewUrl
+                || entry.debugPreviewUrl,
+              )
+              : Boolean(entry.previewUrl || entry.debugPreviewUrl || entry.videoUrl || entry.debugVideoUrl);
+            const detailUrl = entry.rawMediaUrl
+              || entry.videoUrl
+              || entry.previewUrl
+              || entry.debugVideoUrl
+              || entry.debugPreviewUrl;
+
+            return (
+              <article className="sightingCard" key={entry.id}>
+                <div className="sightingCard__media">
+                  {canOpenModal ? (
+                    <button
+                      type="button"
+                      className="sightingCard__mediaButton"
+                      onClick={() => handleOpenSighting(entry)}
+                      aria-label={`View ${entry.mediaType === 'video' ? 'video' : 'image'} for ${entry.species}`}
+                    >
+                      {entry.previewUrl ? (
+                        <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
+                      ) : (
+                        <div className="sightingCard__placeholder">No preview available</div>
+                      )}
+                      <span
+                        className={`sightingCard__mediaTag sightingCard__mediaTag--${entry.mediaType === 'video' ? 'video' : 'image'}`}
+                      >
+                        {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="sightingCard__placeholder">No preview available</div>
+                  )}
                 </div>
-                <div className="sightingCard__meta">
-                  {typeof entry.count === 'number' && (
-                    <span>Count: {entry.count}</span>
-                  )}
-                  {typeof entry.maxConf === 'number' && (
-                    <span>Confidence: {formatPercent(entry.maxConf)}</span>
-                  )}
-                  {typeof entry.bestCenterDist === 'number' && (
-                    <span>{formatOffset(entry.bestCenterDist)}</span>
-                  )}
-                </div>
-                <div className="sightingCard__footer">
-                  <span className="sightingCard__location">{entry.locationId}</span>
-                  {entry.createdAt && (
-                    <time dateTime={entry.createdAt.toISOString()}>
-                      {`${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}`.trim()}
-                    </time>
-                  )}
-                </div>
-                {(() => {
-                  const detailUrl = entry.videoUrl
-                    || entry.previewUrl
-                    || entry.debugVideoUrl
-                    || entry.debugPreviewUrl;
-                  if (!detailUrl) {
-                    return null;
-                  }
-                  return (
+                <div className="sightingCard__body">
+                  <div className="sightingCard__header">
+                    <h3>{entry.species}</h3>
+                  </div>
+                  <div className="sightingCard__meta">
+                    {typeof entry.count === 'number' && (
+                      <span>Count: {entry.count}</span>
+                    )}
+                    {typeof entry.maxConf === 'number' && (
+                      <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                    {typeof entry.bestCenterDist === 'number' && (
+                      <span>{formatOffset(entry.bestCenterDist)}</span>
+                    )}
+                  </div>
+                  <div className="sightingCard__footer">
+                    <span className="sightingCard__location">{entry.locationId}</span>
+                    {entry.createdAt && (
+                      <time dateTime={entry.createdAt.toISOString()}>
+                        {`${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}`.trim()}
+                      </time>
+                    )}
+                  </div>
+                  {detailUrl && (
                     <div className="sightingCard__actions">
                       <a
                         href={detailUrl}
@@ -210,13 +303,60 @@ export default function Sightings() {
                         Open media
                       </a>
                     </div>
-                  );
-                })()}
-              </div>
-            </article>
-          ))}
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
+
+      {activeSighting && (
+        <div
+          className="sightingModal"
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              handleCloseSighting();
+            }
+          }}
+        >
+          <div className="sightingModal__content">
+            <button
+              type="button"
+              className="sightingModal__close"
+              onClick={handleCloseSighting}
+              aria-label="Close sighting preview"
+            >
+              ×
+            </button>
+            <div className="sightingModal__media">{renderActiveSightingMedia()}</div>
+            <div className="sightingModal__details">
+              <h4>{activeSighting.species}</h4>
+              <div className="sightingModal__meta">
+                {typeof activeSighting.count === 'number' && (
+                  <span>Count: {activeSighting.count}</span>
+                )}
+                {typeof activeSighting.maxConf === 'number' && (
+                  <span>Confidence: {formatPercent(activeSighting.maxConf)}</span>
+                )}
+                {typeof activeSighting.bestCenterDist === 'number' && (
+                  <span>{formatOffset(activeSighting.bestCenterDist)}</span>
+                )}
+              </div>
+              <div className="sightingModal__footer">
+                <span className="sightingModal__location">{activeSighting.locationId}</span>
+                {activeSighting.createdAt && (
+                  <time dateTime={activeSighting.createdAt.toISOString()}>
+                    {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                  </time>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   buildHighlightEntry,
   formatOffset,
   formatPercent,
+  formatSpeciesName,
   formatTime,
   getBestCenterDist,
   mergeHighlight,
@@ -80,7 +81,7 @@ export default function HighlightsWidget() {
           const parentDoc = parentDataMap.get(parentRef.path);
           if (!parentDoc) return;
 
-          const species = speciesDoc.species || 'Unknown';
+          const species = formatSpeciesName(speciesDoc.species);
           if (!groupedBySpecies[species]) {
             groupedBySpecies[species] = {
               biggestBoundingBox: null,
@@ -387,9 +388,9 @@ export default function HighlightsWidget() {
                       ) : (
                         <div className="highlightCard__placeholder">No preview available</div>
                       )}
-                      {entry.mediaType === 'video' && (
-                        <span className="highlightCard__badge">Video</span>
-                      )}
+                      <span className="highlightCard__badge">
+                        {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                      </span>
                     </button>
                   </div>
                   <div className="highlightCard__body">

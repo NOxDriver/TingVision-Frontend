@@ -13,7 +13,7 @@ const SiteHeader = ({ mode = 'light' }) => {
         <header className={`site-header ${mode}`}>
             <div className="header-container">
                 <div className="header-brand" onClick={() => navigate('/')}>
-                    <h1 className="logo-text">Earnings Dashboard</h1>
+                    <h1 className="logo-text">Ting Vision</h1>
                 </div>
 
                 <nav className="header-nav">

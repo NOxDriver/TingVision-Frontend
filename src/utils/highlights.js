@@ -21,6 +21,17 @@ export const CATEGORY_META = {
   },
 };
 
+export function formatSpeciesName(value) {
+  if (typeof value !== 'string') {
+    return 'Unknown';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 'Unknown';
+  }
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+}
+
 export function getBestCenterDist(topBoxes) {
   if (!Array.isArray(topBoxes) || topBoxes.length === 0) {
     return null;
@@ -74,6 +85,7 @@ export function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
+  const normalizedSpecies = formatSpeciesName(speciesDoc?.species);
   const previewUrl = parentDoc?.rawPreviewUrl
     || parentDoc?.previewUrl
     || parentDoc?.debugPreviewUrl
@@ -82,9 +94,11 @@ export function buildHighlightEntry({
     || parentDoc?.rawPreviewUrl
     || parentDoc?.previewUrl
     || null;
-  const videoUrl = parentDoc?.mediaUrl
+  const rawMediaUrl = parentDoc?.rawMediaUrl
     || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
+    || null;
+  const videoUrl = rawMediaUrl
+    || parentDoc?.mediaUrl
     || parentDoc?.debugVideoUrl
     || parentDoc?.debugMediaUrl
     || null;
@@ -101,7 +115,7 @@ export function buildHighlightEntry({
     category,
     label: extra?.label || meta.label || category,
     description: extra?.description || meta.description || '',
-    species: speciesDoc?.species || 'Unknown',
+    species: normalizedSpecies,
     previewUrl,
     debugPreviewUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
@@ -112,6 +126,7 @@ export function buildHighlightEntry({
     bestCenterDist: getBestCenterDist(speciesDoc?.topBoxes),
     mediaType: parentDoc?.mediaType || 'image',
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
+    rawMediaUrl,
     videoUrl,
     debugVideoUrl,
     extra: extra || {},
