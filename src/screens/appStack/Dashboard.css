@@ -163,6 +163,12 @@
   gap: 16px;
   padding: 16px;
 }
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px;
+}
 .tile { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; background: #fff; }
 .tile__header, .tile__footer { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; }
 .tile__stage { position: relative; background:#000; }

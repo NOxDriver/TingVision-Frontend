@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import './Dashboard.css';
+import HighlightsWidget from '../../components/HighlightsWidget';
 
 // HTTPS HLS over Tailscale Funnel
 const STREAM_URL_ELEPHANT = 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/elephant-walk-retreat/index.m3u8';
@@ -167,9 +168,12 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
 
 export default function Dashboard() {
   return (
-    <div className="grid2">
-      <HlsTile title="Elephant Walk Retreat" baseUrl={STREAM_URL_ELEPHANT} />
-      <HlsTile title="Garjass House" baseUrl={STREAM_URL_GARJASS} />
+    <div className="dashboard">
+      <HighlightsWidget />
+      <div className="grid2">
+        <HlsTile title="Elephant Walk Retreat" baseUrl={STREAM_URL_ELEPHANT} />
+        <HlsTile title="Garjass House" baseUrl={STREAM_URL_GARJASS} />
+      </div>
     </div>
   );
 }
