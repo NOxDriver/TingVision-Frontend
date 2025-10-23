@@ -9,128 +9,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import './HighlightsWidget.css';
-
-const CATEGORY_META = {
-  biggestBoundingBox: {
-    key: 'biggestBoundingBox',
-    label: 'Biggest Bounding Box',
-    description: 'Largest frame coverage',
-  },
-  mostAnimals: {
-    key: 'mostAnimals',
-    label: 'Most Animals',
-    description: 'Highest counted individuals',
-  },
-  mostCentered: {
-    key: 'mostCentered',
-    label: 'Most Centered',
-    description: 'Closest to frame center',
-  },
-  video: {
-    key: 'video',
-    label: 'Video Highlight',
-    description: 'Video capture with activity',
-  },
-};
-
-function getBestCenterDist(topBoxes) {
-  if (!Array.isArray(topBoxes) || topBoxes.length === 0) {
-    return null;
-  }
-  return topBoxes
-    .map((box) => (typeof box?.centerDist === 'number' ? box.centerDist : null))
-    .filter((value) => value !== null && !Number.isNaN(value))
-    .reduce((min, value) => (value < min ? value : min), Number.POSITIVE_INFINITY);
-}
-
-function formatPercent(value, decimals = 1) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '—';
-  }
-  return `${(value * 100).toFixed(decimals)}%`;
-}
-
-function formatOffset(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '—';
-  }
-  return `${(value * 100).toFixed(1)}% offset`;
-}
-
-function normalizeDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value.toDate === 'function') return value.toDate();
-  return null;
-}
-
-function formatTime(ts) {
-  if (!ts) return '';
-  try {
-    return `${ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  } catch (error) {
-    return '';
-  }
-}
-
-function buildHighlightEntry({
-  category,
-  speciesDoc,
-  parentDoc,
-  extra,
-}) {
-  const previewUrl = parentDoc?.rawPreviewUrl
-    || parentDoc?.previewUrl
-    || parentDoc?.debugPreviewUrl
-    || null;
-  const debugPreviewUrl = parentDoc?.debugPreviewUrl
-    || parentDoc?.rawPreviewUrl
-    || parentDoc?.previewUrl
-    || null;
-  const videoUrl = parentDoc?.mediaUrl
-    || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
-    || parentDoc?.debugVideoUrl
-    || parentDoc?.debugMediaUrl
-    || null;
-  const debugVideoUrl = parentDoc?.debugVideoUrl
-    || parentDoc?.debugMediaUrl
-    || parentDoc?.mediaUrl
-    || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
-    || null;
-  const createdAt = normalizeDate(parentDoc?.createdAt);
-  return {
-    id: `${parentDoc?.sightingId || parentDoc?.id || parentDoc?.storagePathMedia || ''}::${category}`,
-    category,
-    label: CATEGORY_META[category]?.label || category,
-    description: CATEGORY_META[category]?.description || '',
-    species: speciesDoc?.species || 'Unknown',
-    previewUrl,
-    debugPreviewUrl,
-    locationId: parentDoc?.locationId || 'Unknown location',
-    createdAt,
-    count: speciesDoc?.count ?? null,
-    maxArea: speciesDoc?.maxArea ?? null,
-    maxConf: speciesDoc?.maxConf ?? null,
-    bestCenterDist: getBestCenterDist(speciesDoc?.topBoxes),
-    mediaType: parentDoc?.mediaType || 'image',
-    parentId: parentDoc?.sightingId || parentDoc?.id || null,
-    videoUrl,
-    debugVideoUrl,
-    extra: extra || {},
-  };
-}
-
-function mergeHighlight(current, candidate) {
-  if (!candidate) return current;
-  if (!current) return candidate;
-  const currentScore = current?.extra?.score;
-  const candidateScore = candidate?.extra?.score;
-  if ((candidateScore ?? null) === null) return current;
-  if ((currentScore ?? null) === null) return candidate;
-  return candidateScore > currentScore ? candidate : current;
-}
+import {
+  CATEGORY_META,
+  buildHighlightEntry,
+  formatOffset,
+  formatPercent,
+  formatTime,
+  getBestCenterDist,
+  mergeHighlight,
+  normalizeDate,
+} from '../utils/highlights';
 
 export default function HighlightsWidget() {
   const [highlights, setHighlights] = useState({});

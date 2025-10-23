@@ -6,6 +6,7 @@ import Register from "./screens/authStack/Register";
 // AppStack
 import Dashboard from "./screens/appStack/Dashboard";
 import PrivacyPolicy from "./screens/appStack/PrivacyPolicy";
+import Sightings from "./screens/appStack/Sightings";
 
 import { Route, Routes } from "react-router-dom";
 
@@ -42,6 +43,8 @@ function App() {
         {/* APPstack */}
         <Route path="/" element={
           <ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/sightings" element={
+          <ProtectedRoute><Sightings /></ProtectedRoute>} />
        
         {/* Individual ting */}
         {/* <Route path="/edit-video/:videoId" element={
