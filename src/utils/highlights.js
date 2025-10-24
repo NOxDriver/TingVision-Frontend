@@ -74,24 +74,46 @@ export function formatCountWithSpecies(species, count) {
     ? species.trim()
     : 'Unknown';
 
+  const words = normalizedSpecies.split(/\s+/).filter(Boolean);
+  const formatWords = (values) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return 'Unknown';
+    }
+    return values
+      .map((word) => {
+        if (typeof word !== 'string' || word.length === 0) {
+          return '';
+        }
+        const lower = word.toLowerCase();
+        return lower.charAt(0).toUpperCase() + lower.slice(1);
+      })
+      .join(' ');
+  };
+
   if (!hasValidCount) {
-    return normalizedSpecies;
+    return formatWords(words.length > 0 ? words : ['Unknown']);
   }
 
   if (count === 1) {
-    return `${count} ${normalizedSpecies}`;
+    return `${count} ${formatWords(words.length > 0 ? words : ['Animal'])}`;
   }
 
-  const lowerSpecies = normalizedSpecies.toLowerCase();
-  let pluralSpecies = lowerSpecies;
-
-  if (lowerSpecies.endsWith('y') && lowerSpecies.length > 1 && !/[aeiou]y$/.test(lowerSpecies)) {
-    pluralSpecies = `${lowerSpecies.slice(0, -1)}ies`;
-  } else if (!lowerSpecies.endsWith('s')) {
-    pluralSpecies = `${lowerSpecies}s`;
+  if (words.length === 0) {
+    return `${count} Animals`;
   }
 
-  return `${count} ${pluralSpecies}`;
+  const lowerWords = words.map((word) => word.toLowerCase());
+  const lastWord = lowerWords[lowerWords.length - 1];
+  let pluralLast = lastWord;
+
+  if (lastWord.endsWith('y') && lastWord.length > 1 && !/[aeiou]y$/.test(lastWord)) {
+    pluralLast = `${lastWord.slice(0, -1)}ies`;
+  } else if (!lastWord.endsWith('s')) {
+    pluralLast = `${lastWord}s`;
+  }
+
+  const pluralWords = [...lowerWords.slice(0, -1), pluralLast];
+  return `${count} ${formatWords(pluralWords)}`;
 }
 
 export function buildHighlightEntry({
