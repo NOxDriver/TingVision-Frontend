@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 // AuthStack
 import Login from "./screens/authStack/Login";
 import Register from "./screens/authStack/Register";
@@ -18,11 +18,44 @@ import './App.css'
 import SiteHeader from "./components/allPages/SiteHeader";
 import { initAnalytics, trackPageView } from "./utils/analytics";
 
+const DEFAULT_PAGE_TITLE = 'Ting Vision';
+
+const getPageTitle = (pathname) => {
+  if (typeof pathname !== 'string') {
+    return DEFAULT_PAGE_TITLE;
+  }
+
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+
+  if (normalizedPath === '/' || normalizedPath.startsWith('/dashboard')) {
+    return 'Dashboard';
+  }
+
+  if (normalizedPath.startsWith('/sightings')) {
+    return 'Sightings';
+  }
+
+  if (normalizedPath.startsWith('/login')) {
+    return 'Login';
+  }
+
+  if (normalizedPath.startsWith('/register')) {
+    return 'Register';
+  }
+
+  if (normalizedPath.startsWith('/privacy-policy')) {
+    return 'Privacy Policy';
+  }
+
+  return DEFAULT_PAGE_TITLE;
+};
+
 
 function App() {
   const location = useLocation();
   const hasInitializedRef = useRef(false);
   const lastTrackedPathRef = useRef("");
+  const activePageTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname]);
 
   useEffect(() => {
     if (!hasInitializedRef.current) {
@@ -37,8 +70,13 @@ function App() {
       return;
     }
     lastTrackedPathRef.current = nextPath;
-    trackPageView(nextPath);
-  }, [location]);
+    const title = activePageTitle || DEFAULT_PAGE_TITLE;
+    const documentTitle = title === DEFAULT_PAGE_TITLE ? DEFAULT_PAGE_TITLE : `${title} · ${DEFAULT_PAGE_TITLE}`;
+    if (typeof document !== 'undefined') {
+      document.title = documentTitle;
+    }
+    trackPageView({ path: nextPath, title });
+  }, [location, activePageTitle]);
 
   return (
     <div className="app app--dark">

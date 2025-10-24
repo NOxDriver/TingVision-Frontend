@@ -33,13 +33,37 @@ const ensureInitialized = () => {
 
 export const initAnalytics = () => ensureInitialized();
 
-export const trackPageView = (path) => {
+export const trackPageView = (pathOrOptions) => {
   if (!ensureInitialized()) {
     return;
   }
 
-  const pagePath = typeof path === 'string' && path.length ? path : window.location.pathname + window.location.search;
-  ReactGA.send({ hitType: 'pageview', page: pagePath });
+  let pageTitle = '';
+  let pagePath = '';
+
+  if (typeof pathOrOptions === 'string') {
+    pagePath = pathOrOptions;
+  } else if (pathOrOptions && typeof pathOrOptions === 'object') {
+    const { path, title } = pathOrOptions;
+    if (typeof path === 'string' && path.length > 0) {
+      pagePath = path;
+    }
+    if (typeof title === 'string' && title.trim().length > 0) {
+      pageTitle = title.trim();
+    }
+  }
+
+  if (!pagePath) {
+    pagePath = window.location.pathname + window.location.search;
+  }
+
+  const payload = { hitType: 'pageview', page: pagePath };
+  if (pageTitle) {
+    payload.title = pageTitle;
+    payload.page_title = pageTitle;
+  }
+
+  ReactGA.send(payload);
 };
 
 export const trackEvent = (eventNameOrParams, params = {}) => {

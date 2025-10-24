@@ -69,7 +69,8 @@ export default function Sightings() {
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
-  const [speciesQuery, setSpeciesQuery] = useState('');
+  const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [isSpeciesMenuOpen, setSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
@@ -80,11 +81,19 @@ export default function Sightings() {
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
+  const speciesDropdownRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+
+  const availableSpecies = useMemo(() => {
+    const speciesNames = sightings
+      .map((entry) => (typeof entry.species === 'string' ? entry.species.trim() : ''))
+      .filter((value) => value.length > 0);
+    return Array.from(new Set(speciesNames)).sort((a, b) => a.localeCompare(b));
+  }, [sightings]);
 
   const loadSightings = useCallback(async (options = {}) => {
     const { append = false, cursor = null } = options;
@@ -253,10 +262,66 @@ export default function Sightings() {
     }
   }, [availableLocations, locationFilter]);
 
+  useEffect(() => {
+    setSelectedSpecies((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return prev;
+      }
+      const next = prev.filter((species) => availableSpecies.includes(species));
+      if (next.length === prev.length) {
+        return prev;
+      }
+      return next;
+    });
+  }, [availableSpecies]);
+
+  useEffect(() => {
+    if (!isSpeciesMenuOpen) {
+      return undefined;
+    }
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!speciesDropdownRef.current) {
+        return;
+      }
+      if (!speciesDropdownRef.current.contains(event.target)) {
+        setSpeciesMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSpeciesMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSpeciesMenuOpen]);
+
+  useEffect(() => {
+    if (availableSpecies.length === 0 && isSpeciesMenuOpen) {
+      setSpeciesMenuOpen(false);
+    }
+  }, [availableSpecies.length, isSpeciesMenuOpen]);
+
   const filteredSightings = useMemo(
     () => sightings.filter((entry) => {
       const hasConfidence = typeof entry.maxConf === 'number' && !Number.isNaN(entry.maxConf);
-      if (hasConfidence ? entry.maxConf < confidenceThreshold : confidenceThreshold > 0) {
+      const isVideo = entry.mediaType === 'video';
+      if (hasConfidence) {
+        if (entry.maxConf < confidenceThreshold) {
+          return false;
+        }
+      } else if (confidenceThreshold > 0 && !isVideo) {
         return false;
       }
 
@@ -268,18 +333,14 @@ export default function Sightings() {
         return false;
       }
 
-      const trimmedQuery = speciesQuery.trim().toLowerCase();
-      if (trimmedQuery && typeof entry.species === 'string') {
-        if (!entry.species.toLowerCase().includes(trimmedQuery)) {
-          return false;
-        }
-      } else if (trimmedQuery) {
+      const normalizedSpecies = typeof entry.species === 'string' ? entry.species.trim() : '';
+      if (selectedSpecies.length > 0 && !selectedSpecies.includes(normalizedSpecies)) {
         return false;
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, speciesQuery],
+    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -320,10 +381,35 @@ export default function Sightings() {
     trackEvent('sightings_confidence_filter', { threshold: nextValue });
   };
 
-  const handleSpeciesQueryChange = (event) => {
-    const nextValue = event.target.value;
-    setSpeciesQuery(nextValue);
-    trackEvent('sightings_species_filter', { query: nextValue });
+  const handleSpeciesMenuToggle = () => {
+    setSpeciesMenuOpen((prev) => {
+      const next = !prev;
+      trackEvent('sightings_species_filter_menu', { open: next });
+      return next;
+    });
+  };
+
+  const handleSpeciesToggle = (species) => {
+    const normalized = typeof species === 'string' ? species.trim() : '';
+    if (!normalized) {
+      return;
+    }
+
+    setSelectedSpecies((prev) => {
+      const hasValue = prev.includes(normalized);
+      const next = hasValue ? prev.filter((item) => item !== normalized) : [...prev, normalized];
+      trackEvent('sightings_species_filter', {
+        species: normalized,
+        active: !hasValue,
+        total: next.length,
+      });
+      return next;
+    });
+  };
+
+  const handleClearSpecies = () => {
+    setSelectedSpecies([]);
+    trackEvent('sightings_species_filter_clear');
   };
 
   const handleLocationFilterChange = (event) => {
@@ -339,6 +425,91 @@ export default function Sightings() {
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
+  const isSpeciesFilterActive = selectedSpecies.length > 0;
+  const speciesDropdownLabel = useMemo(() => {
+    if (!isSpeciesFilterActive) {
+      return 'All species';
+    }
+    if (selectedSpecies.length === 1) {
+      return selectedSpecies[0];
+    }
+    return `${selectedSpecies.length} selected`;
+  }, [isSpeciesFilterActive, selectedSpecies]);
+  const hasSpeciesOptions = availableSpecies.length > 0;
+
+  const modalMedia = useMemo(() => {
+    if (!activeSighting) {
+      return {
+        prefersVideo: false,
+        selectedVideoSrc: null,
+        selectedImageSrc: null,
+        isUsingDebugAsset: false,
+        hdSource: null,
+      };
+    }
+
+    const isDebugMode = modalViewMode === 'debug';
+    const prefersVideo = activeSighting.mediaType === 'video';
+
+    const standardVideoSrc = activeSighting.rawMediaUrl || activeSighting.videoUrl || null;
+    const standardImageSrc = activeSighting.rawPreviewUrl
+      || activeSighting.previewUrl
+      || activeSighting.rawMediaUrl
+      || null;
+    const debugVideoSrc = activeSighting.debugVideoUrl || null;
+    const debugImageSrc = activeSighting.debugPreviewUrl || null;
+
+    const hasDebugMedia = Boolean(debugVideoSrc || debugImageSrc);
+    const useDebugMedia = isDebugMode && hasDebugMedia;
+
+    let selectedVideoSrc = useDebugMedia ? debugVideoSrc : standardVideoSrc;
+    let selectedImageSrc = useDebugMedia ? debugImageSrc : standardImageSrc;
+
+    if (!selectedVideoSrc && !selectedImageSrc) {
+      selectedVideoSrc = standardVideoSrc || debugVideoSrc;
+      selectedImageSrc = standardImageSrc || debugImageSrc;
+    }
+
+    const isUsingDebugAsset = useDebugMedia && (
+      (selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
+      || (selectedImageSrc && selectedImageSrc === debugImageSrc)
+    );
+
+    const hdCandidates = [];
+    if (useDebugMedia) {
+      if (prefersVideo) {
+        hdCandidates.push(debugVideoSrc, activeSighting.rawMediaUrl, standardVideoSrc, debugImageSrc, standardImageSrc);
+      } else {
+        hdCandidates.push(debugImageSrc, activeSighting.rawMediaUrl, standardImageSrc, debugVideoSrc, standardVideoSrc);
+      }
+    } else if (prefersVideo) {
+      hdCandidates.push(
+        activeSighting.rawMediaUrl,
+        standardVideoSrc,
+        debugVideoSrc,
+        activeSighting.rawPreviewUrl,
+        standardImageSrc,
+      );
+    } else {
+      hdCandidates.push(
+        activeSighting.rawMediaUrl,
+        activeSighting.rawPreviewUrl,
+        standardImageSrc,
+        debugImageSrc,
+        standardVideoSrc,
+      );
+    }
+
+    const hdSource = hdCandidates.find((value) => typeof value === 'string' && value.length > 0) || null;
+
+    return {
+      prefersVideo,
+      selectedVideoSrc,
+      selectedImageSrc,
+      isUsingDebugAsset,
+      hdSource,
+    };
+  }, [activeSighting, modalViewMode]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -373,28 +544,7 @@ export default function Sightings() {
       return null;
     }
 
-    const isDebugMode = modalViewMode === 'debug';
-    const prefersVideo = activeSighting.mediaType === 'video';
-
-    const standardVideoSrc = activeSighting.rawMediaUrl || activeSighting.videoUrl || null;
-    const standardImageSrc = activeSighting.rawPreviewUrl || activeSighting.previewUrl || null;
-    const debugVideoSrc = activeSighting.debugVideoUrl || null;
-    const debugImageSrc = activeSighting.debugPreviewUrl || null;
-
-    const hasDebugMedia = Boolean(debugVideoSrc || debugImageSrc);
-    const useDebugMedia = isDebugMode && hasDebugMedia;
-
-    let selectedVideoSrc = useDebugMedia ? debugVideoSrc : standardVideoSrc;
-    let selectedImageSrc = useDebugMedia ? debugImageSrc : standardImageSrc;
-
-    if (!selectedVideoSrc && !selectedImageSrc) {
-      selectedVideoSrc = standardVideoSrc || debugVideoSrc;
-      selectedImageSrc = standardImageSrc || debugImageSrc;
-    }
-
-    const isUsingDebugAsset = useDebugMedia
-      && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
-        || (selectedImageSrc && selectedImageSrc === debugImageSrc));
+    const { prefersVideo, selectedVideoSrc, selectedImageSrc, isUsingDebugAsset } = modalMedia;
 
     if (prefersVideo && selectedVideoSrc) {
       return (
@@ -466,15 +616,63 @@ export default function Sightings() {
                   onChange={handleConfidenceChange}
                 />
               </div>
-              <div className="sightingsPage__field">
-                <label htmlFor="speciesFilter">Species</label>
-                <input
-                  id="speciesFilter"
-                  type="search"
-                  value={speciesQuery}
-                  placeholder="Search species"
-                  onChange={handleSpeciesQueryChange}
-                />
+              <div
+                className="sightingsPage__field sightingsPage__field--species"
+                ref={speciesDropdownRef}
+              >
+                <label id="speciesFilterLabel" htmlFor="speciesFilterButton">Species</label>
+                <button
+                  type="button"
+                  id="speciesFilterButton"
+                  className={`speciesDropdown__button${isSpeciesFilterActive ? ' is-active' : ''}`}
+                  aria-haspopup="true"
+                  aria-expanded={isSpeciesMenuOpen}
+                  onClick={() => {
+                    if (!hasSpeciesOptions) {
+                      return;
+                    }
+                    handleSpeciesMenuToggle();
+                  }}
+                  disabled={!hasSpeciesOptions}
+                >
+                  <span>{speciesDropdownLabel}</span>
+                  <span className="speciesDropdown__chevron" aria-hidden="true" />
+                </button>
+                {isSpeciesMenuOpen && (
+                  <div className="speciesDropdown__menu" role="menu" aria-labelledby="speciesFilterLabel">
+                    {hasSpeciesOptions ? (
+                      <>
+                        <div className="speciesDropdown__actions">
+                          <button
+                            type="button"
+                            className="speciesDropdown__action"
+                            onClick={handleClearSpecies}
+                            disabled={!isSpeciesFilterActive}
+                          >
+                            Clear selection
+                          </button>
+                        </div>
+                        <div className="speciesDropdown__options">
+                          {availableSpecies.map((species) => {
+                            const isChecked = selectedSpecies.includes(species);
+                            return (
+                              <label key={species} className="speciesDropdown__option">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleSpeciesToggle(species)}
+                                />
+                                <span>{species}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="speciesDropdown__empty">No species available</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="sightingsPage__field">
                 <label htmlFor="locationFilter">Location</label>
@@ -664,6 +862,26 @@ export default function Sightings() {
               );
             })()}
             <div className="sightingModal__media">{renderModalContent()}</div>
+            {modalMedia.hdSource && (
+              <div className="sightingModal__actions">
+                <a
+                  href={modalMedia.hdSource}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="sightingModal__hdButton"
+                  onClick={() => {
+                    trackButton('sighting_view_full_resolution', {
+                      species: activeSighting?.species,
+                      location: activeSighting?.locationId,
+                      mediaType: activeSighting?.mediaType,
+                      mode: modalViewMode,
+                    });
+                  }}
+                >
+                  View full resolution
+                </a>
+              </div>
+            )}
             <div className="sightingModal__details">
               <h3>{activeSighting.species}</h3>
               {activeSighting.createdAt && (

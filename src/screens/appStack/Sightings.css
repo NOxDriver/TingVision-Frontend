@@ -161,6 +161,125 @@
   font-size: 0.95rem;
 }
 
+.sightingsPage__field--species {
+  position: relative;
+  min-width: 200px;
+}
+
+.speciesDropdown__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: rgba(24, 32, 16, 0.65);
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  border-radius: 10px;
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.speciesDropdown__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.speciesDropdown__button:not(:disabled):hover,
+.speciesDropdown__button:not(:disabled):focus-visible {
+  border-color: rgba(255, 140, 26, 0.7);
+  background: rgba(24, 32, 16, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 140, 26, 0.25);
+}
+
+.speciesDropdown__button.is-active {
+  border-color: rgba(255, 140, 26, 0.7);
+  background: rgba(24, 32, 16, 0.85);
+}
+
+.speciesDropdown__chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.speciesDropdown__button[aria-expanded="true"] .speciesDropdown__chevron {
+  transform: rotate(225deg);
+}
+
+.speciesDropdown__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  max-height: 260px;
+  background: rgba(16, 24, 12, 0.95);
+  border: 1px solid rgba(203, 146, 74, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.speciesDropdown__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.speciesDropdown__action {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.speciesDropdown__action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.speciesDropdown__action:not(:disabled):hover,
+.speciesDropdown__action:not(:disabled):focus-visible {
+  color: #ffb067;
+}
+
+.speciesDropdown__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.speciesDropdown__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+}
+
+.speciesDropdown__option input {
+  accent-color: var(--color-accent);
+}
+
+.speciesDropdown__empty {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
 .sightingsPage__field input::placeholder {
   color: var(--color-text-muted);
 }
@@ -466,6 +585,32 @@
   border-radius: 16px;
   border: 1px solid var(--color-border);
   background: #050603;
+}
+
+.sightingModal__actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sightingModal__hdButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 140, 26, 0.22);
+  border: 1px solid rgba(255, 140, 26, 0.55);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingModal__hdButton:hover,
+.sightingModal__hdButton:focus-visible {
+  background: rgba(255, 140, 26, 0.32);
+  transform: translateY(-1px);
 }
 
 .sightingModal__placeholder {
