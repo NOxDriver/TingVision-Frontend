@@ -4,7 +4,7 @@ import moment from 'moment';
 import * as XLSX from 'sheetjs-style';
 import { db } from '../firebase';
 import { chunk, sleep } from '../utils/reports/helpers';
-import ReactGA from 'react-ga4';
+import { trackButton } from '../utils/analytics';
 import useReportsStore from '../stores/reportsStore';
 
 const GRAPH_VERSION = 'v22.0';
@@ -279,7 +279,7 @@ export default function useFetchReports(pageAccessTokens, enabledMetrics) {
 
   const run = async ({ startDate, endDate, selectedPage, user }) => {
     if (!startDate || !endDate) return;
-    ReactGA.event({ category: 'Reports', action: 'Generate Report' });
+    trackButton('reports_generate');
 
     abortController?.abort?.();
     const controller = new AbortController();
@@ -368,7 +368,7 @@ export default function useFetchReports(pageAccessTokens, enabledMetrics) {
   }, [videos]);
 
   const exportCSV = ({ pagesById, startDate, endDate, includeExtras, exportType }) => {
-    ReactGA.event({ category: 'Reports', action: 'Export CSV' });
+    trackButton('reports_export_csv', { exportType });
 
     const byType = v => {
       const type = (v.contentType || '').toLowerCase();

@@ -16,6 +16,7 @@ import {
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
+import { trackButton, trackEvent } from '../../utils/analytics';
 
 const SIGHTINGS_LIMIT = 50;
 
@@ -212,16 +213,23 @@ export default function Sightings() {
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
+    trackButton('sighting_open', {
+      species: entry?.species,
+      mediaType: entry?.mediaType,
+      location: entry?.locationId,
+    });
   };
 
   const handleCloseSighting = () => {
     setActiveSighting(null);
     setModalViewMode('standard');
+    trackButton('sighting_close');
   };
 
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
+    trackEvent('sightings_confidence_filter', { threshold: nextValue });
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
@@ -354,7 +362,10 @@ export default function Sightings() {
             <button
               type="button"
               className="sightingsPage__refresh"
-              onClick={loadSightings}
+              onClick={() => {
+                trackButton('sightings_refresh');
+                loadSightings();
+              }}
               disabled={loading}
             >
               Refresh
@@ -407,11 +418,17 @@ export default function Sightings() {
                   )}
                 </div>
                 <div className="sightingCard__footer">
-                  <span className="sightingCard__location">{entry.locationId}</span>
+                  <div className="sightingCard__footerGroup">
+                    <span className="sightingCard__footerLabel">Location</span>
+                    <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
+                  </div>
                   {entry.createdAt && (
-                    <time dateTime={entry.createdAt.toISOString()}>
-                      {formatTimestampLabel(entry.createdAt)}
-                    </time>
+                    <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
+                      <span className="sightingCard__footerLabel">Captured</span>
+                      <time dateTime={entry.createdAt.toISOString()}>
+                        {formatTimestampLabel(entry.createdAt)}
+                      </time>
+                    </div>
                   )}
                 </div>
               </div>
@@ -451,7 +468,15 @@ export default function Sightings() {
                   <button
                     type="button"
                     className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                    onClick={() => setModalViewMode((prev) => (prev === 'debug' ? 'standard' : 'debug'))}
+                    onClick={() => {
+                      const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
+                      setModalViewMode(nextMode);
+                      trackButton('sighting_toggle_view', {
+                        mode: nextMode,
+                        species: activeSighting?.species,
+                        location: activeSighting?.locationId,
+                      });
+                    }}
                   >
                     {isDebugMode ? 'Standard View' : 'Debug'}
                   </button>

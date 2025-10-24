@@ -21,6 +21,7 @@ import {
   normalizeDate,
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
+import { trackButton } from '../utils/analytics';
 
 const MIN_PHOTO_CONFIDENCE = 0.7;
 
@@ -269,14 +270,30 @@ export default function HighlightsWidget() {
   const handleOpenEntry = (entry) => {
     setActiveEntry(entry);
     setModalViewMode('standard');
+    trackButton('highlight_open', {
+      species: entry?.species,
+      category: entry?.category,
+      mediaType: entry?.mediaType,
+    });
   };
 
   const handleCloseModal = () => {
     setActiveEntry(null);
     setModalViewMode('standard');
+    trackButton('highlight_close');
   };
 
   const isDebugMode = modalViewMode === 'debug';
+
+  const handleToggleModalMode = () => {
+    const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
+    setModalViewMode(nextMode);
+    trackButton('highlight_toggle_view', {
+      mode: nextMode,
+      species: activeEntry?.species,
+      category: activeEntry?.category,
+    });
+  };
 
   const renderModalMedia = () => {
     if (!activeEntry) {
@@ -474,9 +491,15 @@ export default function HighlightsWidget() {
                       )}
                     </div>
                     <div className="highlightCard__footer">
-                      <span>{entry.locationId}</span>
+                      <div className="highlightCard__footerGroup">
+                        <span className="highlightCard__footerLabel">Location</span>
+                        <span className="highlightCard__location" title={entry.locationId}>{entry.locationId}</span>
+                      </div>
                       {entry.createdAt && (
-                        <time dateTime={entry.createdAt.toISOString()}>{formatTime(entry.createdAt)}</time>
+                        <div className="highlightCard__footerGroup">
+                          <span className="highlightCard__footerLabel">Captured</span>
+                          <time className="highlightCard__time" dateTime={entry.createdAt.toISOString()}>{formatTime(entry.createdAt)}</time>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -513,7 +536,7 @@ export default function HighlightsWidget() {
                   <button
                     type="button"
                     className={`highlightModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                    onClick={() => setModalViewMode((prev) => (prev === 'debug' ? 'standard' : 'debug'))}
+                    onClick={handleToggleModalMode}
                   >
                     {isDebugMode ? 'Standard View' : 'Debug'}
                   </button>

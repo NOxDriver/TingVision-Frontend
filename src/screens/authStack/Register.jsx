@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import ReactGA from 'react-ga4';
 
 import useAuthStore from '../../stores/authStore';
 // CSS
 import '../../css/AuthStack.css';
+import { trackButton, trackEvent } from '../../utils/analytics';
 
 const initialFormState = {
   firstName: '',
@@ -34,6 +34,7 @@ const Register = () => {
     event.preventDefault();
     setError('');
     setIsSubmitting(true);
+    trackButton('auth_register_attempt');
 
     const firstName = formData.firstName.trim();
     const lastName = formData.lastName.trim();
@@ -65,7 +66,10 @@ const Register = () => {
     } catch (err) {
       console.error(err);
       setIsSubmitting(false);
-      setError('Something went wrong while creating your account. Please try again.');
+      const fallbackMessage = 'Something went wrong while creating your account. Please try again.';
+      const message = err?.message || fallbackMessage;
+      setError(fallbackMessage);
+      trackEvent('auth_register_error', { error: message.slice(0, 120) });
       return;
     }
 
@@ -73,12 +77,14 @@ const Register = () => {
 
     if (result?.success) {
       setFormData(initialFormState);
-      ReactGA.event({ category: 'Auth', action: 'Register' });
+      trackEvent('auth_register_success');
       navigate('/');
       return;
     }
 
-    setError(result?.error || 'We were unable to create your account. Please try again.');
+    const failureMessage = result?.error || 'We were unable to create your account. Please try again.';
+    setError(failureMessage);
+    trackEvent('auth_register_error', { error: failureMessage.slice(0, 120) });
   };
 
   return (
