@@ -35,6 +35,7 @@ export default function Sightings() {
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -151,7 +152,18 @@ export default function Sightings() {
     };
   }, [loadSightings]);
 
-  const hasSightings = sightings.length > 0;
+  const filteredSightings = useMemo(
+    () => sightings.filter((entry) => {
+      if (typeof entry.maxConf !== 'number' || Number.isNaN(entry.maxConf)) {
+        return confidenceThreshold <= 0;
+      }
+      return entry.maxConf >= confidenceThreshold;
+    }),
+    [sightings, confidenceThreshold],
+  );
+
+  const hasAnySightings = sightings.length > 0;
+  const hasSightings = filteredSightings.length > 0;
 
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -173,6 +185,24 @@ export default function Sightings() {
   const handleCloseSighting = () => {
     setActiveSighting(null);
   };
+
+  const handleConfidenceChange = (event) => {
+    const nextValue = Number(event.target.value) / 100;
+    setConfidenceThreshold(nextValue);
+  };
+
+  const confidencePercentage = Math.round(confidenceThreshold * 100);
+
+  useEffect(() => {
+    if (!activeSighting) {
+      return;
+    }
+
+    const isStillVisible = filteredSightings.some((entry) => entry.id === activeSighting.id);
+    if (!isStillVisible) {
+      setActiveSighting(null);
+    }
+  }, [filteredSightings, activeSighting]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -251,6 +281,18 @@ export default function Sightings() {
             {!loading && accessError && (
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
+            <div className="sightingsPage__filter">
+              <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
+              <input
+                id="confidenceFilter"
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={confidencePercentage}
+                onChange={handleConfidenceChange}
+              />
+            </div>
             <button
               type="button"
               className="sightingsPage__refresh"
@@ -266,12 +308,16 @@ export default function Sightings() {
           <div className="sightingsPage__empty">No locations have been assigned to your account yet.</div>
         )}
 
-        {!loading && !error && !hasSightings && !noAssignedLocations && (
+        {!loading && !error && !hasAnySightings && !noAssignedLocations && (
           <div className="sightingsPage__empty">No sightings have been recorded yet.</div>
         )}
 
+        {!loading && !error && hasAnySightings && !hasSightings && (
+          <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
+        )}
+
         <div className="sightingsPage__list">
-          {sightings.map((entry) => (
+          {filteredSightings.map((entry) => (
             <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
               <div className="sightingCard__media">
                 <button
