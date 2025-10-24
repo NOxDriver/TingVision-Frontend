@@ -31,12 +31,12 @@ const SiteHeader = ({ mode = 'light' }) => {
                     )}
 
                     <div className="nav-actions">
-                        <button 
+                        {/* <button 
                             className="privacy-link"
                             onClick={() => navigate('/privacy-policy')}
                         >
                             Privacy Policy
-                        </button>
+                        </button> */}
 
                         {user ? (
                             <button 

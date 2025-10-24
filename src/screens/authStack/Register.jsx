@@ -139,7 +139,7 @@ const Register = () => {
               type='tel'
               inputMode='tel'
               className='auth__input'
-              placeholder='(555) 000-1234'
+              placeholder='+27 55 000 1234'
               value={formData.phoneNumber}
               onChange={handleChange}
               autoComplete='tel'
