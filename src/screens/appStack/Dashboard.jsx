@@ -6,6 +6,7 @@ import HighlightsWidget from '../../components/HighlightsWidget';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet } from '../../utils/location';
 import { STREAMS, filterStreamsByLocations } from '../../utils/streams';
+import { trackButton } from '../../utils/analytics';
 
 function HlsTile({ title, baseUrl, autoRefresh=true }) {
   const videoRef = useRef(null);
@@ -113,7 +114,14 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
     const bust = `t=${Date.now()}`;
     setSrc(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${bust}`);
     setLastReload(Date.now());
+    trackButton('stream_reload', { stream: title });
     // do not reset everPlayed; keep overlay hidden after first success
+  };
+
+  const handleRefreshToggle = (event) => {
+    const checked = event.target.checked;
+    setRefreshOn(checked);
+    trackButton('stream_auto_refresh_toggle', { stream: title, enabled: checked });
   };
 
   const showOverlay = !everPlayed && !connected; // overlay only before first successful play
@@ -128,7 +136,7 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
             <input
               type="checkbox"
               checked={refreshOn}
-              onChange={(e) => setRefreshOn(e.target.checked)}
+              onChange={handleRefreshToggle}
             />
             <span>Auto refresh</span>
           </label>

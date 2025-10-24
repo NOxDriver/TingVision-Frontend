@@ -70,8 +70,8 @@
 
 .highlights__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 22px;
 }
 
 .highlightCard {
@@ -87,7 +87,7 @@
 .highlightCard__media {
   position: relative;
   background: #050603;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
 }
 
 .highlightCard__mediaButton {
@@ -123,9 +123,9 @@
   right: 10px;
   background: rgba(11, 15, 8, 0.75);
   color: var(--color-text-primary);
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -153,14 +153,39 @@
 
 .highlightCard__footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: flex-start;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 12px;
   font-size: 0.85rem;
+  color: var(--color-text-primary);
+}
+
+.highlightCard__footerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 140px;
+}
+
+.highlightCard__footerLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--color-text-muted);
 }
 
 .highlightCard__footer time {
   font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.highlightCard__location {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .highlightModal {
@@ -198,9 +223,9 @@
   border: 1px solid rgba(203, 146, 74, 0.45);
   background: rgba(29, 41, 20, 0.75);
   color: var(--color-text-primary);
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 999px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
 }

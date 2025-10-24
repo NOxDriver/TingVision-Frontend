@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import useAuthStore from '../../stores/authStore';
-import ReactGA from 'react-ga4';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase';
 import { getPageAccessToken } from '../../utils/FB/getPageAccessToken';
+import { trackButton, trackEvent } from '../../utils/analytics';
 import '../../css/AuthStack.css';
 
 const Login = () => {
@@ -23,15 +23,21 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    trackButton('auth_login_email_attempt');
     try {
       const res = await useAuthStore.getState().signInEmail(email, password);
       if (res?.user) {
-        ReactGA.event({ category: 'Auth', action: 'LoginEmail' });
+        trackEvent('auth_login_success', { method: 'email' });
         navigate('/');
       }
     } catch (err) {
       console.error(err);
-      setError(err.message);
+      const message = err?.message || 'Unable to login with email';
+      setError(message);
+      trackEvent('auth_login_error', {
+        method: 'email',
+        error: message.slice(0, 120),
+      });
     } finally {
       setLoading(false);
     }
@@ -39,6 +45,7 @@ const Login = () => {
 
   const handleFacebookLogin = async (e) => {
     e.preventDefault();
+    trackButton('auth_login_facebook_attempt');
     const result = await signInWithFacebook();
     if (result?.success) {
       setUserAccessToken(result.accessToken);
@@ -56,7 +63,7 @@ const Login = () => {
         console.error('Error fetching page tokens:', err);
       }
 
-      ReactGA.event({ category: 'Auth', action: 'LoginFacebook' });
+      trackEvent('auth_login_success', { method: 'facebook' });
       navigate('/');
     }
   };

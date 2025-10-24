@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 // AuthStack
 import Login from "./screens/authStack/Login";
 import Register from "./screens/authStack/Register";
@@ -7,7 +7,7 @@ import Register from "./screens/authStack/Register";
 import Dashboard from "./screens/appStack/Dashboard";
 import Sightings from "./screens/appStack/Sightings";
 
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 // import useAuthStore from "./stores/authStore";
 import ProtectedRoute from "./navigation/ProtectedRoutes";
@@ -16,15 +16,29 @@ import UnprotectedRoute from "./navigation/UnprotectedRoutes";
 import './App.css'
 // import SideMenu from "./components/allPages/SideMenu";
 import SiteHeader from "./components/allPages/SiteHeader";
-import ReactGA from 'react-ga4';
+import { initAnalytics, trackPageView } from "./utils/analytics";
 
 
 function App() {
-  // ReactGA.initialize('G-RNM8B81M7F');
-  // ReactGA.pageview(window.location.pathname + window.location.search);
-  ReactGA.initialize('G-RNM8B81M7F');
+  const location = useLocation();
+  const hasInitializedRef = useRef(false);
+  const lastTrackedPathRef = useRef("");
 
-  ReactGA.send({ hitType: "pageview", page: window.location.pathname + window.location.search });
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      initAnalytics();
+      hasInitializedRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    const nextPath = `${location.pathname}${location.search}`;
+    if (nextPath === lastTrackedPathRef.current) {
+      return;
+    }
+    lastTrackedPathRef.current = nextPath;
+    trackPageView(nextPath);
+  }, [location]);
 
   return (
     <div className="app app--dark">
