@@ -114,7 +114,7 @@ const useAuthStore = create((set) => ({
         }
     },
     createUser: async (formData) => {
-        const { email, password, firstName, lastName, companyName, phoneNumber } = formData;
+        const { email, password, firstName, lastName, phoneNumber } = formData;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const { user } = userCredential;
@@ -123,10 +123,10 @@ const useAuthStore = create((set) => ({
                 email,
                 firstName,
                 lastName,
-                companyName,
                 phoneNumber,
                 fullName: `${firstName} ${lastName}`.trim(),
                 role: 'client',
+                locationIds: [],
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             }, { merge: true });

@@ -9,7 +9,6 @@ import '../../css/AuthStack.css';
 const initialFormState = {
   firstName: '',
   lastName: '',
-  companyName: '',
   phoneNumber: '',
   email: '',
   password: '',
@@ -36,15 +35,32 @@ const Register = () => {
     setError('');
     setIsSubmitting(true);
 
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const email = formData.email.trim();
+    const phoneNumber = formData.phoneNumber.trim();
+    const password = formData.password;
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!firstName || !lastName || !email) {
+      setError('Please fill in all required fields.');
+      setIsSubmitting(false);
+      return;
+    }
+
     let result;
     try {
       result = await createUser({
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        companyName: formData.companyName.trim(),
-        phoneNumber: formData.phoneNumber.trim(),
-        email: formData.email.trim(),
-        password: formData.password,
+        firstName,
+        lastName,
+        phoneNumber,
+        email,
+        password,
       });
     } catch (err) {
       console.error(err);
@@ -107,34 +123,19 @@ const Register = () => {
             </div>
           </div>
 
-          <div className='auth__formRow auth__formRow--split'>
-            <div className='auth__field'>
-              <label htmlFor='companyName' className='auth__label'>Company</label>
-              <input
-                id='companyName'
-                name='companyName'
-                type='text'
-                className='auth__input'
-                placeholder='TingVision'
-                value={formData.companyName}
-                onChange={handleChange}
-                autoComplete='organization'
-              />
-            </div>
-            <div className='auth__field'>
-              <label htmlFor='phoneNumber' className='auth__label'>Phone number</label>
-              <input
-                id='phoneNumber'
-                name='phoneNumber'
-                type='tel'
-                inputMode='tel'
-                className='auth__input'
-                placeholder='(555) 000-1234'
-                value={formData.phoneNumber}
-                onChange={handleChange}
-                autoComplete='tel'
-              />
-            </div>
+          <div className='auth__field'>
+            <label htmlFor='phoneNumber' className='auth__label'>Phone number</label>
+            <input
+              id='phoneNumber'
+              name='phoneNumber'
+              type='tel'
+              inputMode='tel'
+              className='auth__input'
+              placeholder='(555) 000-1234'
+              value={formData.phoneNumber}
+              onChange={handleChange}
+              autoComplete='tel'
+            />
           </div>
 
           <div className='auth__field'>
