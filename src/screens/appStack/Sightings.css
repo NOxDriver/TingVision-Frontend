@@ -141,8 +141,8 @@
 
 .sightingsPage__list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 28px;
 }
 
 .sightingCard {
@@ -186,7 +186,8 @@
 .sightingCard__media {
   position: relative;
   background: #050603;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
+  min-height: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -221,22 +222,22 @@
 
 .sightingCard__badge {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(11, 15, 8, 0.75);
+  top: 12px;
+  right: 12px;
+  background: rgba(11, 15, 8, 0.72);
   color: var(--color-text-primary);
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
 .sightingCard__body {
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .sightingCard__header h3 {
@@ -255,20 +256,42 @@
 .sightingCard__footer {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  font-size: 0.85rem;
+  align-items: stretch;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(203, 146, 74, 0.25);
+}
+
+.sightingCard__detailGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+}
+
+.sightingCard__detailGroup--time {
+  text-align: right;
+}
+
+.sightingCard__detailLabel {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--color-text-muted);
 }
 
 .sightingCard__footer time {
   font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
 }
 
 .sightingCard__location {
-  max-width: 60%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  word-break: break-word;
 }
 
 .sightingCard__actions {
@@ -378,5 +401,13 @@
 
   .sightingsPage__list {
     grid-template-columns: 1fr;
+  }
+
+  .sightingCard__media {
+    min-height: 220px;
+  }
+
+  .sightingCard__detailGroup--time {
+    text-align: left;
   }
 }

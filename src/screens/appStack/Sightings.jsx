@@ -8,7 +8,6 @@ import {
   query,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import './Sightings.css';
 import {
   buildHighlightEntry,
   formatPercent,
@@ -16,6 +15,8 @@ import {
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
+import './Sightings.css';
+import { trackEvent } from '../../utils/analytics';
 
 const SIGHTINGS_LIMIT = 50;
 
@@ -212,16 +213,33 @@ export default function Sightings() {
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
+    trackEvent({
+      action: 'open_sighting_media',
+      category: 'sightings',
+      label: entry.mediaType,
+      value: typeof entry.maxConf === 'number' ? Math.round(entry.maxConf * 100) : undefined,
+    });
   };
 
   const handleCloseSighting = () => {
     setActiveSighting(null);
     setModalViewMode('standard');
+    trackEvent({ action: 'close_sighting_media', category: 'sightings' });
   };
 
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
+    trackEvent({
+      action: 'adjust_confidence_filter',
+      category: 'sightings',
+      value: Math.round(nextValue * 100),
+    });
+  };
+
+  const handleRefreshClick = () => {
+    trackEvent({ action: 'refresh_sightings', category: 'sightings' });
+    loadSightings();
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
@@ -354,7 +372,7 @@ export default function Sightings() {
             <button
               type="button"
               className="sightingsPage__refresh"
-              onClick={loadSightings}
+              onClick={handleRefreshClick}
               disabled={loading}
             >
               Refresh
@@ -407,11 +425,19 @@ export default function Sightings() {
                   )}
                 </div>
                 <div className="sightingCard__footer">
-                  <span className="sightingCard__location">{entry.locationId}</span>
+                  <div className="sightingCard__detailGroup">
+                    <span className="sightingCard__detailLabel">Location</span>
+                    <span className="sightingCard__location" title={entry.locationId}>
+                      {entry.locationId}
+                    </span>
+                  </div>
                   {entry.createdAt && (
-                    <time dateTime={entry.createdAt.toISOString()}>
-                      {formatTimestampLabel(entry.createdAt)}
-                    </time>
+                    <div className="sightingCard__detailGroup sightingCard__detailGroup--time">
+                      <span className="sightingCard__detailLabel">Captured</span>
+                      <time dateTime={entry.createdAt.toISOString()}>
+                        {formatTimestampLabel(entry.createdAt)}
+                      </time>
+                    </div>
                   )}
                 </div>
               </div>
@@ -451,7 +477,17 @@ export default function Sightings() {
                   <button
                     type="button"
                     className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                    onClick={() => setModalViewMode((prev) => (prev === 'debug' ? 'standard' : 'debug'))}
+                    onClick={() => {
+                      setModalViewMode((prev) => {
+                        const nextMode = prev === 'debug' ? 'standard' : 'debug';
+                        trackEvent({
+                          action: 'toggle_debug_media',
+                          category: 'sightings',
+                          label: nextMode,
+                        });
+                        return nextMode;
+                      });
+                    }}
                   >
                     {isDebugMode ? 'Standard View' : 'Debug'}
                   </button>
