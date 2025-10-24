@@ -12,6 +12,7 @@ const initialFormState = {
   lastName: '',
   phoneNumber: '',
   email: '',
+  associatedLocation: '',
   password: '',
 };
 
@@ -41,6 +42,7 @@ const Register = () => {
     const firstName = formData.firstName.trim();
     const lastName = formData.lastName.trim();
     const email = formData.email.trim();
+    const associatedLocation = formData.associatedLocation.trim();
     const phoneNumber = formData.phoneNumber.trim();
     const password = formData.password;
 
@@ -63,6 +65,7 @@ const Register = () => {
         lastName,
         phoneNumber,
         email,
+        associatedLocation,
         password,
       });
     } catch (err) {
@@ -108,7 +111,7 @@ const Register = () => {
                 name='firstName'
                 type='text'
                 className='auth__input'
-                placeholder='Jane'
+                placeholder='Amina'
                 value={formData.firstName}
                 onChange={handleChange}
                 autoComplete='given-name'
@@ -122,7 +125,7 @@ const Register = () => {
                 name='lastName'
                 type='text'
                 className='auth__input'
-                placeholder='Doe'
+                placeholder='Okafor'
                 value={formData.lastName}
                 onChange={handleChange}
                 autoComplete='family-name'
@@ -159,6 +162,20 @@ const Register = () => {
               autoComplete='email'
               required
             />
+          </div>
+
+          <div className='auth__field'>
+            <label htmlFor='associatedLocation' className='auth__label'>Associated Location</label>
+            <input
+              id='associatedLocation'
+              name='associatedLocation'
+              type='text'
+              className='auth__input'
+              placeholder='e.g., Nairobi'
+              value={formData.associatedLocation}
+              onChange={handleChange}
+            />
+            <p className='auth__helper'>Which location do you want to see</p>
           </div>
 
           <div className='auth__field'>
