@@ -12,7 +12,7 @@ const initialFormState = {
   lastName: '',
   phoneNumber: '',
   email: '',
-  associatedLocation: '',
+  locationRequested: '',
   password: '',
 };
 
@@ -42,7 +42,7 @@ const Register = () => {
     const firstName = formData.firstName.trim();
     const lastName = formData.lastName.trim();
     const email = formData.email.trim();
-    const associatedLocation = formData.associatedLocation.trim();
+    const locationRequested = formData.locationRequested.trim();
     const phoneNumber = formData.phoneNumber.trim();
     const password = formData.password;
 
@@ -65,7 +65,7 @@ const Register = () => {
         lastName,
         phoneNumber,
         email,
-        associatedLocation,
+        locationRequested,
         password,
       });
     } catch (err) {
@@ -165,14 +165,14 @@ const Register = () => {
           </div>
 
           <div className='auth__field'>
-            <label htmlFor='associatedLocation' className='auth__label'>Associated Location</label>
+            <label htmlFor='locationRequested' className='auth__label'>Requested Location</label>
             <input
-              id='associatedLocation'
-              name='associatedLocation'
+              id='locationRequested'
+              name='locationRequested'
               type='text'
               className='auth__input'
               placeholder='e.g., Elephant Walk Retreat'
-              value={formData.associatedLocation}
+              value={formData.locationRequested}
               onChange={handleChange}
             />
             <p className='auth__helper'>Which location do you want to see</p>
