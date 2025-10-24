@@ -1,59 +1,71 @@
 .highlights {
-  background: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 28px clamp(16px, 3vw, 36px);
+  box-shadow: 0 25px 55px rgba(8, 15, 35, 0.45);
 }
 
 .highlights__header {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
+  gap: 16px;
 }
 
 .highlights__header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 1.5rem;
 }
 
 .highlights__header p {
-  margin: 4px 0 0;
-  color: #555;
-  font-size: 14px;
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
 }
 
 .highlights__status {
-  font-size: 14px;
-  color: #555;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  background: rgba(148, 163, 184, 0.14);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 .highlights__status--error {
-  color: #c53030;
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
 }
 
 .highlights__empty {
-  padding: 16px;
-  border: 1px dashed #ccc;
-  border-radius: 8px;
-  color: #666;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--color-text-secondary);
   text-align: center;
-  font-size: 14px;
 }
 
 .highlights__species {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 20px;
 }
 
 .highlights__speciesHeader h3 {
   margin: 0;
   text-transform: capitalize;
-  font-size: 18px;
+  color: var(--color-text-primary);
 }
 
 .highlights__grid {
@@ -63,18 +75,18 @@
 }
 
 .highlightCard {
-  border: 1px solid #e4e4e4;
-  border-radius: 10px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #fafafa;
-  min-height: 320px;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .highlightCard__media {
   position: relative;
-  background: #101010;
+  background: #000;
   aspect-ratio: 16 / 9;
 }
 
@@ -86,11 +98,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .highlightCard__mediaButton:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
 
 .highlightCard__media img {
@@ -100,50 +113,50 @@
 }
 
 .highlightCard__placeholder {
-  color: #999;
-  font-size: 13px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
 }
 
 .highlightCard__badge {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  top: 10px;
+  right: 10px;
+  background: rgba(2, 8, 23, 0.7);
+  color: var(--color-text-primary);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 }
 
 .highlightCard__body {
-  padding: 16px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .highlightCard__label {
   font-weight: 600;
-  font-size: 16px;
-  color: #1f2933;
+  font-size: 1.05rem;
+  color: var(--color-text-primary);
 }
 
 .highlightCard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  font-size: 14px;
-  color: #4a5568;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }
 
 .highlightCard__footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
 }
 
 .highlightCard__footer time {
@@ -153,7 +166,7 @@
 .highlightModal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(2, 6, 23, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -163,71 +176,65 @@
 
 .highlightModal__content {
   position: relative;
-  background: #111;
-  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 18px;
   padding: 24px;
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: #f1f5f9;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+  color: var(--color-text-primary);
+  box-shadow: 0 25px 55px rgba(8, 15, 35, 0.65);
 }
 
 .highlightModal__controls {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .highlightModal__toggle {
-  border: 1px solid rgba(148, 163, 184, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.45);
   background: rgba(30, 41, 59, 0.7);
-  color: #e2e8f0;
-  padding: 6px 14px;
-  border-radius: 9999px;
-  font-size: 13px;
+  color: var(--color-text-primary);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.highlightModal__toggle:hover {
-  background: rgba(59, 130, 246, 0.75);
-}
-
+.highlightModal__toggle:hover,
 .highlightModal__toggle.is-active {
-  background: rgba(59, 130, 246, 0.95);
-  border-color: rgba(59, 130, 246, 0.95);
-  transform: translateY(-1px);
-}
-
-.highlightModal__close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  border: none;
-  background: transparent;
-  color: #f1f5f9;
-  font-size: 24px;
-  cursor: pointer;
-  line-height: 1;
+  background: rgba(56, 189, 248, 0.25);
 }
 
 .highlightModal__media {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  max-height: 60vh;
 }
 
 .highlightModal__media img,
 .highlightModal__media video {
-  max-width: 75vw;
+  max-width: min(960px, 80vw);
   max-height: 60vh;
-  border-radius: 8px;
-  object-fit: contain;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
   background: #000;
+}
+
+.highlightModal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(248, 113, 113, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
 }
 
 .highlightModal__details {
@@ -236,46 +243,21 @@
   gap: 8px;
 }
 
-.highlightModal__details h4 {
-  margin: 0;
-  font-size: 20px;
+.highlightModal__details time {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
 }
 
-.highlightModal__details p {
-  margin: 0;
-  color: #cbd5f5;
+.highlightModal__placeholder {
+  color: var(--color-text-muted);
 }
 
-.highlightModal__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 14px;
-  color: #e2e8f0;
-}
-
-.highlightModal__meta time {
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .highlights {
-    padding: 16px;
+    padding: 24px 18px;
   }
 
-  .highlights__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .highlightModal__content {
-    padding: 16px;
-    gap: 12px;
-  }
-
-  .highlightModal__media img,
-  .highlightModal__media video {
-    max-width: 100%;
-    max-height: 50vh;
+  .highlights__grid {
+    grid-template-columns: 1fr;
   }
 }

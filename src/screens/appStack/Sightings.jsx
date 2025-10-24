@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
   getDoc,
@@ -15,6 +15,8 @@ import {
   formatPercent,
   formatTime,
 } from '../../utils/highlights';
+import useAuthStore from '../../stores/authStore';
+import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 
 const SIGHTINGS_LIMIT = 50;
 
@@ -33,8 +35,28 @@ export default function Sightings() {
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
+  const role = useAuthStore((state) => state.role);
+  const locationIds = useAuthStore((state) => state.locationIds);
+  const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
+  const accessError = useAuthStore((state) => state.accessError);
+
+  const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
+  const isAdmin = role === 'admin';
+  const accessReady = !isAccessLoading;
+  const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   const loadSightings = useCallback(async () => {
+    if (!accessReady) {
+      return;
+    }
+
+    if (!isAdmin && allowedLocationSet.size === 0) {
+      setSightings([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -102,7 +124,11 @@ export default function Sightings() {
           return bTime - aTime;
         });
 
-      setSightings(entries);
+      const filteredEntries = isAdmin
+        ? entries
+        : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
+
+      setSightings(filteredEntries);
     } catch (err) {
       console.error('Failed to fetch sightings', err);
       if (isMountedRef.current) {
@@ -114,7 +140,7 @@ export default function Sightings() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [accessReady, isAdmin, allowedLocationSet]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -126,6 +152,19 @@ export default function Sightings() {
   }, [loadSightings]);
 
   const hasSightings = sightings.length > 0;
+
+  const getConfidenceClass = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 'sightingCard--unknown';
+    }
+    if (value >= 0.7) {
+      return 'sightingCard--high';
+    }
+    if (value >= 0.5) {
+      return 'sightingCard--medium';
+    }
+    return 'sightingCard--low';
+  };
 
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
@@ -202,9 +241,15 @@ export default function Sightings() {
             <p>Latest activity sorted by capture time.</p>
           </div>
           <div className="sightingsPage__controls">
-            {loading && <span className="sightingsPage__status">Loading…</span>}
+            {isAccessLoading && (
+              <span className="sightingsPage__status">Loading access…</span>
+            )}
+            {loading && !isAccessLoading && <span className="sightingsPage__status">Loading…</span>}
             {!loading && error && (
               <span className="sightingsPage__status sightingsPage__status--error">{error}</span>
+            )}
+            {!loading && accessError && (
+              <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
             <button
               type="button"
@@ -217,13 +262,17 @@ export default function Sightings() {
           </div>
         </header>
 
-        {!loading && !error && !hasSightings && (
+        {noAssignedLocations && (
+          <div className="sightingsPage__empty">No locations have been assigned to your account yet.</div>
+        )}
+
+        {!loading && !error && !hasSightings && !noAssignedLocations && (
           <div className="sightingsPage__empty">No sightings have been recorded yet.</div>
         )}
 
         <div className="sightingsPage__list">
           {sightings.map((entry) => (
-            <article className="sightingCard" key={entry.id}>
+            <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
               <div className="sightingCard__media">
                 <button
                   type="button"

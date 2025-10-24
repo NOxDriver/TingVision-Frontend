@@ -2,7 +2,7 @@ import React from "react";
 import "./SiteHeader.css";
 import useAuthStore from "../../stores/authStore";
 import { useNavigate } from 'react-router-dom';
-import { FiHome, FiFileText, FiLayers, FiSettings, FiLogIn, FiUserPlus, FiLogOut } from "react-icons/fi";
+import { FiHome, FiFileText, FiLogIn, FiUserPlus, FiLogOut } from "react-icons/fi";
 
 const SiteHeader = ({ mode = 'light' }) => {
     const user = useAuthStore(state => state.user);

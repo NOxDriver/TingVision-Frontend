@@ -1,51 +1,15 @@
-* {
-  margin: 0
-}
-
 .app {
-  background-color: #fafafa;
-  height: 100vh;
+  min-height: 100vh;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background 0.3s ease;
 }
 
-.app__heading {
-  background-color: white;
-  padding: 20px;
-  border-bottom: 1px solid lightgray;
-  object-fit: contain;
-  text-align: center;
-  font-weight: bold;
-  font-size: 1.5em;
+.app--dark {
+  background: var(--color-bg-primary);
 }
 
-.app__signup {
-  background-color: #fafafa;
-  padding: 20px;
-  border-bottom: 1px solid lightgray;
-  object-fit: contain;
-  display: flex;
-  flex-direction: column;
+.app a {
+  color: var(--color-accent);
 }
 
-.app__calculations {
-  padding: 10px;
-  border: 1px solid lightgray;
-  border-radius: 5px;
-  margin-bottom: 10px;
-  display: flex;
-}
-
-.app__input {
-  padding: 10px;
-  margin-right: 10px;
-  border: 1px solid lightgray;
-  border-radius: 5px;
-  margin-bottom: 10px;
-}
-
-.app__output {
-  padding: 10px;
-  margin-right: 10px;
-  border: 1px solid lightgray;
-  border-radius: 5px;
-  margin-bottom: 10px;
-}

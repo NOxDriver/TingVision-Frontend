@@ -10,24 +10,39 @@ const ProtectedRoute = ({ children }) => {
   const setUser = useAuthStore(set => set.setUser);
   const setUserAccessToken = useAuthStore(set => set.setUserAccessToken);
   const setPageAccessToken = useAuthStore(set => set.setPageAccessToken);
+  const fetchUserAccess = useAuthStore(set => set.fetchUserAccess);
+  const clearAccess = useAuthStore(set => set.clearAccess);
+  const isAccessLoading = useAuthStore(state => state.isAccessLoading);
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    let isMounted = true;
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      setInitializing(false);
+
       if (currentUser) {
         setUserAccessToken(localStorage.getItem('user_access_token'));
         setPageAccessToken(
           localStorage.getItem('page_access_token')
         );
+        await fetchUserAccess(currentUser);
+      } else {
+        clearAccess();
+      }
+
+      if (isMounted) {
+        setInitializing(false);
       }
     });
 
-    return unsubscribe;
-  }, [setUser]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [setUser, setUserAccessToken, setPageAccessToken, fetchUserAccess, clearAccess]);
 
-  if (initializing) return (
+  if (initializing || isAccessLoading) return (
     <div>
       <h1 className='protectedRoutes__loading'>Loading...</h1>
     </div>

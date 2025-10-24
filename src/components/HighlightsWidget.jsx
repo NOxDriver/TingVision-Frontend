@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import './HighlightsWidget.css';
+import useAuthStore from '../stores/authStore';
 import {
   CATEGORY_META,
   buildHighlightEntry,
@@ -19,6 +20,7 @@ import {
   mergeHighlight,
   normalizeDate,
 } from '../utils/highlights';
+import { buildLocationSet, normalizeLocationId } from '../utils/location';
 
 const formatSpeciesName = (value) => {
   if (typeof value !== 'string' || value.length === 0) {
@@ -33,11 +35,31 @@ export default function HighlightsWidget() {
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const role = useAuthStore((state) => state.role);
+  const locationIds = useAuthStore((state) => state.locationIds);
+  const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
+  const accessError = useAuthStore((state) => state.accessError);
+
+  const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
+  const isAdmin = role === 'admin';
+  const accessReady = !isAccessLoading;
+  const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   useEffect(() => {
     let isMounted = true;
 
     async function fetchHighlights() {
+      if (!accessReady) {
+        return;
+      }
+
+      if (!isAdmin && allowedLocationSet.size === 0) {
+        setHighlights({});
+        setLoading(false);
+        setError('');
+        return;
+      }
+
       setLoading(true);
       setError('');
       try {
@@ -86,6 +108,13 @@ export default function HighlightsWidget() {
           if (!parentRef) return;
           const parentDoc = parentDataMap.get(parentRef.path);
           if (!parentDoc) return;
+
+          if (!isAdmin) {
+            const normalizedLocation = normalizeLocationId(parentDoc.locationId);
+            if (!allowedLocationSet.has(normalizedLocation)) {
+              return;
+            }
+          }
 
           const species = formatSpeciesName(speciesDoc.species || 'Unknown');
           if (!groupedBySpecies[species]) {
@@ -181,7 +210,7 @@ export default function HighlightsWidget() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [accessReady, isAdmin, allowedLocationSet]);
 
   useEffect(() => {
     if (!activeEntry) {
@@ -355,9 +384,16 @@ export default function HighlightsWidget() {
         </div>
         {loading && <span className="highlights__status">Loading…</span>}
         {!loading && error && <span className="highlights__status highlights__status--error">{error}</span>}
+        {accessReady && accessError && (
+          <span className="highlights__status highlights__status--error">{accessError}</span>
+        )}
       </header>
 
-      {!loading && !error && !hasHighlights && (
+      {noAssignedLocations && (
+        <div className="highlights__empty">No locations have been assigned to your account yet.</div>
+      )}
+
+      {!loading && !error && !hasHighlights && !noAssignedLocations && (
         <div className="highlights__empty">No highlights recorded so far today.</div>
       )}
 

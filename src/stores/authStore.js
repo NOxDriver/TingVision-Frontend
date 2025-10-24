@@ -4,12 +4,32 @@ import {
     createUserWithEmailAndPassword,
     signOut, signInWithPopup, FacebookAuthProvider
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 
+
+const defaultState = {
+    user: null,
+    profile: null,
+    role: 'guest',
+    locationIds: [],
+    pageAccessTokens: {},
+    isAccessLoading: false,
+    accessError: '',
+};
+
+const normalizeLocationIds = (input) => {
+    if (!Array.isArray(input)) {
+        return [];
+    }
+    return input
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0);
+};
 
 const useAuthStore = create((set) => ({
-    user: {},
+    ...defaultState,
     pageAccessTokens: {},
     setPageAccessTokens: (tokens) => set({ pageAccessTokens: tokens }),
     setSinglePageAccessToken: (pageId, token) =>
@@ -23,6 +43,76 @@ const useAuthStore = create((set) => ({
     setUser: (user) => set({ user }),
     setUserAccessToken: (token) => set({ userAccessToken: token }),
     setPageAccessToken: (token) => set({ pageAccessToken: token }),
+    clearAccess: () => set({
+        profile: null,
+        role: 'guest',
+        locationIds: [],
+        isAccessLoading: false,
+        accessError: '',
+    }),
+    fetchUserAccess: async (user) => {
+        const uid = typeof user === 'string' ? user : user?.uid;
+        if (!uid) {
+            set({
+                profile: null,
+                role: 'guest',
+                locationIds: [],
+                isAccessLoading: false,
+                accessError: '',
+            });
+            return null;
+        }
+
+        set({ isAccessLoading: true, accessError: '' });
+        try {
+            const userRef = doc(db, 'users', uid);
+            const snapshot = await getDoc(userRef);
+
+            let data = {};
+            if (!snapshot.exists()) {
+                data = { role: 'client', locationIds: [] };
+                await setDoc(userRef, {
+                    ...data,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                }, { merge: true });
+            } else {
+                data = snapshot.data() || {};
+            }
+
+            const role = data.role === 'admin' ? 'admin' : 'client';
+            const locationIds = role === 'admin'
+                ? normalizeLocationIds(data.locationIds)
+                : normalizeLocationIds(data.locationIds);
+
+            const profile = {
+                id: uid,
+                ...data,
+                role,
+                locationIds,
+            };
+
+            set({
+                profile,
+                role,
+                locationIds,
+                isAccessLoading: false,
+                accessError: '',
+            });
+
+            return profile;
+        } catch (error) {
+            console.error('Failed to load user access', error);
+            set({
+                profile: null,
+                role: 'client',
+                locationIds: [],
+                isAccessLoading: false,
+                accessError: error?.message || 'Unable to load access permissions',
+            });
+            return null;
+        }
+    },
     createUser: async (e, email, password) => {
         e.preventDefault();
         try {
@@ -101,6 +191,7 @@ const useAuthStore = create((set) => ({
             signOut(auth);
             // remove all local storage items
             localStorage.clear();
+            set({ ...defaultState, user: null });
         } catch (e) { console.log(e.message); alert(e.message) }
     },
 }));

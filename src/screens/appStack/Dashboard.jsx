@@ -1,12 +1,11 @@
 // src/Dashboard.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import './Dashboard.css';
 import HighlightsWidget from '../../components/HighlightsWidget';
-
-// HTTPS HLS over Tailscale Funnel
-const STREAM_URL_ELEPHANT = 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/elephant-walk-retreat/index.m3u8';
-const STREAM_URL_GARJASS  = 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/garjass-house/index.m3u8';
+import useAuthStore from '../../stores/authStore';
+import { buildLocationSet } from '../../utils/location';
+import { STREAMS, filterStreamsByLocations } from '../../utils/streams';
 
 function HlsTile({ title, baseUrl, autoRefresh=true }) {
   const videoRef = useRef(null);
@@ -167,13 +166,62 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
 }
 
 export default function Dashboard() {
+  const role = useAuthStore((state) => state.role);
+  const locationIds = useAuthStore((state) => state.locationIds);
+  const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
+  const accessError = useAuthStore((state) => state.accessError);
+
+  const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
+  const isAdmin = role === 'admin';
+  const streamsToRender = useMemo(
+    () => filterStreamsByLocations(STREAMS, allowedLocationSet, isAdmin),
+    [allowedLocationSet, isAdmin],
+  );
+
+  const hasStreams = streamsToRender.length > 0;
+  const noAssignedStreams = !isAdmin && allowedLocationSet.size === 0;
+
   return (
     <div className="dashboard">
       <HighlightsWidget />
-      <div className="grid2">
-        <HlsTile title="Elephant Walk Retreat" baseUrl={STREAM_URL_ELEPHANT} />
-        <HlsTile title="Garjass House" baseUrl={STREAM_URL_GARJASS} />
-      </div>
+      <section className="dashboard__streams">
+        <header className="dashboard__streamsHeader">
+          <div>
+            <h2>Live Video Feeds</h2>
+            <p>Streams are filtered by your assigned locations.</p>
+          </div>
+          {accessError && !isAccessLoading && (
+            <span className="dashboard__status dashboard__status--error">{accessError}</span>
+          )}
+        </header>
+
+        {isAccessLoading && (
+          <div className="dashboard__status">Loading access…</div>
+        )}
+
+        {!isAccessLoading && noAssignedStreams && (
+          <div className="dashboard__status dashboard__status--muted">
+            No locations have been assigned to your account yet.
+          </div>
+        )}
+
+        {!isAccessLoading && !hasStreams && !noAssignedStreams && (
+          <div className="dashboard__status dashboard__status--muted">
+            No live streams are available for your locations.
+          </div>
+        )}
+
+        <div className="dashboard__streamGrid">
+          {streamsToRender.map((stream) => (
+            <HlsTile
+              key={stream.id}
+              title={stream.title}
+              baseUrl={stream.baseUrl}
+              autoRefresh
+            />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

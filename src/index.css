@@ -1,3 +1,36 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --color-bg-primary: #020817;
+  --color-bg-elevated: #0f172a;
+  --color-bg-surface: #1e293b;
+  --color-bg-muted: #111827;
+  --color-border: rgba(148, 163, 184, 0.2);
+  --color-border-strong: rgba(148, 163, 184, 0.35);
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-accent: #38bdf8;
+  --color-success: #22c55e;
+  --color-warning: #facc15;
+  --color-danger: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
