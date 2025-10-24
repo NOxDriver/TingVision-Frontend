@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "perSpecies",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "perSpecies",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

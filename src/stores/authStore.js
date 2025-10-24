@@ -4,12 +4,20 @@ import {
     createUserWithEmailAndPassword,
     signOut, signInWithPopup, FacebookAuthProvider
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 
 
-const useAuthStore = create((set) => ({
-    user: {},
+const defaultProfileState = {
+    role: 'client',
+    allowedLocations: [],
+    profileStatus: 'idle',
+    profileError: '',
+};
+
+const useAuthStore = create((set, get) => ({
+    user: null,
     pageAccessTokens: {},
     setPageAccessTokens: (tokens) => set({ pageAccessTokens: tokens }),
     setSinglePageAccessToken: (pageId, token) =>
@@ -20,9 +28,87 @@ const useAuthStore = create((set) => ({
             }
         })),
 
+    role: defaultProfileState.role,
+    allowedLocations: defaultProfileState.allowedLocations,
+    profileStatus: defaultProfileState.profileStatus,
+    profileError: defaultProfileState.profileError,
+
     setUser: (user) => set({ user }),
     setUserAccessToken: (token) => set({ userAccessToken: token }),
     setPageAccessToken: (token) => set({ pageAccessToken: token }),
+    resetProfile: () => set({ ...defaultProfileState }),
+    loadUserProfile: async (uid) => {
+        if (!uid) {
+            set({ ...defaultProfileState, profileStatus: 'idle' });
+            return null;
+        }
+
+        const currentStatus = get().profileStatus;
+        if (currentStatus === 'loading') {
+            return null;
+        }
+
+        set({ profileStatus: 'loading', profileError: '' });
+
+        try {
+            const userRef = doc(db, 'users', uid);
+            const snap = await getDoc(userRef);
+
+            if (!snap.exists()) {
+                set({
+                    role: defaultProfileState.role,
+                    allowedLocations: defaultProfileState.allowedLocations,
+                    profileStatus: 'ready',
+                    profileError: '',
+                });
+                return null;
+            }
+
+            const data = snap.data() || {};
+            const role = typeof data.role === 'string' ? data.role : defaultProfileState.role;
+            const locationPool = new Set();
+
+            if (Array.isArray(data.locations)) {
+                data.locations.forEach((loc) => {
+                    if (typeof loc === 'string' && loc.trim()) {
+                        locationPool.add(loc.trim());
+                    }
+                });
+            }
+
+            if (Array.isArray(data.locationIds)) {
+                data.locationIds.forEach((loc) => {
+                    if (typeof loc === 'string' && loc.trim()) {
+                        locationPool.add(loc.trim());
+                    }
+                });
+            }
+
+            if (typeof data.locationId === 'string' && data.locationId.trim()) {
+                locationPool.add(data.locationId.trim());
+            }
+
+            const allowedLocations = role === 'admin'
+                ? []
+                : Array.from(locationPool);
+
+            set({
+                role,
+                allowedLocations,
+                profileStatus: 'ready',
+                profileError: '',
+            });
+            return { role, allowedLocations };
+        } catch (error) {
+            console.error('Failed to load user profile', error);
+            set({
+                ...defaultProfileState,
+                profileStatus: 'error',
+                profileError: error?.message || 'Failed to load profile',
+            });
+            return null;
+        }
+    },
     createUser: async (e, email, password) => {
         e.preventDefault();
         try {
@@ -101,6 +187,13 @@ const useAuthStore = create((set) => ({
             signOut(auth);
             // remove all local storage items
             localStorage.clear();
+            set({
+                user: null,
+                ...defaultProfileState,
+                pageAccessTokens: {},
+                userAccessToken: undefined,
+                pageAccessToken: undefined,
+            });
         } catch (e) { console.log(e.message); alert(e.message) }
     },
 }));

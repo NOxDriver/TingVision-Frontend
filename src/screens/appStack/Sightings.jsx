@@ -6,6 +6,7 @@ import {
   limit,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import './Sightings.css';
@@ -15,6 +16,20 @@ import {
   formatPercent,
   formatTime,
 } from '../../utils/highlights';
+import useAuthStore from '../../stores/authStore';
+
+const MAX_FIRESTORE_IN = 10;
+
+const chunkArray = (input = [], size = MAX_FIRESTORE_IN) => {
+  if (!Array.isArray(input) || size <= 0) {
+    return [];
+  }
+  const result = [];
+  for (let i = 0; i < input.length; i += size) {
+    result.push(input.slice(i, i + size));
+  }
+  return result;
+};
 
 const SIGHTINGS_LIMIT = 50;
 
@@ -33,30 +48,66 @@ export default function Sightings() {
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
+  const role = useAuthStore((state) => state.role);
+  const allowedLocations = useAuthStore((state) => state.allowedLocations);
+  const profileStatus = useAuthStore((state) => state.profileStatus);
+  const profileError = useAuthStore((state) => state.profileError);
 
   const loadSightings = useCallback(async () => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    if (profileStatus === 'idle' || profileStatus === 'loading') {
+      setLoading(true);
+      return;
+    }
+
+    if (profileStatus === 'error') {
+      setSightings([]);
+      setError(profileError || 'Unable to load sightings - permission error');
+      setLoading(false);
+      return;
+    }
+
+    const normalizedLocations = Array.isArray(allowedLocations)
+      ? Array.from(new Set(allowedLocations.filter(Boolean)))
+      : [];
+
+    if (role !== 'admin' && normalizedLocations.length === 0) {
+      setSightings([]);
+      setError('No locations assigned to your account yet.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const sightingsQuery = query(
-        collectionGroup(db, 'perSpecies'),
-        orderBy('createdAt', 'desc'),
-        limit(SIGHTINGS_LIMIT),
-      );
+      const baseParts = [orderBy('createdAt', 'desc'), limit(SIGHTINGS_LIMIT)];
+      const queries = (() => {
+        if (role === 'admin') {
+          return [query(collectionGroup(db, 'perSpecies'), ...baseParts)];
+        }
+        return chunkArray(normalizedLocations).map((chunk) => (
+          query(collectionGroup(db, 'perSpecies'), where('locationId', 'in', chunk), ...baseParts)
+        ));
+      })();
 
-      const snapshot = await getDocs(sightingsQuery);
+      const snapshots = await Promise.all(queries.map((q) => getDocs(q)));
       if (!isMountedRef.current) {
         return;
       }
 
-      if (snapshot.empty) {
+      const docs = snapshots.flatMap((snap) => snap.docs || []);
+      if (docs.length === 0) {
         setSightings([]);
         return;
       }
 
       const parentRefMap = new Map();
-      snapshot.docs.forEach((docSnap) => {
+      docs.forEach((docSnap) => {
         const parentRef = docSnap.ref.parent.parent;
         if (parentRef && !parentRefMap.has(parentRef.path)) {
           parentRefMap.set(parentRef.path, parentRef);
@@ -76,7 +127,7 @@ export default function Sightings() {
         parentDataMap.set(snap.ref.path, { id: snap.id, ...snap.data() });
       });
 
-      const entries = snapshot.docs
+      const entries = docs
         .map((docSnap) => {
           const speciesDoc = { id: docSnap.id, ...docSnap.data() };
           const parentRef = docSnap.ref.parent.parent;
@@ -100,7 +151,8 @@ export default function Sightings() {
           const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
           const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
           return bTime - aTime;
-        });
+        })
+        .slice(0, SIGHTINGS_LIMIT);
 
       setSightings(entries);
     } catch (err) {
@@ -114,7 +166,7 @@ export default function Sightings() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [allowedLocations, profileError, profileStatus, role]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -126,6 +178,19 @@ export default function Sightings() {
   }, [loadSightings]);
 
   const hasSightings = sightings.length > 0;
+
+  const confidenceClass = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 'confidence--unknown';
+    }
+    if (value >= 0.7) {
+      return 'confidence--high';
+    }
+    if (value >= 0.5) {
+      return 'confidence--medium';
+    }
+    return 'confidence--low';
+  };
 
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
@@ -223,7 +288,10 @@ export default function Sightings() {
 
         <div className="sightingsPage__list">
           {sightings.map((entry) => (
-            <article className="sightingCard" key={entry.id}>
+            <article
+              className={`sightingCard ${confidenceClass(entry.maxConf)}`}
+              key={entry.id}
+            >
               <div className="sightingCard__media">
                 <button
                   type="button"

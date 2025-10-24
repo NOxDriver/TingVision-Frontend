@@ -1,214 +1,173 @@
 .site-header {
-    background-color: #ffffff;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    transition: all 0.3s ease;
-  }
-  
-  .site-header.dark {
-    background-color: #1a202c;
-    color: #ffffff;
-  }
-  
+  background: var(--color-surface);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.site-header.dark {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 70px;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.logo-text {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-accent);
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+  background-color: rgba(148, 163, 184, 0.12);
+  color: var(--color-text-primary);
+}
+
+.nav-icon {
+  font-size: 1.1rem;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.privacy-link {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.privacy-link:hover,
+.privacy-link:focus-visible {
+  color: var(--color-text-primary);
+  background-color: rgba(148, 163, 184, 0.12);
+}
+
+.auth-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--color-text-primary);
+}
+
+.auth-button:hover,
+.auth-button:focus-visible {
+  background: rgba(249, 115, 22, 0.25);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.auth-button.logout {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--color-danger);
+}
+
+.auth-button.logout:hover,
+.auth-button.logout:focus-visible {
+  background: rgba(248, 113, 113, 0.28);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.auth-button.signup {
+  background: var(--color-accent);
+  color: #0f172a;
+}
+
+.auth-button.signup:hover,
+.auth-button.signup:focus-visible {
+  background: #fb923c;
+  border-color: transparent;
+}
+
+.auth-icon {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
   .header-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    height: 70px;
+    flex-direction: column;
+    height: auto;
+    padding: 15px 20px;
+    gap: 16px;
   }
-  
-  .header-brand {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-  }
-  
-  .logo-text {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0;
-    color: #3182ce;
-  }
-  
-  .site-header.dark .logo-text {
-    color: #63b3ed;
-  }
-  
+
   .header-nav {
-    display: flex;
-    align-items: center;
-    gap: 20px;
+    width: 100%;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 10px;
   }
-  
+
   .nav-links {
-    display: flex;
-    gap: 10px;
+    width: 100%;
+    justify-content: space-between;
   }
-  
-  .nav-link {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: #4a5568;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  
-  .site-header.dark .nav-link {
-    color: #e2e8f0;
-  }
-  
-  .nav-link:hover {
-    background-color: #edf2f7;
-    color: #3182ce;
-  }
-  
-  .site-header.dark .nav-link:hover {
-    background-color: #2d3748;
-    color: #63b3ed;
-  }
-  
-  .nav-icon {
-    font-size: 1.1rem;
-  }
-  
+
   .nav-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
   }
-  
+
+  .auth-button,
   .privacy-link {
-    background: transparent;
-    border: none;
-    color: #718096;
-    font-size: 0.9rem;
-    cursor: pointer;
-    padding: 8px 12px;
-    border-radius: 6px;
-    transition: all 0.2s ease;
+    width: fit-content;
   }
-  
-  .site-header.dark .privacy-link {
-    color: #a0aec0;
-  }
-  
-  .privacy-link:hover {
-    color: #3182ce;
-    background-color: #ebf8ff;
-  }
-  
-  .site-header.dark .privacy-link:hover {
-    color: #63b3ed;
-    background-color: #2d3748;
-  }
-  
-  .auth-button {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
-  }
-  
-  .auth-icon {
-    font-size: 1.1rem;
-  }
-  
-  .login {
-    background-color: #ffffff;
-    color: #3182ce;
-    border-color: #3182ce;
-  }
-  
-  .site-header.dark .login {
-    background-color: #1a202c;
-    color: #63b3ed;
-    border-color: #63b3ed;
-  }
-  
-  .login:hover {
-    background-color: #ebf8ff;
-  }
-  
-  .site-header.dark .login:hover {
-    background-color: #2d3748;
-  }
-  
-  .signup {
-    background-color: #3182ce;
-    color: white;
-  }
-  
-  .site-header.dark .signup {
-    background-color: #63b3ed;
-    color: #1a202c;
-  }
-  
-  .signup:hover {
-    background-color: #2c5282;
-  }
-  
-  .site-header.dark .signup:hover {
-    background-color: #90cdf4;
-  }
-  
-  .logout {
-    background-color: #fff5f5;
-    color: #e53e3e;
-  }
-  
-  .site-header.dark .logout {
-    background-color: #2d3748;
-    color: #fc8181;
-  }
-  
-  .logout:hover {
-    background-color: #fed7d7;
-  }
-  
-  .site-header.dark .logout:hover {
-    background-color: #4a1e1e;
-  }
-  
-  @media (max-width: 768px) {
-    .header-container {
-      flex-direction: column;
-      height: auto;
-      padding: 15px 20px;
-    }
-    
-    .header-nav {
-      width: 100%;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 15px;
-    }
-    
-    .nav-links {
-      width: 100%;
-      justify-content: space-around;
-      flex-wrap: wrap;
-    }
-    
-    .nav-actions {
-      width: 100%;
-      justify-content: flex-end;
-      margin-top: 10px;
-    }
-  }
+}

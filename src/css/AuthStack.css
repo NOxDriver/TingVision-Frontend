@@ -2,78 +2,77 @@
     max-width: 420px;
     margin: 60px auto;
     padding: 40px 30px;
-    background: #fff;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    background: var(--color-surface);
+    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    box-shadow: 0 20px 45px var(--color-card-shadow);
     display: flex;
     flex-direction: column;
-    align-items: stretch;
+    gap: 16px;
+    color: var(--color-text-primary);
 }
 
 .auth__heading {
     font-size: 1.8em;
     font-weight: 600;
     text-align: center;
-    margin-bottom: 8px;
-    color: #222;
+    margin-bottom: 4px;
 }
 
 .auth__byline {
     font-size: 0.95em;
-    font-weight: 400;
     text-align: center;
-    color: #555;
-    margin-bottom: 24px;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
 }
 
 .auth__input {
     width: 100%;
     padding: 12px 14px;
     font-size: 1em;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    outline: none;
-    background: #fafafa;
-    transition: border-color 0.2s, background 0.2s;
-    margin-bottom: 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface-alt);
+    color: var(--color-text-primary);
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .auth__input:focus {
-    border-color: rgb(255,125,3);
-    background: #fff;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+    outline: none;
 }
 
 .auth__error {
-    background: #ffe5e5;
-    color: #b00000;
-    border: 1px solid #ffbcbc;
-    border-radius: 6px;
+    background: rgba(248, 113, 113, 0.2);
+    color: var(--color-danger);
+    border: 1px solid rgba(248, 113, 113, 0.4);
+    border-radius: 8px;
     padding: 10px;
     font-size: 0.9em;
     text-align: center;
-    margin-bottom: 12px;
 }
 
 .auth__buttonNotHovered {
     border: none;
-    border-radius: 6px;
+    border-radius: 999px;
     padding: 12px;
     width: 100%;
-    margin-top: 8px;
-    background: rgb(255,125,3);
-    color: white;
+    background: var(--color-accent);
+    color: #0f172a;
     font-weight: 600;
     font-size: 1em;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .auth__buttonNotHovered:hover {
-    background: rgb(254,140,33);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 30px rgba(249, 115, 22, 0.35);
 }
 
 .underline {
-    color: rgb(255,125,3);
+    color: var(--color-accent);
     font-weight: 500;
 }
 

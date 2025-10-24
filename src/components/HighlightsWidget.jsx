@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import './HighlightsWidget.css';
+import useAuthStore from '../stores/authStore';
 import {
   CATEGORY_META,
   buildHighlightEntry,
@@ -19,6 +20,19 @@ import {
   mergeHighlight,
   normalizeDate,
 } from '../utils/highlights';
+
+const MAX_FIRESTORE_IN = 10;
+
+const chunkArray = (input = [], size = MAX_FIRESTORE_IN) => {
+  if (!Array.isArray(input) || size <= 0) {
+    return [];
+  }
+  const result = [];
+  for (let i = 0; i < input.length; i += size) {
+    result.push(input.slice(i, i + size));
+  }
+  return result;
+};
 
 const formatSpeciesName = (value) => {
   if (typeof value !== 'string' || value.length === 0) {
@@ -33,6 +47,10 @@ export default function HighlightsWidget() {
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const role = useAuthStore((state) => state.role);
+  const allowedLocations = useAuthStore((state) => state.allowedLocations);
+  const profileStatus = useAuthStore((state) => state.profileStatus);
+  const profileError = useAuthStore((state) => state.profileError);
 
   useEffect(() => {
     let isMounted = true;
@@ -45,14 +63,38 @@ export default function HighlightsWidget() {
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
 
-        const highlightQuery = query(
-          collectionGroup(db, 'perSpecies'),
+        const baseConstraints = [
           where('createdAt', '>=', Timestamp.fromDate(start)),
           where('createdAt', '<', Timestamp.fromDate(end)),
-        );
+        ];
 
-        const snapshot = await getDocs(highlightQuery);
-        if (snapshot.empty) {
+        const normalizedLocations = Array.isArray(allowedLocations)
+          ? Array.from(new Set(allowedLocations.filter(Boolean)))
+          : [];
+
+        const queries = (() => {
+          if (role === 'admin') {
+            return [query(collectionGroup(db, 'perSpecies'), ...baseConstraints)];
+          }
+          if (normalizedLocations.length === 0) {
+            return [];
+          }
+          return chunkArray(normalizedLocations).map((chunk) => (
+            query(collectionGroup(db, 'perSpecies'), ...baseConstraints, where('locationId', 'in', chunk))
+          ));
+        })();
+
+        if (queries.length === 0) {
+          if (isMounted) {
+            setHighlights({});
+          }
+          setLoading(false);
+          return;
+        }
+
+        const snapshots = await Promise.all(queries.map((q) => getDocs(q)));
+        const docs = snapshots.flatMap((snap) => snap.docs || []);
+        if (docs.length === 0) {
           if (isMounted) {
             setHighlights({});
           }
@@ -61,7 +103,7 @@ export default function HighlightsWidget() {
         }
 
         const parentRefMap = new Map();
-        snapshot.docs.forEach((docSnap) => {
+        docs.forEach((docSnap) => {
           const parentRef = docSnap.ref.parent.parent;
           if (parentRef && !parentRefMap.has(parentRef.path)) {
             parentRefMap.set(parentRef.path, parentRef);
@@ -80,7 +122,7 @@ export default function HighlightsWidget() {
 
         const groupedBySpecies = {};
 
-        snapshot.docs.forEach((docSnap) => {
+        docs.forEach((docSnap) => {
           const speciesDoc = { id: docSnap.id, ...docSnap.data() };
           const parentRef = docSnap.ref.parent.parent;
           if (!parentRef) return;
@@ -176,12 +218,42 @@ export default function HighlightsWidget() {
       }
     }
 
+    if (profileStatus === 'idle' || profileStatus === 'loading') {
+      setLoading(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (profileStatus === 'error') {
+      setHighlights({});
+      setError(profileError || 'Unable to load highlights - permission error');
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (role !== 'admin') {
+      const normalizedLocations = Array.isArray(allowedLocations)
+        ? allowedLocations.filter(Boolean)
+        : [];
+      if (normalizedLocations.length === 0) {
+        setHighlights({});
+        setError('No locations assigned to your account yet.');
+        setLoading(false);
+        return () => {
+          isMounted = false;
+        };
+      }
+    }
+
     fetchHighlights();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [role, allowedLocations, profileStatus, profileError]);
 
   useEffect(() => {
     if (!activeEntry) {
@@ -217,6 +289,19 @@ export default function HighlightsWidget() {
   };
 
   const isDebugMode = modalViewMode === 'debug';
+
+  const confidenceClass = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 'confidence--unknown';
+    }
+    if (value >= 0.7) {
+      return 'confidence--high';
+    }
+    if (value >= 0.5) {
+      return 'confidence--medium';
+    }
+    return 'confidence--low';
+  };
 
   const renderModalMedia = () => {
     if (!activeEntry) {
@@ -389,7 +474,10 @@ export default function HighlightsWidget() {
             </div>
             <div className="highlights__grid">
               {uniqueEntries.map((entry) => (
-                <article className="highlightCard" key={entry.parentId || entry.id}>
+                <article
+                  className={`highlightCard ${confidenceClass(entry.maxConf)}`}
+                  key={entry.parentId || entry.id}
+                >
                   <div className="highlightCard__media">
                     <button
                       type="button"

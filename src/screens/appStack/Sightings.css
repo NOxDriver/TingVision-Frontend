@@ -1,7 +1,8 @@
 .sightingsPage {
-  padding: 24px;
+  padding: 32px 20px 48px;
   display: flex;
   justify-content: center;
+  color: var(--color-text-primary);
 }
 
 .sightingsPage__inner {
@@ -9,7 +10,7 @@
   max-width: 1200px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
 }
 
 .sightingsPage__header {
@@ -22,12 +23,12 @@
 
 .sightingsPage__header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 2rem;
 }
 
 .sightingsPage__header p {
   margin: 4px 0 0;
-  color: #555;
+  color: var(--color-text-muted);
 }
 
 .sightingsPage__controls {
@@ -37,65 +38,73 @@
 }
 
 .sightingsPage__status {
-  font-size: 14px;
-  color: #4b5563;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
 }
 
 .sightingsPage__status--error {
-  color: #c53030;
+  color: var(--color-danger);
 }
 
 .sightingsPage__refresh {
-  padding: 8px 16px;
-  border-radius: 9999px;
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #fff;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.18);
+  color: var(--color-text-primary);
   cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s ease, transform 0.2s ease;
+  font-size: 0.95rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sightingsPage__refresh:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .sightingsPage__refresh:not(:disabled):hover {
-  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(249, 115, 22, 0.35);
 }
 
 .sightingsPage__refresh:not(:disabled):active {
-  transform: translateY(1px);
+  transform: translateY(0);
 }
 
 .sightingsPage__empty {
-  padding: 20px;
-  border: 1px dashed #cbd5f5;
-  border-radius: 10px;
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
   text-align: center;
-  color: #64748b;
+  color: var(--color-text-muted);
+  background: rgba(15, 23, 42, 0.35);
 }
 
 .sightingsPage__list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  gap: 22px;
 }
 
 .sightingCard {
-  border: 1px solid #e4e4e4;
-  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  background: var(--color-surface);
+  box-shadow: 0 24px 55px rgba(10, 17, 32, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sightingCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 32px 70px rgba(10, 17, 32, 0.45);
 }
 
 .sightingCard__media {
   position: relative;
-  background: #101010;
+  background: #020617;
   aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
@@ -114,7 +123,7 @@
 }
 
 .sightingCard__mediaButton:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -125,30 +134,29 @@
 }
 
 .sightingCard__placeholder {
-  color: #94a3b8;
-  font-size: 14px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 .sightingCard__badge {
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(17, 24, 39, 0.85);
-  color: #fff;
+  background: rgba(15, 23, 42, 0.85);
+  color: var(--color-text-primary);
   padding: 4px 10px;
-  border-radius: 9999px;
-  font-size: 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .sightingCard__body {
-  padding: 18px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
-
 
 .sightingCard__header {
   display: flex;
@@ -159,24 +167,23 @@
 
 .sightingCard__header h3 {
   margin: 0;
-  font-size: 18px;
-  color: #1f2937;
+  font-size: 1.2rem;
 }
 
 .sightingCard__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 14px;
-  color: #475569;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }
 
 .sightingCard__footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
-  color: #64748b;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
 }
 
 .sightingCard__footer time {
@@ -199,16 +206,20 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: #2563eb;
+  font-size: 0.85rem;
+  color: var(--color-accent);
   text-decoration: none;
   margin-top: 4px;
+}
+
+.sightingCard__actions a:hover {
+  text-decoration: underline;
 }
 
 .sightingModal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--color-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -217,27 +228,27 @@
 }
 
 .sightingModal__content {
-  background: #0f172a;
-  border-radius: 16px;
-  padding: 24px;
+  background: #0b1120;
+  border-radius: 20px;
+  padding: 26px;
   max-width: 90vw;
   max-height: 90vh;
   width: min(960px, 100%);
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: #f8fafc;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+  color: var(--color-text-primary);
+  box-shadow: 0 30px 70px rgba(5, 10, 25, 0.65);
 }
 
 .sightingModal__close {
   align-self: flex-end;
   background: rgba(148, 163, 184, 0.2);
   border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
-  border-radius: 9999px;
+  color: var(--color-text-primary);
+  border-radius: 999px;
   padding: 6px 14px;
-  font-size: 13px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s ease;
 }
@@ -260,34 +271,49 @@
 .sightingModal__media video {
   max-width: 100%;
   max-height: 100%;
-  border-radius: 8px;
+  border-radius: 10px;
   object-fit: contain;
 }
 
 .sightingModal__placeholder {
-  color: #cbd5f5;
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
 }
 
 .sightingModal__details {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .sightingModal__details h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 1.3rem;
 }
 
 .sightingModal__details time {
-  font-size: 14px;
-  color: #cbd5f5;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.sightingCard__actions a:hover {
-  text-decoration: underline;
+.confidence--high {
+  background: linear-gradient(145deg, rgba(34, 197, 94, 0.18), rgba(22, 101, 52, 0.12));
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.confidence--medium {
+  background: linear-gradient(145deg, rgba(250, 204, 21, 0.18), rgba(202, 138, 4, 0.12));
+  border-color: rgba(250, 204, 21, 0.35);
+}
+
+.confidence--low {
+  background: linear-gradient(145deg, rgba(248, 113, 113, 0.22), rgba(190, 24, 93, 0.12));
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.confidence--unknown {
+  background: var(--color-surface);
 }
 
 @media (max-width: 640px) {

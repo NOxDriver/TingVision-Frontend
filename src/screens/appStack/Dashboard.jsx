@@ -1,12 +1,23 @@
 // src/Dashboard.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import './Dashboard.css';
 import HighlightsWidget from '../../components/HighlightsWidget';
+import useAuthStore from '../../stores/authStore';
 
 // HTTPS HLS over Tailscale Funnel
-const STREAM_URL_ELEPHANT = 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/elephant-walk-retreat/index.m3u8';
-const STREAM_URL_GARJASS  = 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/garjass-house/index.m3u8';
+const STREAMS = [
+  {
+    id: 'elephant-walk-retreat',
+    title: 'Elephant Walk Retreat',
+    baseUrl: 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/elephant-walk-retreat/index.m3u8',
+  },
+  {
+    id: 'garjass-house',
+    title: 'Garjass House',
+    baseUrl: 'https://tv-elephant-walk-retreat.tail3f4a65.ts.net/garjass-house/index.m3u8',
+  },
+];
 
 function HlsTile({ title, baseUrl, autoRefresh=true }) {
   const videoRef = useRef(null);
@@ -167,13 +178,50 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
 }
 
 export default function Dashboard() {
+  const role = useAuthStore((state) => state.role);
+  const allowedLocations = useAuthStore((state) => state.allowedLocations);
+  const profileStatus = useAuthStore((state) => state.profileStatus);
+  const profileError = useAuthStore((state) => state.profileError);
+
+  const visibleStreams = useMemo(() => {
+    if (role === 'admin') {
+      return STREAMS;
+    }
+    if (!Array.isArray(allowedLocations) || allowedLocations.length === 0) {
+      return [];
+    }
+    const allowedSet = new Set(allowedLocations.filter(Boolean));
+    return STREAMS.filter((stream) => allowedSet.has(stream.id));
+  }, [role, allowedLocations]);
+
+  const isProfileLoading = profileStatus === 'idle' || profileStatus === 'loading';
+  const isProfileReady = profileStatus === 'ready';
+
   return (
     <div className="dashboard">
       <HighlightsWidget />
-      <div className="grid2">
-        <HlsTile title="Elephant Walk Retreat" baseUrl={STREAM_URL_ELEPHANT} />
-        <HlsTile title="Garjass House" baseUrl={STREAM_URL_GARJASS} />
-      </div>
+      {isProfileLoading && (
+        <div className="dashboard__empty">Loading your live feeds…</div>
+      )}
+      {profileStatus === 'error' && (
+        <div className="dashboard__empty">
+          Unable to load live feed permissions.
+          {' '}
+          {profileError || 'Please try again later.'}
+        </div>
+      )}
+      {isProfileReady && visibleStreams.length === 0 && (
+        <div className="dashboard__empty">
+          No live feeds are assigned to your account yet. Please contact an administrator.
+        </div>
+      )}
+      {isProfileReady && visibleStreams.length > 0 && (
+        <div className="grid2">
+          {visibleStreams.map((stream) => (
+            <HlsTile key={stream.id} title={stream.title} baseUrl={stream.baseUrl} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

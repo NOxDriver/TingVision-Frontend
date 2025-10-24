@@ -28,8 +28,8 @@ function App() {
   ReactGA.send({ hitType: "pageview", page: window.location.pathname + window.location.search });
 
   return (
-    <div className="app">
-      <SiteHeader mode={'light'} />
+    <div className="app app--dark">
+      <SiteHeader mode="dark" />
 
       {/* {user && <SideMenu />} */}
 

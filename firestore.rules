@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return userDoc().data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userData() != null && userData().role == 'admin';
+    }
+
+    function hasLocationAccess(locationId) {
+      return isAdmin()
+        || (userData() != null && (
+          userData().locationId == locationId
+          || (userData().locationIds != null && locationId in userData().locationIds)
+          || (userData().locations != null && locationId in userData().locations)
+        ));
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+
+      match /pages/{pageId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /locations/{locationId}/{document=**} {
+      allow read: if isSignedIn() && hasLocationAccess(locationId);
+    }
+
+    match /{document=**} {
+      allow read: if isSignedIn() && (isAdmin() || (resource.data.locationId != null && hasLocationAccess(resource.data.locationId)));
+    }
+  }
+}

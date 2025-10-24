@@ -4,7 +4,7 @@ import useAuthStore from "../../stores/authStore";
 import { useNavigate } from 'react-router-dom';
 import { FiHome, FiFileText, FiLayers, FiSettings, FiLogIn, FiUserPlus, FiLogOut } from "react-icons/fi";
 
-const SiteHeader = ({ mode = 'light' }) => {
+const SiteHeader = ({ mode = 'dark' }) => {
     const user = useAuthStore(state => state.user);
     const logout = useAuthStore(state => state.logout);
     const navigate = useNavigate();
