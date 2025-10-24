@@ -11,7 +11,6 @@ import { db } from '../../firebase';
 import './Sightings.css';
 import {
   buildHighlightEntry,
-  formatOffset,
   formatPercent,
   formatTime,
 } from '../../utils/highlights';
@@ -27,6 +26,37 @@ const formatDate = (value) => {
   } catch (error) {
     return '';
   }
+};
+
+const formatTimestampLabel = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return '';
+  }
+
+  const now = new Date();
+  const timeLabel = formatTime(value);
+  if (!timeLabel) {
+    return '';
+  }
+
+  const todayKey = now.toDateString();
+  const valueKey = value.toDateString();
+  if (valueKey === todayKey) {
+    return `Today @ ${timeLabel}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (valueKey === yesterday.toDateString()) {
+    return `Yesterday @ ${timeLabel}`;
+  }
+
+  const dateLabel = formatDate(value);
+  if (!dateLabel) {
+    return '';
+  }
+
+  return `${dateLabel} @ ${timeLabel}`;
 };
 
 export default function Sightings() {
@@ -287,7 +317,7 @@ export default function Sightings() {
                 id="confidenceFilter"
                 type="range"
                 min="0"
-                max="100"
+                max="95"
                 step="5"
                 value={confidencePercentage}
                 onChange={handleConfidenceChange}
@@ -347,15 +377,12 @@ export default function Sightings() {
                   {typeof entry.maxConf === 'number' && (
                     <span>Confidence: {formatPercent(entry.maxConf)}</span>
                   )}
-                  {typeof entry.bestCenterDist === 'number' && (
-                    <span>{formatOffset(entry.bestCenterDist)}</span>
-                  )}
                 </div>
                 <div className="sightingCard__footer">
                   <span className="sightingCard__location">{entry.locationId}</span>
                   {entry.createdAt && (
                     <time dateTime={entry.createdAt.toISOString()}>
-                      {`${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}`.trim()}
+                      {formatTimestampLabel(entry.createdAt)}
                     </time>
                   )}
                 </div>
