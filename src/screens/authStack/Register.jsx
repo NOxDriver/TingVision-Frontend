@@ -6,58 +6,187 @@ import useAuthStore from '../../stores/authStore';
 // CSS
 import '../../css/AuthStack.css';
 
-const Register = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const navigate = useNavigate()
-  const [buttonHovered, setButtonHovered] = useState(false);
+const initialFormState = {
+  firstName: '',
+  lastName: '',
+  phoneNumber: '',
+  email: '',
+  password: '',
+};
 
-  const createUser = useAuthStore(state => state.createUser);
+const Register = () => {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState(initialFormState);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const createUser = useAuthStore((state) => state.createUser);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const email = formData.email.trim();
+    const phoneNumber = formData.phoneNumber.trim();
+    const password = formData.password;
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!firstName || !lastName || !email) {
+      setError('Please fill in all required fields.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    let result;
+    try {
+      result = await createUser({
+        firstName,
+        lastName,
+        phoneNumber,
+        email,
+        password,
+      });
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+      setError('Something went wrong while creating your account. Please try again.');
+      return;
+    }
+
+    setIsSubmitting(false);
+
+    if (result?.success) {
+      setFormData(initialFormState);
+      ReactGA.event({ category: 'Auth', action: 'Register' });
+      navigate('/');
+      return;
+    }
+
+    setError(result?.error || 'We were unable to create your account. Please try again.');
+  };
 
   return (
-    <div className='auth__container'>
-      <div>
-        <h1 className='auth__heading '>Register for a free account</h1>
-        <p className='auth__byline'>
-          Already have an account yet?{' '}
-          <Link to='/login' className='underline'>
-            Login.
-          </Link>
-        </p>
-      </div>
+    <div className='auth__page'>
+      <div className='auth__container auth__container--register'>
+        <header className='auth__header'>
+          <h1 className='auth__heading'>Create your TingVision account</h1>
+          <p className='auth__byline'>
+            Share a few details so we can personalise your client dashboard experience.
+          </p>
+        </header>
 
-      <form onSubmit={async (e) => {
-        const success = await createUser(e, email, password);
-        if (success) {
-          ReactGA.event({ category: 'Auth', action: 'Register' });
-          navigate('/');
-        }
-      }}
-      >
-        <div className='auth__formDiv'>
-          <label className='auth__formHeading'>Email Address</label>
-          <input
-            onChange={(e) => setEmail(e.target.value)}
-            className='auth__formInput'
-            type='email'
-          />
-        </div>
-        <div className='auth__formDiv'>
-          <label className='auth__formHeading'>Password</label>
-          <input
-            onChange={(e) => setPassword(e.target.value)}
-            className='auth__formInput'
-            type='password'
-          />
-        </div>
-        <button
-          onMouseEnter={() => setButtonHovered(true)}
-          onMouseLeave={() => setButtonHovered(false)}
-          className={buttonHovered ? 'auth__buttonHovered' : 'auth__buttonNotHovered'}>
-          Sign Up
-        </button>
-      </form>
-    </div >
+        <form className='auth__form' onSubmit={handleSubmit} noValidate>
+          <div className='auth__formRow auth__formRow--split'>
+            <div className='auth__field'>
+              <label htmlFor='firstName' className='auth__label'>First name</label>
+              <input
+                id='firstName'
+                name='firstName'
+                type='text'
+                className='auth__input'
+                placeholder='Jane'
+                value={formData.firstName}
+                onChange={handleChange}
+                autoComplete='given-name'
+                required
+              />
+            </div>
+            <div className='auth__field'>
+              <label htmlFor='lastName' className='auth__label'>Last name</label>
+              <input
+                id='lastName'
+                name='lastName'
+                type='text'
+                className='auth__input'
+                placeholder='Doe'
+                value={formData.lastName}
+                onChange={handleChange}
+                autoComplete='family-name'
+                required
+              />
+            </div>
+          </div>
+
+          <div className='auth__field'>
+            <label htmlFor='phoneNumber' className='auth__label'>Phone number</label>
+            <input
+              id='phoneNumber'
+              name='phoneNumber'
+              type='tel'
+              inputMode='tel'
+              className='auth__input'
+              placeholder='(555) 000-1234'
+              value={formData.phoneNumber}
+              onChange={handleChange}
+              autoComplete='tel'
+            />
+          </div>
+
+          <div className='auth__field'>
+            <label htmlFor='email' className='auth__label'>Email</label>
+            <input
+              id='email'
+              name='email'
+              type='email'
+              className='auth__input'
+              placeholder='you@example.com'
+              value={formData.email}
+              onChange={handleChange}
+              autoComplete='email'
+              required
+            />
+          </div>
+
+          <div className='auth__field'>
+            <label htmlFor='password' className='auth__label'>Password</label>
+            <input
+              id='password'
+              name='password'
+              type='password'
+              className='auth__input'
+              placeholder='Create a secure password'
+              value={formData.password}
+              onChange={handleChange}
+              autoComplete='new-password'
+              minLength={8}
+              required
+            />
+            <p className='auth__helper'>Must be at least 8 characters long.</p>
+          </div>
+
+          {error && <div className='auth__error'>{error}</div>}
+
+          <button type='submit' className='auth__buttonNotHovered' disabled={isSubmitting}>
+            {isSubmitting ? 'Creating account…' : 'Create account'}
+          </button>
+        </form>
+
+        <footer className='auth__footer'>
+          <p className='auth__byline'>
+            Already have an account?{' '}
+            <Link to='/login' className='underline'>
+              Login.
+            </Link>
+          </p>
+        </footer>
+      </div>
+    </div>
   );
 };
 

@@ -113,15 +113,28 @@ const useAuthStore = create((set) => ({
             return null;
         }
     },
-    createUser: async (e, email, password) => {
-        e.preventDefault();
+    createUser: async (formData) => {
+        const { email, password, firstName, lastName, phoneNumber } = formData;
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
-            return true;
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const { user } = userCredential;
+
+            await setDoc(doc(db, 'users', user.uid), {
+                email,
+                firstName,
+                lastName,
+                phoneNumber,
+                fullName: `${firstName} ${lastName}`.trim(),
+                role: 'client',
+                locationIds: [],
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+
+            return { success: true };
         } catch (err) {
             console.error(err.message);
-            alert(err.message);
-            return false;
+            return { success: false, error: err?.message || 'Unable to create account' };
         }
     },
     signInEmail: async (email, password) => {
