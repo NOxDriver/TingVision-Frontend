@@ -141,8 +141,8 @@
     border-radius: 14px;
     padding: 14px 18px;
     width: 100%;
-    background: linear-gradient(135deg, rgb(59, 130, 246), rgb(251, 191, 36));
-    color: #0f172a;
+    background: linear-gradient(135deg, #ff8c1a, #7ec850);
+    color: #05160c;
     font-weight: 700;
     font-size: 1.05rem;
     cursor: pointer;
@@ -151,7 +151,7 @@
 
 .auth__buttonNotHovered:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 18px 40px rgba(56, 189, 248, 0.35);
+    box-shadow: 0 18px 40px rgba(255, 140, 26, 0.25);
     filter: brightness(1.05);
 }
 
@@ -168,6 +168,48 @@
 .underline {
     color: rgb(129, 230, 217);
     font-weight: 600;
+}
+
+.auth__divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.auth__divider::before,
+.auth__divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(148, 163, 184, 0.35);
+}
+
+.auth__buttonSecondary {
+    border-radius: 14px;
+    padding: 14px 18px;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 1.02rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.auth__buttonSecondary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(255, 140, 26, 0.65);
+    background: rgba(30, 41, 59, 0.95);
+}
+
+.auth__buttonSecondary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 @media (max-width: 640px) {
