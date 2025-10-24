@@ -5,6 +5,7 @@ import useAuthStore from '../../stores/authStore';
 // CSS
 import '../../css/AuthStack.css';
 import { trackButton, trackEvent } from '../../utils/analytics';
+import usePageTitle from '../../hooks/usePageTitle';
 
 const initialFormState = {
   firstName: '',
@@ -15,6 +16,7 @@ const initialFormState = {
 };
 
 const Register = () => {
+  usePageTitle('Register');
   const navigate = useNavigate();
   const [formData, setFormData] = useState(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
