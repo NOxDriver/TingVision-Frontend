@@ -491,12 +491,9 @@ export default function Sightings() {
     const hasDebugMedia = Boolean(debugVideoSrc || debugImageSrc);
     const useDebugMedia = isDebugMode && hasDebugMedia;
 
-    const hasHdAlternative = Boolean(
-      (hdVideoSrc && hdVideoSrc !== standardVideoSrc)
-      || (hdImageSrc && hdImageSrc !== standardImageSrc),
-    );
-
-    const useHdMedia = isHdEnabled && hasHdAlternative && !useDebugMedia;
+    const hasHdImageAlternative = Boolean(hdImageSrc && hdImageSrc !== standardImageSrc);
+    const useHdImage = isHdEnabled && hasHdImageAlternative && !useDebugMedia;
+    const shouldForceHdVideo = prefersVideo && Boolean(hdVideoSrc);
 
     let selectedVideoSrc = null;
     let selectedImageSrc = null;
@@ -505,8 +502,19 @@ export default function Sightings() {
       selectedVideoSrc = debugVideoSrc || null;
       selectedImageSrc = debugImageSrc || null;
     } else {
-      selectedVideoSrc = (useHdMedia ? hdVideoSrc : standardVideoSrc) || null;
-      selectedImageSrc = (useHdMedia ? hdImageSrc : standardImageSrc) || null;
+      selectedVideoSrc = prefersVideo
+        ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
+        : null;
+      selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
+        || null;
+
+      if (prefersVideo && !selectedVideoSrc) {
+        selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
+      }
+
+      if (!prefersVideo && !selectedImageSrc) {
+        selectedImageSrc = (standardImageSrc || hdImageSrc || null);
+      }
 
       if (!selectedVideoSrc && !selectedImageSrc && hasDebugMedia) {
         selectedVideoSrc = debugVideoSrc || null;
@@ -802,20 +810,19 @@ export default function Sightings() {
               const standardImageSrc = pickFirstSource(activeSighting.previewUrl, activeSighting.rawPreviewUrl);
               const hdVideoSrc = pickFirstSource(activeSighting.rawMediaUrl, activeSighting.videoUrl);
               const hdImageSrc = pickFirstSource(activeSighting.rawPreviewUrl, activeSighting.previewUrl);
-              const hasHdAlternative = Boolean(
-                (hdVideoSrc && hdVideoSrc !== standardVideoSrc)
-                || (hdImageSrc && hdImageSrc !== standardImageSrc),
+              const hasHdImageAlternative = Boolean(
+                hdImageSrc && hdImageSrc !== standardImageSrc,
               );
               const hasDebugMedia = Boolean(
                 activeSighting.debugVideoUrl || activeSighting.debugPreviewUrl,
               );
               const isDebugMode = modalViewMode === 'debug';
-              if (!hasHdAlternative && !hasDebugMedia) {
+              if (!hasHdImageAlternative && !hasDebugMedia) {
                 return null;
               }
               return (
                 <div className="sightingModal__controls">
-                  {hasHdAlternative && (
+                  {hasHdImageAlternative && (
                     <button
                       type="button"
                       className={`sightingModal__toggle${isHdEnabled ? ' is-active' : ''}`}
