@@ -39,7 +39,17 @@ export const trackPageView = (path) => {
   }
 
   const pagePath = typeof path === 'string' && path.length ? path : window.location.pathname + window.location.search;
-  ReactGA.send({ hitType: 'pageview', page: pagePath });
+  const pageTitle = typeof document !== 'undefined' && typeof document.title === 'string'
+    ? document.title
+    : undefined;
+
+  const payload = { hitType: 'pageview', page: pagePath };
+  if (pageTitle) {
+    payload.title = pageTitle;
+    payload.page_title = pageTitle;
+  }
+
+  ReactGA.send(payload);
 };
 
 export const trackEvent = (eventNameOrParams, params = {}) => {

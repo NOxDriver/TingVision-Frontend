@@ -7,6 +7,7 @@ import useAuthStore from '../../stores/authStore';
 import { buildLocationSet } from '../../utils/location';
 import { STREAMS, filterStreamsByLocations } from '../../utils/streams';
 import { trackButton } from '../../utils/analytics';
+import usePageTitle from '../../hooks/usePageTitle';
 
 function HlsTile({ title, baseUrl, autoRefresh=true }) {
   const videoRef = useRef(null);
@@ -174,6 +175,7 @@ function HlsTile({ title, baseUrl, autoRefresh=true }) {
 }
 
 export default function Dashboard() {
+  usePageTitle('Dashboard');
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);

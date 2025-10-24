@@ -5,9 +5,11 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase';
 import { getPageAccessToken } from '../../utils/FB/getPageAccessToken';
 import { trackButton, trackEvent } from '../../utils/analytics';
+import usePageTitle from '../../hooks/usePageTitle';
 import '../../css/AuthStack.css';
 
 const Login = () => {
+  usePageTitle('Login');
   const navigate = useNavigate();
   const signInWithFacebook = useAuthStore((s) => s.signInWithFacebook);
   const setUserAccessToken = useAuthStore((s) => s.setUserAccessToken);
