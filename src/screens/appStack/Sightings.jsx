@@ -66,6 +66,7 @@ export default function Sightings() {
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
+  const [modalViewMode, setModalViewMode] = useState('standard');
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -210,10 +211,12 @@ export default function Sightings() {
 
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
+    setModalViewMode('standard');
   };
 
   const handleCloseSighting = () => {
     setActiveSighting(null);
+    setModalViewMode('standard');
   };
 
   const handleConfidenceChange = (event) => {
@@ -231,6 +234,7 @@ export default function Sightings() {
     const isStillVisible = filteredSightings.some((entry) => entry.id === activeSighting.id);
     if (!isStillVisible) {
       setActiveSighting(null);
+      setModalViewMode('standard');
     }
   }, [filteredSightings, activeSighting]);
 
@@ -242,6 +246,7 @@ export default function Sightings() {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setActiveSighting(null);
+        setModalViewMode('standard');
       }
     };
 
@@ -251,6 +256,7 @@ export default function Sightings() {
     };
   }, [activeSighting]);
 
+  const isDebugMode = modalViewMode === 'debug';
   const renderModalContent = () => {
     if (!activeSighting) {
       return null;
@@ -258,39 +264,121 @@ export default function Sightings() {
 
     const isVideo = activeSighting.mediaType === 'video';
     if (isVideo) {
-      const videoSrc = activeSighting.rawMediaUrl
-        || activeSighting.videoUrl
-        || activeSighting.debugVideoUrl
-        || activeSighting.previewUrl
-        || activeSighting.debugPreviewUrl;
-      if (videoSrc) {
+      const primaryVideo = activeSighting.rawMediaUrl
+        || activeSighting.videoUrl;
+      const debugVideo = activeSighting.debugVideoUrl;
+      const primaryImage = activeSighting.rawPreviewUrl
+        || activeSighting.previewUrl;
+      const debugImage = activeSighting.debugPreviewUrl;
+
+      if (isDebugMode && debugVideo) {
         return (
           <video
-            key={`video-${videoSrc}`}
-            src={videoSrc}
+            key={`debug-video-${debugVideo}`}
+            src={debugVideo}
             controls
             autoPlay
             playsInline
           />
         );
       }
+
+      if (isDebugMode && !debugVideo && debugImage) {
+        return (
+          <img
+            key={`debug-image-${debugImage}`}
+            src={debugImage}
+            alt={`${activeSighting.species} sighting debug`}
+          />
+        );
+      }
+
+      if (primaryVideo) {
+        return (
+          <video
+            key={`video-${primaryVideo}`}
+            src={primaryVideo}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      if (primaryImage) {
+        return (
+          <img
+            key={`primary-image-${primaryImage}`}
+            src={primaryImage}
+            alt={`${activeSighting.species} sighting enlarged`}
+          />
+        );
+      }
+
+      if (debugVideo) {
+        return (
+          <video
+            key={`fallback-debug-video-${debugVideo}`}
+            src={debugVideo}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+
+      if (debugImage) {
+        return (
+          <img
+            key={`fallback-debug-image-${debugImage}`}
+            src={debugImage}
+            alt={`${activeSighting.species} sighting debug`}
+          />
+        );
+      }
     }
 
-    const imageSrc = activeSighting.rawPreviewUrl
-      || activeSighting.previewUrl
-      || activeSighting.debugPreviewUrl;
-    if (imageSrc) {
+    const primaryImage = activeSighting.rawPreviewUrl
+      || activeSighting.previewUrl;
+    const debugImage = activeSighting.debugPreviewUrl;
+
+    if (isDebugMode && debugImage) {
       return (
         <img
-          key={`img-${imageSrc}`}
-          src={imageSrc}
+          key={`debug-image-${debugImage}`}
+          src={debugImage}
+          alt={`${activeSighting.species} sighting debug`}
+        />
+      );
+    }
+
+    if (primaryImage) {
+      return (
+        <img
+          key={`primary-image-${primaryImage}`}
+          src={primaryImage}
           alt={`${activeSighting.species} sighting enlarged`}
+        />
+      );
+    }
+
+    if (debugImage) {
+      return (
+        <img
+          key={`fallback-debug-image-${debugImage}`}
+          src={debugImage}
+          alt(`${activeSighting.species} sighting debug`}
         />
       );
     }
 
     return <div className="sightingModal__placeholder">No media available</div>;
   };
+
+  const hasDebugMedia = Boolean(
+    activeSighting
+    && (activeSighting.debugVideoUrl || activeSighting.debugPreviewUrl),
+  );
 
   return (
     <div className="sightingsPage">
@@ -386,28 +474,6 @@ export default function Sightings() {
                     </time>
                   )}
                 </div>
-                {(() => {
-                  const detailUrl = entry.rawMediaUrl
-                    || entry.videoUrl
-                    || entry.rawPreviewUrl
-                    || entry.previewUrl
-                    || entry.debugVideoUrl
-                    || entry.debugPreviewUrl;
-                  if (!detailUrl) {
-                    return null;
-                  }
-                  return (
-                    <div className="sightingCard__actions">
-                      <a
-                        href={detailUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Open media
-                      </a>
-                    </div>
-                  );
-                })()}
               </div>
             </article>
           ))}
@@ -432,6 +498,18 @@ export default function Sightings() {
             >
               Close
             </button>
+            {hasDebugMedia && (
+              <div className="sightingModal__controls">
+                <button
+                  type="button"
+                  className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
+                  onClick={() => setModalViewMode((prev) => (prev === 'debug' ? 'standard' : 'debug'))}
+                  aria-pressed={isDebugMode}
+                >
+                  {isDebugMode ? 'Standard View' : 'Debug'}
+                </button>
+              </div>
+            )}
             <div className="sightingModal__media">{renderModalContent()}</div>
             <div className="sightingModal__details">
               <h3>{activeSighting.species}</h3>

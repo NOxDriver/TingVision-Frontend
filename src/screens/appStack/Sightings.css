@@ -271,26 +271,6 @@
   text-overflow: ellipsis;
 }
 
-.sightingCard__actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 20px 20px;
-}
-
-.sightingCard__actions a {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--color-accent);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.sightingCard__actions a:hover,
-.sightingCard__actions a:focus-visible {
-  text-decoration: underline;
-}
-
 .sightingModal {
   position: fixed;
   inset: 0;
@@ -324,6 +304,28 @@
   padding: 6px 14px;
   border-radius: 999px;
   cursor: pointer;
+}
+
+.sightingModal__controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.sightingModal__toggle {
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  background: rgba(29, 41, 20, 0.75);
+  color: var(--color-text-primary);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingModal__toggle:hover,
+.sightingModal__toggle.is-active {
+  background: rgba(255, 140, 26, 0.25);
 }
 
 .sightingModal__media {
