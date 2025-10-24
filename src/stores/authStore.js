@@ -114,10 +114,14 @@ const useAuthStore = create((set) => ({
         }
     },
     createUser: async (formData) => {
-        const { email, password, firstName, lastName, phoneNumber, associatedLocation } = formData;
+        const { email, password, firstName, lastName, phoneNumber, locationRequested } = formData;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const { user } = userCredential;
+
+            const trimmedLocationRequested = typeof locationRequested === 'string'
+                ? locationRequested.trim()
+                : '';
 
             const userData = {
                 email,
@@ -127,14 +131,10 @@ const useAuthStore = create((set) => ({
                 fullName: `${firstName} ${lastName}`.trim(),
                 role: 'client',
                 locationIds: [],
-                associatedLocation: 'locationRequested',
+                locationRequested: trimmedLocationRequested,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
-
-            if (associatedLocation?.trim()) {
-                userData.requestedLocationName = associatedLocation.trim();
-            }
 
             await setDoc(doc(db, 'users', user.uid), userData, { merge: true });
 
