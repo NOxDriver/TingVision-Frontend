@@ -111,7 +111,7 @@ const Register = () => {
                 name='firstName'
                 type='text'
                 className='auth__input'
-                placeholder='Amina'
+                placeholder='Paul'
                 value={formData.firstName}
                 onChange={handleChange}
                 autoComplete='given-name'
@@ -125,7 +125,7 @@ const Register = () => {
                 name='lastName'
                 type='text'
                 className='auth__input'
-                placeholder='Okafor'
+                placeholder='Kruger'
                 value={formData.lastName}
                 onChange={handleChange}
                 autoComplete='family-name'
@@ -171,7 +171,7 @@ const Register = () => {
               name='associatedLocation'
               type='text'
               className='auth__input'
-              placeholder='e.g., Nairobi'
+              placeholder='e.g., Elephant Walk Retreat'
               value={formData.associatedLocation}
               onChange={handleChange}
             />
