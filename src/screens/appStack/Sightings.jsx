@@ -24,6 +24,121 @@ import usePageTitle from '../../hooks/usePageTitle';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 
+const MOBILE_VIEWPORT_QUERY = '(max-width: 768px)';
+
+const useIsMobileViewport = () => {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return false;
+    }
+    return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return () => {};
+    }
+
+    const mediaQueryList = window.matchMedia(MOBILE_VIEWPORT_QUERY);
+    const handleChange = (event) => {
+      setIsMobile(event.matches);
+    };
+
+    handleChange(mediaQueryList);
+
+    if (typeof mediaQueryList.addEventListener === 'function') {
+      mediaQueryList.addEventListener('change', handleChange);
+      return () => {
+        mediaQueryList.removeEventListener('change', handleChange);
+      };
+    }
+
+    mediaQueryList.addListener(handleChange);
+    return () => {
+      mediaQueryList.removeListener(handleChange);
+    };
+  }, []);
+
+  return isMobile;
+};
+
+const LazyVideo = ({ src, poster, shouldAutoplay }) => {
+  const videoRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element) {
+      return () => {};
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return () => {};
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.target === element) {
+            setIsVisible(entry.isIntersecting);
+          }
+        });
+      },
+      {
+        threshold: 0.25,
+      },
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element || isVisible) {
+      return;
+    }
+
+    if (!element.paused) {
+      element.pause();
+    }
+
+    element.removeAttribute('src');
+    element.load();
+  }, [isVisible]);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element || !shouldAutoplay || !isVisible) {
+      return;
+    }
+
+    const playPromise = element.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  }, [isVisible, shouldAutoplay]);
+
+  const preloadValue = shouldAutoplay ? 'metadata' : 'none';
+
+  return (
+    <video
+      ref={videoRef}
+      src={isVisible ? src : undefined}
+      poster={poster || undefined}
+      muted={shouldAutoplay}
+      loop={shouldAutoplay}
+      playsInline
+      autoPlay={shouldAutoplay && isVisible}
+      preload={preloadValue}
+    />
+  );
+};
+
 const formatDate = (value) => {
   if (!value) return '';
   try {
@@ -87,6 +202,7 @@ export default function Sightings() {
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
   const speciesMenuRef = useRef(null);
+  const isMobileViewport = useIsMobileViewport();
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -540,8 +656,8 @@ export default function Sightings() {
           key={`video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
           playsInline
+          preload="none"
         />
       );
     }
@@ -563,8 +679,8 @@ export default function Sightings() {
           key={`fallback-video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
           playsInline
+          preload="none"
         />
       );
     }
@@ -731,15 +847,19 @@ export default function Sightings() {
                     );
 
                     if (entry.mediaType === 'video' && cardVideoSrc) {
+                      if (isMobileViewport) {
+                        if (cardImageSrc) {
+                          return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
+                        }
+
+                        return <div className="sightingCard__placeholder">Video preview available</div>;
+                      }
+
                       return (
-                        <video
+                        <LazyVideo
                           src={cardVideoSrc}
                           poster={cardImageSrc || undefined}
-                          muted
-                          loop
-                          playsInline
-                          autoPlay
-                          preload="metadata"
+                          shouldAutoplay
                         />
                       );
                     }
