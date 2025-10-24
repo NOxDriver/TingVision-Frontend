@@ -7,10 +7,10 @@ import useAuthStore from '../../stores/authStore';
 import '../../css/AuthStack.css';
 
 const initialFormState = {
-  fullName: '',
+  firstName: '',
+  lastName: '',
   companyName: '',
   phoneNumber: '',
-  businessType: '',
   email: '',
   password: '',
 };
@@ -39,10 +39,10 @@ const Register = () => {
     let result;
     try {
       result = await createUser({
-        fullName: formData.fullName.trim(),
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         companyName: formData.companyName.trim(),
         phoneNumber: formData.phoneNumber.trim(),
-        businessType: formData.businessType,
         email: formData.email.trim(),
         password: formData.password,
       });
@@ -78,19 +78,36 @@ const Register = () => {
         <form className='auth__form' onSubmit={handleSubmit} noValidate>
           <div className='auth__formRow auth__formRow--split'>
             <div className='auth__field'>
-              <label htmlFor='fullName' className='auth__label'>Full name</label>
+              <label htmlFor='firstName' className='auth__label'>First name</label>
               <input
-                id='fullName'
-                name='fullName'
+                id='firstName'
+                name='firstName'
                 type='text'
                 className='auth__input'
-                placeholder='Jane Doe'
-                value={formData.fullName}
+                placeholder='Jane'
+                value={formData.firstName}
                 onChange={handleChange}
-                autoComplete='name'
+                autoComplete='given-name'
                 required
               />
             </div>
+            <div className='auth__field'>
+              <label htmlFor='lastName' className='auth__label'>Last name</label>
+              <input
+                id='lastName'
+                name='lastName'
+                type='text'
+                className='auth__input'
+                placeholder='Doe'
+                value={formData.lastName}
+                onChange={handleChange}
+                autoComplete='family-name'
+                required
+              />
+            </div>
+          </div>
+
+          <div className='auth__formRow auth__formRow--split'>
             <div className='auth__field'>
               <label htmlFor='companyName' className='auth__label'>Company</label>
               <input
@@ -104,9 +121,6 @@ const Register = () => {
                 autoComplete='organization'
               />
             </div>
-          </div>
-
-          <div className='auth__formRow auth__formRow--split'>
             <div className='auth__field'>
               <label htmlFor='phoneNumber' className='auth__label'>Phone number</label>
               <input
@@ -121,32 +135,16 @@ const Register = () => {
                 autoComplete='tel'
               />
             </div>
-            <div className='auth__field'>
-              <label htmlFor='businessType' className='auth__label'>Business type</label>
-              <select
-                id='businessType'
-                name='businessType'
-                className='auth__input auth__input--select'
-                value={formData.businessType}
-                onChange={handleChange}
-              >
-                <option value=''>Select an option</option>
-                <option value='Agency'>Agency</option>
-                <option value='Brand'>Brand</option>
-                <option value='Creator'>Creator</option>
-                <option value='Other'>Other</option>
-              </select>
-            </div>
           </div>
 
           <div className='auth__field'>
-            <label htmlFor='email' className='auth__label'>Work email</label>
+            <label htmlFor='email' className='auth__label'>Email</label>
             <input
               id='email'
               name='email'
               type='email'
               className='auth__input'
-              placeholder='you@company.com'
+              placeholder='you@example.com'
               value={formData.email}
               onChange={handleChange}
               autoComplete='email'

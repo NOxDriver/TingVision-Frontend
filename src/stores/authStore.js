@@ -114,17 +114,18 @@ const useAuthStore = create((set) => ({
         }
     },
     createUser: async (formData) => {
-        const { email, password, fullName, companyName, phoneNumber, businessType } = formData;
+        const { email, password, firstName, lastName, companyName, phoneNumber } = formData;
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const { user } = userCredential;
 
             await setDoc(doc(db, 'users', user.uid), {
                 email,
-                fullName,
+                firstName,
+                lastName,
                 companyName,
                 phoneNumber,
-                businessType,
+                fullName: `${firstName} ${lastName}`.trim(),
                 role: 'client',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
