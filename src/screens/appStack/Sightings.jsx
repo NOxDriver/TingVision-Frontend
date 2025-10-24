@@ -66,6 +66,144 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const getAutoplayDisabledPreference = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+
+  const queries = [
+    window.matchMedia('(hover: none) and (pointer: coarse)'),
+    window.matchMedia('(max-width: 768px)'),
+  ];
+
+  return queries.some((query) => query.matches);
+};
+
+const useShouldDisableAutoplay = () => {
+  const [shouldDisable, setShouldDisable] = useState(getAutoplayDisabledPreference);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return () => {};
+    }
+
+    const queries = [
+      window.matchMedia('(hover: none) and (pointer: coarse)'),
+      window.matchMedia('(max-width: 768px)'),
+    ];
+
+    const handleChange = () => {
+      setShouldDisable(queries.some((query) => query.matches));
+    };
+
+    handleChange();
+
+    queries.forEach((query) => {
+      if (typeof query.addEventListener === 'function') {
+        query.addEventListener('change', handleChange);
+      } else if (typeof query.addListener === 'function') {
+        query.addListener(handleChange);
+      }
+    });
+
+    return () => {
+      queries.forEach((query) => {
+        if (typeof query.removeEventListener === 'function') {
+          query.removeEventListener('change', handleChange);
+        } else if (typeof query.removeListener === 'function') {
+          query.removeListener(handleChange);
+        }
+      });
+    };
+  }, []);
+
+  return shouldDisable;
+};
+
+const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
+  const containerRef = useRef(null);
+  const videoRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [activeSrc, setActiveSrc] = useState(null);
+
+  useEffect(() => {
+    if (!videoSrc) {
+      setIsVisible(false);
+      return () => {};
+    }
+
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return () => {};
+    }
+
+    const node = containerRef.current;
+    if (!node) {
+      setIsVisible(false);
+      return () => {};
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { threshold: 0.25, rootMargin: '120px' },
+    );
+
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [videoSrc]);
+
+  useEffect(() => {
+    if (!videoSrc) {
+      setActiveSrc(null);
+      return;
+    }
+
+    setActiveSrc(isVisible ? videoSrc : null);
+  }, [isVisible, videoSrc]);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) {
+      return;
+    }
+
+    if (!activeSrc) {
+      videoElement.pause();
+      if (videoElement.getAttribute('src')) {
+        videoElement.removeAttribute('src');
+        videoElement.load();
+      }
+      return;
+    }
+
+    videoElement.load();
+    const playPromise = videoElement.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  }, [activeSrc]);
+
+  return (
+    <div className="sightingCard__mediaPreview" ref={containerRef}>
+      <video
+        ref={videoRef}
+        src={activeSrc || undefined}
+        poster={posterSrc || undefined}
+        muted
+        loop
+        playsInline
+        autoPlay={Boolean(activeSrc)}
+        preload={activeSrc ? 'metadata' : 'none'}
+      />
+    </div>
+  );
+};
+
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -82,6 +220,7 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -540,8 +679,9 @@ export default function Sightings() {
           key={`video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
+          autoPlay={!shouldDisableAutoplay}
           playsInline
+          preload={shouldDisableAutoplay ? 'none' : 'metadata'}
         />
       );
     }
@@ -563,8 +703,9 @@ export default function Sightings() {
           key={`fallback-video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
+          autoPlay={!shouldDisableAutoplay}
           playsInline
+          preload={shouldDisableAutoplay ? 'none' : 'metadata'}
         />
       );
     }
@@ -730,22 +871,20 @@ export default function Sightings() {
                       debugImageSrc,
                     );
 
-                    if (entry.mediaType === 'video' && cardVideoSrc) {
+                    if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
                       return (
-                        <video
-                          src={cardVideoSrc}
-                          poster={cardImageSrc || undefined}
-                          muted
-                          loop
-                          playsInline
-                          autoPlay
-                          preload="metadata"
-                        />
+                        <ManagedVideoPreview videoSrc={cardVideoSrc} posterSrc={cardImageSrc} />
                       );
                     }
 
                     if (cardImageSrc) {
                       return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
+                    }
+
+                    if (entry.mediaType === 'video' && cardVideoSrc && shouldDisableAutoplay) {
+                      return (
+                        <div className="sightingCard__placeholder">Tap to open video</div>
+                      );
                     }
 
                     return <div className="sightingCard__placeholder">No preview available</div>;

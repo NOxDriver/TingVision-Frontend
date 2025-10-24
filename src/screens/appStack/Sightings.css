@@ -340,6 +340,18 @@
   outline-offset: 3px;
 }
 
+.sightingCard__mediaPreview {
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.sightingCard__mediaPreview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .sightingCard__media img {
   width: 100%;
   height: 100%;
