@@ -141,12 +141,30 @@
     border-radius: 14px;
     padding: 14px 18px;
     width: 100%;
-    background: linear-gradient(135deg, rgb(59, 130, 246), rgb(251, 191, 36));
+    background: linear-gradient(135deg, #ff8c1a, #7ec850);
     color: #0f172a;
     font-weight: 700;
     font-size: 1.05rem;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.auth__divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.95rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.auth__divider::before,
+.auth__divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(148, 163, 184, 0.35);
 }
 
 .auth__buttonNotHovered:hover:not(:disabled) {
