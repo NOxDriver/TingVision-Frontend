@@ -91,7 +91,10 @@ export function formatCountWithSpecies(species, count) {
     pluralSpecies = `${lowerSpecies}s`;
   }
 
-  return `${count} ${pluralSpecies}`;
+  const capitalizedPlural = pluralSpecies.length > 0
+    ? pluralSpecies.charAt(0).toUpperCase() + pluralSpecies.slice(1)
+    : pluralSpecies;
+  return `${count} ${capitalizedPlural}`;
 }
 
 export function buildHighlightEntry({

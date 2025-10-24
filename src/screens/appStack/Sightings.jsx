@@ -69,6 +69,9 @@ export default function Sightings() {
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
+  const [speciesQuery, setSpeciesQuery] = useState('');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -234,14 +237,49 @@ export default function Sightings() {
     };
   }, [loadSightings]);
 
+  const availableLocations = useMemo(() => {
+    const ids = sightings
+      .map((entry) => (typeof entry.locationId === 'string' ? entry.locationId.trim() : ''))
+      .filter((value) => value.length > 0);
+    return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
+  }, [sightings]);
+
+  useEffect(() => {
+    if (locationFilter === 'all') {
+      return;
+    }
+    if (!availableLocations.includes(locationFilter)) {
+      setLocationFilter('all');
+    }
+  }, [availableLocations, locationFilter]);
+
   const filteredSightings = useMemo(
     () => sightings.filter((entry) => {
-      if (typeof entry.maxConf !== 'number' || Number.isNaN(entry.maxConf)) {
-        return confidenceThreshold <= 0;
+      const hasConfidence = typeof entry.maxConf === 'number' && !Number.isNaN(entry.maxConf);
+      if (hasConfidence ? entry.maxConf < confidenceThreshold : confidenceThreshold > 0) {
+        return false;
       }
-      return entry.maxConf >= confidenceThreshold;
+
+      if (locationFilter !== 'all' && entry.locationId !== locationFilter) {
+        return false;
+      }
+
+      if (mediaTypeFilter !== 'all' && entry.mediaType !== mediaTypeFilter) {
+        return false;
+      }
+
+      const trimmedQuery = speciesQuery.trim().toLowerCase();
+      if (trimmedQuery && typeof entry.species === 'string') {
+        if (!entry.species.toLowerCase().includes(trimmedQuery)) {
+          return false;
+        }
+      } else if (trimmedQuery) {
+        return false;
+      }
+
+      return true;
     }),
-    [sightings, confidenceThreshold],
+    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, speciesQuery],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -280,6 +318,24 @@ export default function Sightings() {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
     trackEvent('sightings_confidence_filter', { threshold: nextValue });
+  };
+
+  const handleSpeciesQueryChange = (event) => {
+    const nextValue = event.target.value;
+    setSpeciesQuery(nextValue);
+    trackEvent('sightings_species_filter', { query: nextValue });
+  };
+
+  const handleLocationFilterChange = (event) => {
+    const nextValue = event.target.value;
+    setLocationFilter(nextValue);
+    trackEvent('sightings_location_filter', { location: nextValue });
+  };
+
+  const handleMediaTypeFilterChange = (event) => {
+    const nextValue = event.target.value;
+    setMediaTypeFilter(nextValue);
+    trackEvent('sightings_media_filter', { mediaType: nextValue });
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
@@ -397,17 +453,56 @@ export default function Sightings() {
             {!loading && accessError && (
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
-            <div className="sightingsPage__filter">
-              <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
-              <input
-                id="confidenceFilter"
-                type="range"
-                min="0"
-                max="95"
-                step="5"
-                value={confidencePercentage}
-                onChange={handleConfidenceChange}
-              />
+            <div className="sightingsPage__filterGroup">
+              <div className="sightingsPage__filter">
+                <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
+                <input
+                  id="confidenceFilter"
+                  type="range"
+                  min="0"
+                  max="95"
+                  step="5"
+                  value={confidencePercentage}
+                  onChange={handleConfidenceChange}
+                />
+              </div>
+              <div className="sightingsPage__field">
+                <label htmlFor="speciesFilter">Species</label>
+                <input
+                  id="speciesFilter"
+                  type="search"
+                  value={speciesQuery}
+                  placeholder="Search species"
+                  onChange={handleSpeciesQueryChange}
+                />
+              </div>
+              <div className="sightingsPage__field">
+                <label htmlFor="locationFilter">Location</label>
+                <select
+                  id="locationFilter"
+                  value={locationFilter}
+                  onChange={handleLocationFilterChange}
+                >
+                  <option value="all">All locations</option>
+                  {availableLocations.map((locationId) => (
+                    <option key={locationId} value={locationId}>
+                      {locationId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sightingsPage__field">
+                <label htmlFor="mediaFilter">Media</label>
+                <select
+                  id="mediaFilter"
+                  value={mediaTypeFilter}
+                  onChange={handleMediaTypeFilterChange}
+                >
+                  <option value="all">All types</option>
+                  <option value="video">Video</option>
+                  <option value="image">Image</option>
+                </select>
+              </div>
             </div>
             <button
               type="button"
@@ -445,11 +540,30 @@ export default function Sightings() {
                   onClick={() => handleOpenSighting(entry)}
                   aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
                 >
-                  {entry.previewUrl ? (
-                    <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
-                  ) : (
-                    <div className="sightingCard__placeholder">No preview available</div>
-                  )}
+                  {(() => {
+                    const cardVideoSrc = entry.rawMediaUrl || entry.videoUrl || entry.debugVideoUrl || null;
+                    const cardImageSrc = entry.previewUrl || entry.rawPreviewUrl || entry.debugPreviewUrl || null;
+
+                    if (entry.mediaType === 'video' && cardVideoSrc) {
+                      return (
+                        <video
+                          src={cardVideoSrc}
+                          poster={cardImageSrc || undefined}
+                          muted
+                          loop
+                          playsInline
+                          autoPlay
+                          preload="metadata"
+                        />
+                      );
+                    }
+
+                    if (cardImageSrc) {
+                      return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
+                    }
+
+                    return <div className="sightingCard__placeholder">No preview available</div>;
+                  })()}
                   <span className="sightingCard__badge">
                     {entry.mediaType === 'video' ? 'Video' : 'Image'}
                   </span>
