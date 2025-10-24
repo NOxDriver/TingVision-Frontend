@@ -22,6 +22,8 @@ import {
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
 
+const MIN_PHOTO_CONFIDENCE = 0.7;
+
 const formatSpeciesName = (value) => {
   if (typeof value !== 'string' || value.length === 0) {
     return 'Unknown';
@@ -231,8 +233,37 @@ export default function HighlightsWidget() {
   }, [activeEntry]);
 
   const speciesList = useMemo(() => Object.entries(highlights || {}), [highlights]);
+
+  const collateUniqueEntries = (categories) => {
+    const entries = Object.values(CATEGORY_META)
+      .map(({ key }) => categories[key])
+      .filter(Boolean);
+
+    const uniqueEntries = [];
+    const seenParents = new Set();
+
+    entries.forEach((entry) => {
+      const parentKey = entry.parentId || entry.id;
+      if (seenParents.has(parentKey)) {
+        return;
+      }
+      seenParents.add(parentKey);
+      uniqueEntries.push(entry);
+    });
+
+    return uniqueEntries.filter((entry) => {
+      if (entry.mediaType === 'video') {
+        return true;
+      }
+      if (typeof entry.maxConf !== 'number' || Number.isNaN(entry.maxConf)) {
+        return false;
+      }
+      return entry.maxConf >= MIN_PHOTO_CONFIDENCE;
+    });
+  };
+
   const hasHighlights = speciesList.some(([, categories]) =>
-    Object.values(categories).some((entry) => Boolean(entry)),
+    collateUniqueEntries(categories).length > 0,
   );
 
   const handleOpenEntry = (entry) => {
@@ -380,7 +411,7 @@ export default function HighlightsWidget() {
       <header className="highlights__header">
         <div>
           <h2>Today&apos;s Highlights</h2>
-          <p>Top activity across recent sightings</p>
+          <p>Top activity across recent sightings. Photos appear when confidence is at least 70%.</p>
         </div>
         {loading && <span className="highlights__status">Loading…</span>}
         {!loading && error && <span className="highlights__status highlights__status--error">{error}</span>}
@@ -398,23 +429,9 @@ export default function HighlightsWidget() {
       )}
 
       {speciesList.map(([species, categories]) => {
-        const entries = Object.values(CATEGORY_META)
-          .map(({ key }) => categories[key])
-          .filter(Boolean);
+        const filteredEntries = collateUniqueEntries(categories);
 
-        const uniqueEntries = [];
-        const seenParents = new Set();
-
-        entries.forEach((entry) => {
-          const parentKey = entry.parentId || entry.id;
-          if (seenParents.has(parentKey)) {
-            return;
-          }
-          seenParents.add(parentKey);
-          uniqueEntries.push(entry);
-        });
-
-        if (uniqueEntries.length === 0) {
+        if (filteredEntries.length === 0) {
           return null;
         }
 
@@ -424,7 +441,7 @@ export default function HighlightsWidget() {
               <h3>{species}</h3>
             </div>
             <div className="highlights__grid">
-              {uniqueEntries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <article className="highlightCard" key={entry.parentId || entry.id}>
                   <div className="highlightCard__media">
                     <button

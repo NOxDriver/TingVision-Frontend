@@ -4,19 +4,19 @@
 
 :root {
   color-scheme: dark;
-  --color-bg-primary: #020817;
-  --color-bg-elevated: #0f172a;
-  --color-bg-surface: #1e293b;
-  --color-bg-muted: #111827;
-  --color-border: rgba(148, 163, 184, 0.2);
-  --color-border-strong: rgba(148, 163, 184, 0.35);
-  --color-text-primary: #e2e8f0;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-accent: #38bdf8;
-  --color-success: #22c55e;
-  --color-warning: #facc15;
-  --color-danger: #f87171;
+  --color-bg-primary: #0b0f08;
+  --color-bg-elevated: #151f11;
+  --color-bg-surface: #1d2914;
+  --color-bg-muted: #11180c;
+  --color-border: rgba(203, 146, 74, 0.25);
+  --color-border-strong: rgba(203, 146, 74, 0.45);
+  --color-text-primary: #f3ead8;
+  --color-text-secondary: #d5c8aa;
+  --color-text-muted: #a99778;
+  --color-accent: #ff8c1a;
+  --color-success: #7ec850;
+  --color-warning: #f2c14e;
+  --color-danger: #ff6f6f;
 }
 
 * {
