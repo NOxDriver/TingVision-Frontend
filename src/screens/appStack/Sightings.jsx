@@ -22,6 +22,16 @@ import { trackButton, trackEvent } from '../../utils/analytics';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 
+const hasVideoMedia = (entry) => {
+  if (!entry) {
+    return false;
+  }
+  if (entry.mediaType === 'video') {
+    return true;
+  }
+  return Boolean(entry.videoUrl || entry.rawMediaUrl || entry.debugVideoUrl);
+};
+
 const formatDate = (value) => {
   if (!value) return '';
   try {
@@ -73,6 +83,8 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedSpecies, setSelectedSpecies] = useState('all');
+  const [selectedLocation, setSelectedLocation] = useState('all');
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -234,17 +246,60 @@ export default function Sightings() {
     };
   }, [loadSightings]);
 
+  const videoSightings = useMemo(
+    () => sightings.filter((entry) => hasVideoMedia(entry)),
+    [sightings],
+  );
+
+  const availableSpecies = useMemo(() => {
+    const speciesSet = new Set();
+    videoSightings.forEach((entry) => {
+      if (typeof entry?.species === 'string' && entry.species.trim().length > 0) {
+        speciesSet.add(entry.species);
+      }
+    });
+    return Array.from(speciesSet).sort((a, b) => a.localeCompare(b));
+  }, [videoSightings]);
+
+  const availableLocations = useMemo(() => {
+    const locationSet = new Set();
+    videoSightings.forEach((entry) => {
+      if (typeof entry?.locationId === 'string' && entry.locationId.trim().length > 0) {
+        locationSet.add(entry.locationId);
+      }
+    });
+    return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
+  }, [videoSightings]);
+
+  useEffect(() => {
+    if (selectedSpecies !== 'all' && !availableSpecies.includes(selectedSpecies)) {
+      setSelectedSpecies('all');
+    }
+  }, [availableSpecies, selectedSpecies]);
+
+  useEffect(() => {
+    if (selectedLocation !== 'all' && !availableLocations.includes(selectedLocation)) {
+      setSelectedLocation('all');
+    }
+  }, [availableLocations, selectedLocation]);
+
   const filteredSightings = useMemo(
-    () => sightings.filter((entry) => {
+    () => videoSightings.filter((entry) => {
+      if (selectedSpecies !== 'all' && entry.species !== selectedSpecies) {
+        return false;
+      }
+      if (selectedLocation !== 'all' && entry.locationId !== selectedLocation) {
+        return false;
+      }
       if (typeof entry.maxConf !== 'number' || Number.isNaN(entry.maxConf)) {
         return confidenceThreshold <= 0;
       }
       return entry.maxConf >= confidenceThreshold;
     }),
-    [sightings, confidenceThreshold],
+    [videoSightings, confidenceThreshold, selectedSpecies, selectedLocation],
   );
 
-  const hasAnySightings = sightings.length > 0;
+  const hasAnySightings = videoSightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
 
   const getConfidenceClass = (value) => {
@@ -280,6 +335,18 @@ export default function Sightings() {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
     trackEvent('sightings_confidence_filter', { threshold: nextValue });
+  };
+
+  const handleSpeciesChange = (event) => {
+    const nextValue = event.target.value;
+    setSelectedSpecies(nextValue);
+    trackEvent('sightings_species_filter', { species: nextValue });
+  };
+
+  const handleLocationChange = (event) => {
+    const nextValue = event.target.value;
+    setSelectedLocation(nextValue);
+    trackEvent('sightings_location_filter', { location: nextValue });
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
@@ -318,7 +385,7 @@ export default function Sightings() {
     }
 
     const isDebugMode = modalViewMode === 'debug';
-    const prefersVideo = activeSighting.mediaType === 'video';
+    const prefersVideo = hasVideoMedia(activeSighting);
 
     const standardVideoSrc = activeSighting.rawMediaUrl || activeSighting.videoUrl || null;
     const standardImageSrc = activeSighting.rawPreviewUrl || activeSighting.previewUrl || null;
@@ -397,17 +464,53 @@ export default function Sightings() {
             {!loading && accessError && (
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
-            <div className="sightingsPage__filter">
-              <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
-              <input
-                id="confidenceFilter"
-                type="range"
-                min="0"
-                max="95"
-                step="5"
-                value={confidencePercentage}
-                onChange={handleConfidenceChange}
-              />
+            <div className="sightingsPage__filtersGroup">
+              <div className="sightingsPage__filter">
+                <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
+                <input
+                  id="confidenceFilter"
+                  type="range"
+                  min="0"
+                  max="95"
+                  step="5"
+                  value={confidencePercentage}
+                  onChange={handleConfidenceChange}
+                />
+              </div>
+              {availableSpecies.length > 0 && (
+                <div className="sightingsPage__filter">
+                  <label htmlFor="speciesFilter">Species</label>
+                  <select
+                    id="speciesFilter"
+                    value={selectedSpecies}
+                    onChange={handleSpeciesChange}
+                  >
+                    <option value="all">All species</option>
+                    {availableSpecies.map((speciesOption) => (
+                      <option key={speciesOption} value={speciesOption}>
+                        {speciesOption}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {availableLocations.length > 0 && (
+                <div className="sightingsPage__filter">
+                  <label htmlFor="locationFilter">Location</label>
+                  <select
+                    id="locationFilter"
+                    value={selectedLocation}
+                    onChange={handleLocationChange}
+                  >
+                    <option value="all">All locations</option>
+                    {availableLocations.map((locationOption) => (
+                      <option key={locationOption} value={locationOption}>
+                        {locationOption}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -428,11 +531,11 @@ export default function Sightings() {
         )}
 
         {!loading && !error && !hasAnySightings && !noAssignedLocations && (
-          <div className="sightingsPage__empty">No sightings have been recorded yet.</div>
+          <div className="sightingsPage__empty">No video sightings have been recorded yet.</div>
         )}
 
         {!loading && !error && hasAnySightings && !hasSightings && (
-          <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
+          <div className="sightingsPage__empty">No video sightings match the selected filters.</div>
         )}
 
         <div className="sightingsPage__list">
@@ -443,7 +546,7 @@ export default function Sightings() {
                   type="button"
                   className="sightingCard__mediaButton"
                   onClick={() => handleOpenSighting(entry)}
-                  aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+                  aria-label={`Open video preview for ${entry.species}`}
                 >
                   {entry.previewUrl ? (
                     <img src={entry.previewUrl} alt={`${entry.species} sighting`} />
@@ -451,7 +554,7 @@ export default function Sightings() {
                     <div className="sightingCard__placeholder">No preview available</div>
                   )}
                   <span className="sightingCard__badge">
-                    {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                    {hasVideoMedia(entry) ? 'Video' : 'Media'}
                   </span>
                 </button>
               </div>

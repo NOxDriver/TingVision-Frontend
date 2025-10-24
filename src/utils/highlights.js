@@ -70,9 +70,16 @@ export function formatTime(ts) {
 
 export function formatCountWithSpecies(species, count) {
   const hasValidCount = typeof count === 'number' && !Number.isNaN(count) && count > 0;
-  const normalizedSpecies = typeof species === 'string' && species.trim().length > 0
+  const rawSpecies = typeof species === 'string' && species.trim().length > 0
     ? species.trim()
     : 'Unknown';
+
+  const normalizedTokens = rawSpecies
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1));
+
+  const normalizedSpecies = normalizedTokens.join(' ') || 'Unknown';
 
   if (!hasValidCount) {
     return normalizedSpecies;
@@ -82,16 +89,24 @@ export function formatCountWithSpecies(species, count) {
     return `${count} ${normalizedSpecies}`;
   }
 
-  const lowerSpecies = normalizedSpecies.toLowerCase();
-  let pluralSpecies = lowerSpecies;
-
-  if (lowerSpecies.endsWith('y') && lowerSpecies.length > 1 && !/[aeiou]y$/.test(lowerSpecies)) {
-    pluralSpecies = `${lowerSpecies.slice(0, -1)}ies`;
-  } else if (!lowerSpecies.endsWith('s')) {
-    pluralSpecies = `${lowerSpecies}s`;
+  const tokens = normalizedSpecies.split(' ').filter(Boolean);
+  if (tokens.length === 0) {
+    return `${count} ${normalizedSpecies}`;
   }
 
-  return `${count} ${pluralSpecies}`;
+  const lastToken = tokens[tokens.length - 1];
+  const lowerLastToken = lastToken.toLowerCase();
+  let pluralLastToken = lowerLastToken;
+
+  if (lowerLastToken.endsWith('y') && lowerLastToken.length > 1 && !/[aeiou]y$/.test(lowerLastToken)) {
+    pluralLastToken = `${lowerLastToken.slice(0, -1)}ies`;
+  } else if (!lowerLastToken.endsWith('s')) {
+    pluralLastToken = `${lowerLastToken}s`;
+  }
+
+  tokens[tokens.length - 1] = pluralLastToken.charAt(0).toUpperCase() + pluralLastToken.slice(1);
+
+  return `${count} ${tokens.join(' ')}`;
 }
 
 export function buildHighlightEntry({

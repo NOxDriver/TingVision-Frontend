@@ -191,7 +191,6 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      <HighlightsWidget />
       <section className="dashboard__streams">
         <header className="dashboard__streamsHeader">
           <div>
@@ -230,6 +229,7 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+      <HighlightsWidget />
     </div>
   );
 }
