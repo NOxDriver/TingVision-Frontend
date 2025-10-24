@@ -162,18 +162,21 @@
 }
 
 .sightingCard--high {
-  background: linear-gradient(160deg, rgba(126, 200, 80, 0.24), rgba(21, 31, 17, 0.92));
-  border-color: rgba(126, 200, 80, 0.35);
+  background: linear-gradient(158deg, rgba(77, 209, 140, 0.7), rgba(10, 32, 21, 0.96));
+  border-color: rgba(77, 209, 140, 0.75);
+  box-shadow: 0 24px 55px rgba(77, 209, 140, 0.22);
 }
 
 .sightingCard--medium {
-  background: linear-gradient(160deg, rgba(242, 193, 78, 0.22), rgba(21, 31, 17, 0.92));
-  border-color: rgba(242, 193, 78, 0.35);
+  background: linear-gradient(158deg, rgba(255, 177, 66, 0.7), rgba(32, 24, 8, 0.96));
+  border-color: rgba(255, 177, 66, 0.75);
+  box-shadow: 0 24px 55px rgba(255, 177, 66, 0.2);
 }
 
 .sightingCard--low {
-  background: linear-gradient(160deg, rgba(255, 111, 111, 0.22), rgba(21, 31, 17, 0.92));
-  border-color: rgba(255, 111, 111, 0.35);
+  background: linear-gradient(158deg, rgba(255, 105, 105, 0.7), rgba(34, 15, 15, 0.96));
+  border-color: rgba(255, 105, 105, 0.75);
+  box-shadow: 0 24px 55px rgba(255, 105, 105, 0.22);
 }
 
 .sightingCard--unknown {
