@@ -2,7 +2,8 @@ import create from "zustand";
 
 import {
     createUserWithEmailAndPassword,
-    signOut, signInWithPopup, FacebookAuthProvider
+    signOut, signInWithPopup, FacebookAuthProvider,
+    updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -113,15 +114,54 @@ const useAuthStore = create((set) => ({
             return null;
         }
     },
-    createUser: async (e, email, password) => {
-        e.preventDefault();
+    createUser: async ({
+        firstName = '',
+        lastName = '',
+        companyName = '',
+        phoneNumber = '',
+        email,
+        password,
+    }) => {
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
-            return true;
+            const result = await createUserWithEmailAndPassword(auth, email, password);
+            const { user } = result;
+
+            const trimmedFirstName = firstName.trim();
+            const trimmedLastName = lastName.trim();
+            const fullName = [trimmedFirstName, trimmedLastName].filter(Boolean).join(' ');
+
+            const profileDataRaw = {
+                firstName: trimmedFirstName,
+                lastName: trimmedLastName,
+                fullName,
+                companyName: companyName.trim(),
+                phoneNumber: phoneNumber.trim(),
+                email,
+                role: 'client',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            };
+
+            const profileData = Object.entries(profileDataRaw).reduce((acc, [key, value]) => {
+                if (value !== '' && value !== null && value !== undefined) {
+                    acc[key] = value;
+                }
+                return acc;
+            }, {});
+
+            if (fullName) {
+                await updateProfile(user, { displayName: fullName });
+            }
+
+            const userRef = doc(db, 'users', user.uid);
+            await setDoc(userRef, profileData, { merge: true });
+
+            set({ user });
+
+            return { success: true, user };
         } catch (err) {
             console.error(err.message);
-            alert(err.message);
-            return false;
+            return { success: false, error: err.message };
         }
     },
     signInEmail: async (email, password) => {
