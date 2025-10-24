@@ -141,8 +141,8 @@
 
 .sightingsPage__list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 26px;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(280px, 32vw, 380px), 1fr));
+  gap: 32px;
 }
 
 .sightingCard {
@@ -186,7 +186,7 @@
 .sightingCard__media {
   position: relative;
   background: #050603;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,22 +233,35 @@
 }
 
 .sightingCard__body {
-  padding: 24px;
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+}
+
+.sightingCard__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .sightingCard__header h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+}
+
+.sightingCard__subtitle {
+  margin-top: 6px;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
 }
 
 .sightingCard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.95rem;
+  gap: 14px;
+  font-size: 0.98rem;
   color: var(--color-text-secondary);
 }
 
@@ -291,6 +304,35 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sightingsPage__pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.sightingsPage__loadMore {
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 140, 26, 0.6);
+  background: rgba(255, 140, 26, 0.26);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.sightingsPage__loadMore:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.sightingsPage__loadMore:not(:disabled):hover,
+.sightingsPage__loadMore:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.35);
 }
 
 .sightingCard__actions {
