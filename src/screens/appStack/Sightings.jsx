@@ -19,6 +19,7 @@ import {
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
+import { inferMediaTypeFromUrl, pickFirstSource } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
 
 const SIGHTINGS_PAGE_SIZE = 50;
@@ -62,8 +63,6 @@ const formatTimestampLabel = (value) => {
 
   return `${dateLabel} @ ${timeLabel}`;
 };
-
-const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
@@ -481,19 +480,40 @@ export default function Sightings() {
     const isDebugMode = modalViewMode === 'debug';
     const prefersVideo = activeSighting.mediaType === 'video';
 
-    const standardVideoSrc = pickFirstSource(activeSighting.videoUrl, activeSighting.rawMediaUrl);
-    const standardImageSrc = pickFirstSource(activeSighting.previewUrl, activeSighting.rawPreviewUrl);
-    const hdVideoSrc = pickFirstSource(activeSighting.rawMediaUrl, activeSighting.videoUrl);
-    const hdImageSrc = pickFirstSource(activeSighting.rawPreviewUrl, activeSighting.previewUrl);
-    const debugVideoSrc = pickFirstSource(activeSighting.debugVideoUrl);
-    const debugImageSrc = pickFirstSource(activeSighting.debugPreviewUrl);
+    const standardVideoSrc = pickFirstSource(activeSighting.videoUrl);
+    const hdVideoSrc = pickFirstSource(activeSighting.mediaUrl, standardVideoSrc);
+    const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
+    const hdImageSrc = activeSighting.mediaType === 'image'
+      ? pickFirstSource(activeSighting.mediaUrl, standardImageSrc)
+      : standardImageSrc;
+    const debugMediaSrc = pickFirstSource(
+      activeSighting.debugUrl,
+      activeSighting.debugVideoUrl,
+      activeSighting.debugPreviewUrl,
+    );
+    const debugMediaKind = inferMediaTypeFromUrl(
+      debugMediaSrc,
+      prefersVideo ? 'video' : 'image',
+    );
+    const debugVideoSrc = debugMediaKind === 'video' ? debugMediaSrc : null;
+    const debugImageSrc = debugMediaKind === 'image' ? debugMediaSrc : null;
 
-    const hasDebugMedia = Boolean(debugVideoSrc || debugImageSrc);
+    const hasDebugMedia = Boolean(debugMediaSrc);
     const useDebugMedia = isDebugMode && hasDebugMedia;
 
-    const hasHdImageAlternative = Boolean(hdImageSrc && hdImageSrc !== standardImageSrc);
+    const hasHdImageAlternative = Boolean(
+      activeSighting.mediaType === 'image'
+        && hdImageSrc
+        && hdImageSrc !== standardImageSrc,
+    );
+    const hasHdVideoAlternative = Boolean(
+      prefersVideo
+        && hdVideoSrc
+        && hdVideoSrc !== standardVideoSrc,
+    );
+
     const useHdImage = isHdEnabled && hasHdImageAlternative && !useDebugMedia;
-    const shouldForceHdVideo = prefersVideo && Boolean(hdVideoSrc);
+    const shouldForceHdVideo = prefersVideo && hasHdVideoAlternative;
 
     let selectedVideoSrc = null;
     let selectedImageSrc = null;
@@ -501,24 +521,31 @@ export default function Sightings() {
     if (useDebugMedia) {
       selectedVideoSrc = debugVideoSrc || null;
       selectedImageSrc = debugImageSrc || null;
+    } else if (prefersVideo) {
+      selectedVideoSrc = shouldForceHdVideo
+        ? (hdVideoSrc || standardVideoSrc || null)
+        : (standardVideoSrc || hdVideoSrc || null);
+
+      if (!selectedVideoSrc) {
+        selectedImageSrc = standardImageSrc || hdImageSrc || debugImageSrc || null;
+      }
     } else {
-      selectedVideoSrc = prefersVideo
-        ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
-        : null;
-      selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
-        || null;
+      selectedImageSrc = (useHdImage ? hdImageSrc : standardImageSrc) || null;
 
-      if (prefersVideo && !selectedVideoSrc) {
-        selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
+      if (!selectedImageSrc) {
+        selectedImageSrc = hdImageSrc || null;
       }
 
-      if (!prefersVideo && !selectedImageSrc) {
-        selectedImageSrc = (standardImageSrc || hdImageSrc || null);
-      }
-
-      if (!selectedVideoSrc && !selectedImageSrc && hasDebugMedia) {
-        selectedVideoSrc = debugVideoSrc || null;
+      if (!selectedImageSrc && hasDebugMedia) {
         selectedImageSrc = debugImageSrc || null;
+      }
+    }
+
+    if (!selectedVideoSrc && !selectedImageSrc && hasDebugMedia) {
+      if (debugVideoSrc) {
+        selectedVideoSrc = debugVideoSrc;
+      } else if (debugImageSrc) {
+        selectedImageSrc = debugImageSrc;
       }
     }
 
@@ -711,8 +738,27 @@ export default function Sightings() {
                   aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
                 >
                   {(() => {
-                    const cardVideoSrc = entry.rawMediaUrl || entry.videoUrl || entry.debugVideoUrl || null;
-                    const cardImageSrc = entry.previewUrl || entry.rawPreviewUrl || entry.debugPreviewUrl || null;
+                    const debugMediaSrc = pickFirstSource(
+                      entry.debugUrl,
+                      entry.debugVideoUrl,
+                      entry.debugPreviewUrl,
+                    );
+                    const debugMediaKind = inferMediaTypeFromUrl(
+                      debugMediaSrc,
+                      entry.mediaType === 'video' ? 'video' : 'image',
+                    );
+                    const debugVideoSrc = debugMediaKind === 'video' ? debugMediaSrc : null;
+                    const debugImageSrc = debugMediaKind === 'image' ? debugMediaSrc : null;
+                    const cardVideoSrc = pickFirstSource(
+                      entry.videoUrl,
+                      entry.mediaType === 'video' ? entry.mediaUrl : null,
+                      debugVideoSrc,
+                    );
+                    const cardImageSrc = pickFirstSource(
+                      entry.previewUrl,
+                      entry.mediaType === 'image' ? entry.mediaUrl : null,
+                      debugImageSrc,
+                    );
 
                     if (entry.mediaType === 'video' && cardVideoSrc) {
                       return (
@@ -766,6 +812,23 @@ export default function Sightings() {
                   )}
                 </div>
               </div>
+              {entry.mediaType === 'image' && entry.mediaUrl && (
+                <div className="sightingCard__actions">
+                  <a
+                    href={entry.mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      trackButton('sighting_card_view_hd', {
+                        species: entry?.species,
+                        location: entry?.locationId,
+                      });
+                    }}
+                  >
+                    View in HD
+                  </a>
+                </div>
+              )}
             </article>
           ))}
         </div>
@@ -806,16 +869,20 @@ export default function Sightings() {
               Close
             </button>
             {(() => {
-              const standardVideoSrc = pickFirstSource(activeSighting.videoUrl, activeSighting.rawMediaUrl);
-              const standardImageSrc = pickFirstSource(activeSighting.previewUrl, activeSighting.rawPreviewUrl);
-              const hdVideoSrc = pickFirstSource(activeSighting.rawMediaUrl, activeSighting.videoUrl);
-              const hdImageSrc = pickFirstSource(activeSighting.rawPreviewUrl, activeSighting.previewUrl);
+              const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
+              const hdImageSrc = activeSighting.mediaType === 'image'
+                ? pickFirstSource(activeSighting.mediaUrl, standardImageSrc)
+                : standardImageSrc;
               const hasHdImageAlternative = Boolean(
-                hdImageSrc && hdImageSrc !== standardImageSrc,
+                activeSighting.mediaType === 'image'
+                  && hdImageSrc
+                  && hdImageSrc !== standardImageSrc,
               );
-              const hasDebugMedia = Boolean(
-                activeSighting.debugVideoUrl || activeSighting.debugPreviewUrl,
-              );
+              const hasDebugMedia = Boolean(pickFirstSource(
+                activeSighting.debugUrl,
+                activeSighting.debugVideoUrl,
+                activeSighting.debugPreviewUrl,
+              ));
               const isDebugMode = modalViewMode === 'debug';
               if (!hasHdImageAlternative && !hasDebugMedia) {
                 return null;

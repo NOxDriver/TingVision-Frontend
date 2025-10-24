@@ -109,25 +109,25 @@ export function buildHighlightEntry({
     }
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
-  const previewUrl = parentDoc?.rawPreviewUrl
-    || parentDoc?.previewUrl
+  const previewUrl = parentDoc?.previewUrl
+    || parentDoc?.rawPreviewUrl
     || parentDoc?.debugPreviewUrl
     || null;
-  const debugPreviewUrl = parentDoc?.debugPreviewUrl
-    || parentDoc?.rawPreviewUrl
-    || parentDoc?.previewUrl
+  const debugUrl = parentDoc?.debugUrl
+    || parentDoc?.debugPreviewUrl
+    || parentDoc?.debugVideoUrl
+    || parentDoc?.debugMediaUrl
     || null;
-  const videoUrl = parentDoc?.mediaUrl
+  const mediaUrl = parentDoc?.mediaUrl
+    || parentDoc?.rawMediaUrl
+    || parentDoc?.rawVideoUrl
+    || null;
+  const videoUrl = parentDoc?.videoUrl
+    || parentDoc?.mediaUrl
     || parentDoc?.rawVideoUrl
     || parentDoc?.rawMediaUrl
     || parentDoc?.debugVideoUrl
     || parentDoc?.debugMediaUrl
-    || null;
-  const debugVideoUrl = parentDoc?.debugVideoUrl
-    || parentDoc?.debugMediaUrl
-    || parentDoc?.mediaUrl
-    || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
     || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
   const meta = CATEGORY_META[category] || {};
@@ -138,7 +138,7 @@ export function buildHighlightEntry({
     description: extra?.description || meta.description || '',
     species: formatSpeciesName(speciesDoc?.species || 'Unknown'),
     previewUrl,
-    debugPreviewUrl,
+    debugUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
     createdAt,
     count: speciesDoc?.count ?? null,
@@ -148,10 +148,10 @@ export function buildHighlightEntry({
     mediaType: parentDoc?.mediaType || 'image',
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
-    debugVideoUrl,
-    rawMediaUrl: parentDoc?.rawMediaUrl || null,
-    rawPreviewUrl: parentDoc?.rawPreviewUrl || null,
+    mediaUrl,
     extra: extra || {},
+    debugVideoUrl: parentDoc?.debugVideoUrl || null,
+    debugPreviewUrl: parentDoc?.debugPreviewUrl || null,
   };
 }
 

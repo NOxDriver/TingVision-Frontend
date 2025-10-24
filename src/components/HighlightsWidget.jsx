@@ -23,6 +23,7 @@ import {
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
 import { trackButton } from '../utils/analytics';
+import { inferMediaTypeFromUrl, pickFirstSource } from '../utils/media';
 
 const MIN_PHOTO_CONFIDENCE = 0.7;
 
@@ -302,11 +303,31 @@ export default function HighlightsWidget() {
     }
 
     const isVideo = activeEntry.mediaType === 'video';
+    const previewImage = pickFirstSource(
+      activeEntry.previewUrl,
+      activeEntry.mediaType === 'image' ? activeEntry.mediaUrl : null,
+    );
+    const hdImage = activeEntry.mediaType === 'image'
+      ? pickFirstSource(activeEntry.mediaUrl, previewImage)
+      : previewImage;
+    const primaryVideo = pickFirstSource(
+      activeEntry.videoUrl,
+      activeEntry.mediaType === 'video' ? activeEntry.mediaUrl : null,
+    );
+    const debugMediaSrc = pickFirstSource(
+      activeEntry.debugUrl,
+      activeEntry.debugVideoUrl,
+      activeEntry.debugPreviewUrl,
+    );
+    const debugMediaKind = inferMediaTypeFromUrl(
+      debugMediaSrc,
+      isVideo ? 'video' : 'image',
+    );
+    const debugVideo = debugMediaKind === 'video' ? debugMediaSrc : null;
+    const debugImage = debugMediaKind === 'image' ? debugMediaSrc : null;
+
     if (isVideo) {
-      const primaryVideo = activeEntry.rawMediaUrl
-        || activeEntry.videoUrl;
-      const debugVideo = activeEntry.debugVideoUrl;
-      const debugImage = activeEntry.debugPreviewUrl;
+      const posterImage = pickFirstSource(previewImage, debugImage);
 
       if (isDebugMode && debugVideo) {
         return (
@@ -316,6 +337,7 @@ export default function HighlightsWidget() {
             controls
             autoPlay
             playsInline
+            poster={posterImage || undefined}
           />
         );
       }
@@ -338,6 +360,7 @@ export default function HighlightsWidget() {
             controls
             autoPlay
             playsInline
+            poster={posterImage || undefined}
           />
         );
       }
@@ -350,6 +373,7 @@ export default function HighlightsWidget() {
             controls
             autoPlay
             playsInline
+            poster={posterImage || undefined}
           />
         );
       }
@@ -364,11 +388,11 @@ export default function HighlightsWidget() {
         );
       }
 
-      if (activeEntry.previewUrl) {
+      if (previewImage) {
         return (
           <img
-            key={`preview-${activeEntry.previewUrl}`}
-            src={activeEntry.previewUrl}
+            key={`preview-${previewImage}`}
+            src={previewImage}
             alt={`${activeEntry.species} highlight enlarged`}
           />
         );
@@ -377,21 +401,27 @@ export default function HighlightsWidget() {
       return <div className="highlightCard__placeholder">No preview available</div>;
     }
 
-    const rawPreview = activeEntry.rawPreviewUrl;
-    const primaryPreview = activeEntry.previewUrl;
-    const debugPreview = activeEntry.debugPreviewUrl;
     const displayDetails = (() => {
-      if (isDebugMode && debugPreview) {
-        return { src: debugPreview, isDebug: true };
-      }
-      if (rawPreview) {
-        return { src: rawPreview, isDebug: false };
-      }
-      if (primaryPreview) {
-        return { src: primaryPreview, isDebug: false };
-      }
-      if (debugPreview) {
-        return { src: debugPreview, isDebug: true };
+      if (isDebugMode) {
+        if (debugImage) {
+          return { src: debugImage, isDebug: true };
+        }
+        if (previewImage) {
+          return { src: previewImage, isDebug: false };
+        }
+        if (hdImage) {
+          return { src: hdImage, isDebug: false };
+        }
+      } else {
+        if (previewImage) {
+          return { src: previewImage, isDebug: false };
+        }
+        if (hdImage) {
+          return { src: hdImage, isDebug: false };
+        }
+        if (debugImage) {
+          return { src: debugImage, isDebug: true };
+        }
       }
       return null;
     })();
@@ -413,14 +443,16 @@ export default function HighlightsWidget() {
   const hasModalMedia = Boolean(
     activeEntry
     && ((activeEntry.mediaType === 'video'
-      && (activeEntry.rawMediaUrl
-        || activeEntry.videoUrl
+      && (activeEntry.videoUrl
+        || activeEntry.mediaUrl
+        || activeEntry.debugUrl
         || activeEntry.debugVideoUrl
         || activeEntry.previewUrl
         || activeEntry.debugPreviewUrl))
       || (activeEntry.mediaType !== 'video'
-        && (activeEntry.rawPreviewUrl
-          || activeEntry.previewUrl
+        && (activeEntry.previewUrl
+          || activeEntry.mediaUrl
+          || activeEntry.debugUrl
           || activeEntry.debugPreviewUrl))),
   );
 
@@ -468,11 +500,29 @@ export default function HighlightsWidget() {
                       onClick={() => handleOpenEntry(entry)}
                       aria-label={`Open highlight preview for ${entry.species}`}
                     >
-                      {entry.previewUrl ? (
-                        <img src={entry.previewUrl} alt={`${entry.species} highlight`} />
-                      ) : (
-                        <div className="highlightCard__placeholder">No preview available</div>
-                      )}
+                      {(() => {
+                        const debugMediaSrc = pickFirstSource(
+                          entry.debugUrl,
+                          entry.debugVideoUrl,
+                          entry.debugPreviewUrl,
+                        );
+                        const debugMediaKind = inferMediaTypeFromUrl(
+                          debugMediaSrc,
+                          entry.mediaType === 'video' ? 'video' : 'image',
+                        );
+                        const debugImageSrc = debugMediaKind === 'image' ? debugMediaSrc : null;
+                        const cardPreviewSrc = pickFirstSource(
+                          entry.previewUrl,
+                          entry.mediaType === 'image' ? entry.mediaUrl : null,
+                          debugImageSrc,
+                        );
+
+                        if (cardPreviewSrc) {
+                          return <img src={cardPreviewSrc} alt={`${entry.species} highlight`} />;
+                        }
+
+                        return <div className="highlightCard__placeholder">No preview available</div>;
+                      })()}
                       <span className="highlightCard__badge">
                         {entry.mediaType === 'video' ? 'Video' : 'Image'}
                       </span>
@@ -533,7 +583,11 @@ export default function HighlightsWidget() {
             </button>
             {hasModalMedia && (
               <div className="highlightModal__controls">
-                {(activeEntry.debugVideoUrl || activeEntry.debugPreviewUrl) && (
+                {pickFirstSource(
+                  activeEntry.debugUrl,
+                  activeEntry.debugVideoUrl,
+                  activeEntry.debugPreviewUrl,
+                ) && (
                   <button
                     type="button"
                     className={`highlightModal__toggle${isDebugMode ? ' is-active' : ''}`}
