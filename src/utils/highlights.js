@@ -109,25 +109,20 @@ export function buildHighlightEntry({
     }
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
-  const previewUrl = parentDoc?.rawPreviewUrl
-    || parentDoc?.previewUrl
-    || parentDoc?.debugPreviewUrl
+  const mediaUrl = parentDoc?.mediaUrl || null;
+  const previewUrl = parentDoc?.previewUrl
+    || (parentDoc?.mediaType !== 'video' ? mediaUrl : null)
+    || parentDoc?.debugUrl
     || null;
-  const debugPreviewUrl = parentDoc?.debugPreviewUrl
-    || parentDoc?.rawPreviewUrl
+  const debugUrl = parentDoc?.debugUrl
     || parentDoc?.previewUrl
+    || (parentDoc?.mediaType !== 'video' ? mediaUrl : null)
     || null;
-  const videoUrl = parentDoc?.mediaUrl
-    || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
-    || parentDoc?.debugVideoUrl
-    || parentDoc?.debugMediaUrl
+  const videoUrl = parentDoc?.videoUrl
+    || (parentDoc?.mediaType === 'video' ? mediaUrl : null)
     || null;
   const debugVideoUrl = parentDoc?.debugVideoUrl
-    || parentDoc?.debugMediaUrl
-    || parentDoc?.mediaUrl
-    || parentDoc?.rawVideoUrl
-    || parentDoc?.rawMediaUrl
+    || (parentDoc?.mediaType === 'video' ? parentDoc?.debugUrl : null)
     || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
   const meta = CATEGORY_META[category] || {};
@@ -138,7 +133,7 @@ export function buildHighlightEntry({
     description: extra?.description || meta.description || '',
     species: formatSpeciesName(speciesDoc?.species || 'Unknown'),
     previewUrl,
-    debugPreviewUrl,
+    debugUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
     createdAt,
     count: speciesDoc?.count ?? null,
@@ -149,8 +144,7 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     debugVideoUrl,
-    rawMediaUrl: parentDoc?.rawMediaUrl || null,
-    rawPreviewUrl: parentDoc?.rawPreviewUrl || null,
+    mediaUrl,
     extra: extra || {},
   };
 }

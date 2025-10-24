@@ -407,6 +407,33 @@
   color: var(--color-text-primary);
 }
 
+.sightingCard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sightingCard__hdButton {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  padding: 7px 16px;
+  text-transform: uppercase;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.sightingCard__hdButton:hover,
+.sightingCard__hdButton:focus-visible {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.32);
+  outline: none;
+}
+
 .sightingCard__footerGroup {
   display: flex;
   flex-direction: column;
