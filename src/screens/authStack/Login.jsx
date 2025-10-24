@@ -62,49 +62,67 @@ const Login = () => {
   };
 
   return (
-    <div className="auth__container">
-      <div>
-        <h1 className="auth__heading">Login to your account</h1>
-        <p className="auth__byline">
-          Don&apos;t have an account yet?{' '}
-          <Link to="/register" className="underline">
-            Register.
-          </Link>
-        </p>
-      </div>
+    <div className="auth__page">
+      <div className="auth__container">
+        <header className="auth__header">
+          <h1 className="auth__heading">Login to your account</h1>
+          <p className="auth__byline">
+            Don&apos;t have an account yet?{' '}
+            <Link to="/register" className="underline">
+              Register.
+            </Link>
+          </p>
+        </header>
 
-      <form onSubmit={handleEmailLogin} className="grid">
-        <input
-          className="auth__input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className="auth__input"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error && <div className="auth__error">{error}</div>}
-        <button type="submit" disabled={loading} className="auth__buttonNotHovered">
-          {loading ? 'Logging in...' : 'Login with Email'}
+        <form onSubmit={handleEmailLogin} className="auth__form" noValidate>
+          <div className="auth__field">
+            <label htmlFor="email" className="auth__label">
+              Email
+            </label>
+            <input
+              id="email"
+              className="auth__input"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+          <div className="auth__field">
+            <label htmlFor="password" className="auth__label">
+              Password
+            </label>
+            <input
+              id="password"
+              className="auth__input"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          {error && <div className="auth__error">{error}</div>}
+          <button type="submit" disabled={loading} className="auth__buttonNotHovered">
+            {loading ? 'Logging in...' : 'Login with Email'}
+          </button>
+        </form>
+
+        <div className="auth__divider">
+          <span>or continue with</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleFacebookLogin}
+          className="auth__buttonNotHovered"
+        >
+          Login with Facebook
         </button>
-      </form>
-
-      <div style={{ margin: '20px 0', textAlign: 'center' }}>or</div>
-
-      <button
-        type="button"
-        onClick={handleFacebookLogin}
-        className="auth__buttonNotHovered"
-      >
-        Login with Facebook
-      </button>
+      </div>
     </div>
   );
 };
