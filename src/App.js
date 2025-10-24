@@ -5,7 +5,6 @@ import Register from "./screens/authStack/Register";
 
 // AppStack
 import Dashboard from "./screens/appStack/Dashboard";
-import PrivacyPolicy from "./screens/appStack/PrivacyPolicy";
 import Sightings from "./screens/appStack/Sightings";
 
 import { Route, Routes } from "react-router-dom";
@@ -28,8 +27,8 @@ function App() {
   ReactGA.send({ hitType: "pageview", page: window.location.pathname + window.location.search });
 
   return (
-    <div className="app">
-      <SiteHeader mode={'light'} />
+    <div className="app app--dark">
+      <SiteHeader mode={'dark'} />
 
       {/* {user && <SideMenu />} */}
 
