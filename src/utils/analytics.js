@@ -1,6 +1,7 @@
 import ReactGA from 'react-ga4';
 
 const DEFAULT_MEASUREMENT_ID = 'G-Y4J506RS0Z';
+const DEFAULT_PAGE_TITLE = 'Ting Vision';
 const measurementId = process.env.REACT_APP_GA_MEASUREMENT_ID || DEFAULT_MEASUREMENT_ID;
 
 let isInitialized = false;
@@ -33,13 +34,29 @@ const ensureInitialized = () => {
 
 export const initAnalytics = () => ensureInitialized();
 
-export const trackPageView = (path) => {
+const resolvePageTitle = (value) => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  if (typeof document !== 'undefined' && typeof document.title === 'string' && document.title.trim()) {
+    return document.title.trim();
+  }
+
+  return DEFAULT_PAGE_TITLE;
+};
+
+export const trackPageView = (path, title) => {
   if (!ensureInitialized()) {
     return;
   }
 
   const pagePath = typeof path === 'string' && path.length ? path : window.location.pathname + window.location.search;
-  ReactGA.send({ hitType: 'pageview', page: pagePath });
+  const pageTitle = resolvePageTitle(title);
+  ReactGA.send({ hitType: 'pageview', page: pagePath, title: pageTitle });
 };
 
 export const trackEvent = (eventNameOrParams, params = {}) => {

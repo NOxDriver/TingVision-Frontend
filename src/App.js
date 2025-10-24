@@ -13,10 +13,42 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import ProtectedRoute from "./navigation/ProtectedRoutes";
 import UnprotectedRoute from "./navigation/UnprotectedRoutes";
 
-import './App.css'
+import './App.css';
 // import SideMenu from "./components/allPages/SideMenu";
 import SiteHeader from "./components/allPages/SiteHeader";
 import { initAnalytics, trackPageView } from "./utils/analytics";
+
+
+const BRAND_NAME = 'Ting Vision';
+const ROUTE_TITLES = {
+  '/': 'Dashboard',
+  '/sightings': 'Sightings',
+  '/login': 'Login',
+  '/register': 'Register',
+  '/privacy-policy': 'Privacy Policy',
+};
+
+const normalizePathname = (value) => {
+  if (typeof value !== 'string' || value.length === 0) {
+    return '/';
+  }
+
+  if (value === '/') {
+    return '/';
+  }
+
+  const trimmed = value.endsWith('/') ? value.replace(/\/+$/, '') : value;
+  return trimmed.length ? trimmed : '/';
+};
+
+const buildPageTitle = (pathname) => {
+  const normalized = normalizePathname(pathname);
+  const baseTitle = ROUTE_TITLES[normalized];
+  if (!baseTitle) {
+    return BRAND_NAME;
+  }
+  return `${baseTitle} • ${BRAND_NAME}`;
+};
 
 
 function App() {
@@ -37,7 +69,11 @@ function App() {
       return;
     }
     lastTrackedPathRef.current = nextPath;
-    trackPageView(nextPath);
+    const pageTitle = buildPageTitle(location.pathname);
+    if (typeof document !== 'undefined' && document.title !== pageTitle) {
+      document.title = pageTitle;
+    }
+    trackPageView(nextPath, pageTitle);
   }, [location]);
 
   return (

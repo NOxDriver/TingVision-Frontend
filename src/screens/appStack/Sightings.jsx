@@ -67,12 +67,15 @@ export default function Sightings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
+  const speciesMenuRef = useRef(null);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
-  const [speciesQuery, setSpeciesQuery] = useState('');
+  const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [isSpeciesMenuOpen, setIsSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const [modalQualityMode, setModalQualityMode] = useState('standard');
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -244,6 +247,15 @@ export default function Sightings() {
     return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
   }, [sightings]);
 
+  const availableSpecies = useMemo(() => {
+    const names = sightings
+      .map((entry) => (typeof entry.species === 'string' ? entry.species.trim() : ''))
+      .filter((value) => value.length > 0);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+  }, [sightings]);
+
+  const selectedSpeciesSet = useMemo(() => new Set(selectedSpecies), [selectedSpecies]);
+
   useEffect(() => {
     if (locationFilter === 'all') {
       return;
@@ -253,11 +265,48 @@ export default function Sightings() {
     }
   }, [availableLocations, locationFilter]);
 
+  useEffect(() => {
+    if (selectedSpecies.length === 0) {
+      return;
+    }
+
+    const validSelections = selectedSpecies.filter((value) => availableSpecies.includes(value));
+    if (validSelections.length !== selectedSpecies.length) {
+      setSelectedSpecies(validSelections);
+    }
+  }, [availableSpecies, selectedSpecies]);
+
+  useEffect(() => {
+    if (!isSpeciesMenuOpen) {
+      return undefined;
+    }
+
+    const handleInteraction = (event) => {
+      if (speciesMenuRef.current && speciesMenuRef.current.contains(event.target)) {
+        return;
+      }
+      setIsSpeciesMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleInteraction);
+    document.addEventListener('focusin', handleInteraction);
+    return () => {
+      document.removeEventListener('mousedown', handleInteraction);
+      document.removeEventListener('focusin', handleInteraction);
+    };
+  }, [isSpeciesMenuOpen]);
+
   const filteredSightings = useMemo(
     () => sightings.filter((entry) => {
       const hasConfidence = typeof entry.maxConf === 'number' && !Number.isNaN(entry.maxConf);
-      if (hasConfidence ? entry.maxConf < confidenceThreshold : confidenceThreshold > 0) {
-        return false;
+      if (entry.mediaType !== 'video') {
+        if (hasConfidence) {
+          if (entry.maxConf < confidenceThreshold) {
+            return false;
+          }
+        } else if (confidenceThreshold > 0) {
+          return false;
+        }
       }
 
       if (locationFilter !== 'all' && entry.locationId !== locationFilter) {
@@ -268,18 +317,22 @@ export default function Sightings() {
         return false;
       }
 
-      const trimmedQuery = speciesQuery.trim().toLowerCase();
-      if (trimmedQuery && typeof entry.species === 'string') {
-        if (!entry.species.toLowerCase().includes(trimmedQuery)) {
+      if (selectedSpeciesSet.size > 0) {
+        const entrySpecies = typeof entry.species === 'string' ? entry.species.trim() : '';
+        if (!selectedSpeciesSet.has(entrySpecies)) {
           return false;
         }
-      } else if (trimmedQuery) {
-        return false;
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, speciesQuery],
+    [
+      sightings,
+      confidenceThreshold,
+      locationFilter,
+      mediaTypeFilter,
+      selectedSpeciesSet,
+    ],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -301,6 +354,7 @@ export default function Sightings() {
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
+    setModalQualityMode('standard');
     trackButton('sighting_open', {
       species: entry?.species,
       mediaType: entry?.mediaType,
@@ -311,6 +365,7 @@ export default function Sightings() {
   const handleCloseSighting = () => {
     setActiveSighting(null);
     setModalViewMode('standard');
+    setModalQualityMode('standard');
     trackButton('sighting_close');
   };
 
@@ -320,10 +375,27 @@ export default function Sightings() {
     trackEvent('sightings_confidence_filter', { threshold: nextValue });
   };
 
-  const handleSpeciesQueryChange = (event) => {
-    const nextValue = event.target.value;
-    setSpeciesQuery(nextValue);
-    trackEvent('sightings_species_filter', { query: nextValue });
+  const handleSpeciesToggle = (speciesName) => {
+    setSelectedSpecies((prev) => {
+      const nextSet = new Set(prev);
+      if (nextSet.has(speciesName)) {
+        nextSet.delete(speciesName);
+      } else {
+        nextSet.add(speciesName);
+      }
+      const nextSelection = Array.from(nextSet).sort((a, b) => a.localeCompare(b));
+      trackEvent('sightings_species_filter', { selection: nextSelection });
+      return nextSelection;
+    });
+  };
+
+  const handleSpeciesReset = () => {
+    setSelectedSpecies([]);
+    trackEvent('sightings_species_filter', { selection: [] });
+  };
+
+  const handleSpeciesMenuToggle = () => {
+    setIsSpeciesMenuOpen((prev) => !prev);
   };
 
   const handleLocationFilterChange = (event) => {
@@ -338,7 +410,39 @@ export default function Sightings() {
     trackEvent('sightings_media_filter', { mediaType: nextValue });
   };
 
+  const handleQualityToggle = () => {
+    const nextMode = modalQualityMode === 'hd' ? 'standard' : 'hd';
+    setModalQualityMode(nextMode);
+    trackButton('sighting_toggle_quality', {
+      quality: nextMode,
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
+  };
+
+  const handleViewModeToggle = () => {
+    const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
+    setModalViewMode(nextMode);
+    trackButton('sighting_toggle_view', {
+      mode: nextMode,
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
+  };
+
   const confidencePercentage = Math.round(confidenceThreshold * 100);
+  const speciesSelectionLabel = useMemo(() => {
+    if (selectedSpecies.length === 0) {
+      return 'All species';
+    }
+    if (selectedSpecies.length === 1) {
+      return selectedSpecies[0];
+    }
+    if (selectedSpecies.length === 2) {
+      return `${selectedSpecies[0]}, ${selectedSpecies[1]}`;
+    }
+    return `${selectedSpecies.length} selected`;
+  }, [selectedSpecies]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -368,38 +472,62 @@ export default function Sightings() {
     };
   }, [activeSighting]);
 
+  useEffect(() => {
+    setModalQualityMode('standard');
+  }, [activeSighting]);
+
   const renderModalContent = () => {
     if (!activeSighting) {
       return null;
     }
 
     const isDebugMode = modalViewMode === 'debug';
+    const isHdMode = modalQualityMode === 'hd';
     const prefersVideo = activeSighting.mediaType === 'video';
 
-    const standardVideoSrc = activeSighting.rawMediaUrl || activeSighting.videoUrl || null;
-    const standardImageSrc = activeSighting.rawPreviewUrl || activeSighting.previewUrl || null;
+    const previewVideoSrc = activeSighting.videoUrl || activeSighting.rawMediaUrl || null;
+    const previewImageSrc = activeSighting.previewUrl || activeSighting.rawPreviewUrl || null;
+    const hdVideoSrc = activeSighting.rawMediaUrl || previewVideoSrc;
+    const hdImageSrc = activeSighting.rawPreviewUrl || previewImageSrc;
     const debugVideoSrc = activeSighting.debugVideoUrl || null;
     const debugImageSrc = activeSighting.debugPreviewUrl || null;
 
     const hasDebugMedia = Boolean(debugVideoSrc || debugImageSrc);
+    const hasHdMedia = Boolean(
+      (activeSighting.rawMediaUrl && activeSighting.rawMediaUrl !== previewVideoSrc)
+      || (activeSighting.rawPreviewUrl && activeSighting.rawPreviewUrl !== previewImageSrc),
+    );
     const useDebugMedia = isDebugMode && hasDebugMedia;
 
-    let selectedVideoSrc = useDebugMedia ? debugVideoSrc : standardVideoSrc;
-    let selectedImageSrc = useDebugMedia ? debugImageSrc : standardImageSrc;
+    let selectedVideoSrc = null;
+    let selectedImageSrc = null;
+
+    if (useDebugMedia) {
+      selectedVideoSrc = debugVideoSrc || null;
+      selectedImageSrc = debugImageSrc || null;
+    } else if (isHdMode) {
+      selectedVideoSrc = hdVideoSrc || null;
+      selectedImageSrc = hdImageSrc || null;
+    } else {
+      selectedVideoSrc = previewVideoSrc || null;
+      selectedImageSrc = previewImageSrc || null;
+    }
 
     if (!selectedVideoSrc && !selectedImageSrc) {
-      selectedVideoSrc = standardVideoSrc || debugVideoSrc;
-      selectedImageSrc = standardImageSrc || debugImageSrc;
+      selectedVideoSrc = hdVideoSrc || debugVideoSrc || previewVideoSrc;
+      selectedImageSrc = hdImageSrc || debugImageSrc || previewImageSrc;
     }
 
     const isUsingDebugAsset = useDebugMedia
       && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
         || (selectedImageSrc && selectedImageSrc === debugImageSrc));
 
+    const isUsingHdAsset = !useDebugMedia && isHdMode && hasHdMedia;
+
     if (prefersVideo && selectedVideoSrc) {
       return (
         <video
-          key={`video-${modalViewMode}-${selectedVideoSrc}`}
+          key={`video-${modalViewMode}-${modalQualityMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
           autoPlay
@@ -409,10 +537,10 @@ export default function Sightings() {
     }
 
     if (selectedImageSrc) {
-      const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      const debugLabel = isUsingDebugAsset ? ' debug' : isUsingHdAsset ? ' HD' : '';
       return (
         <img
-          key={`img-${modalViewMode}-${selectedImageSrc}`}
+          key={`img-${modalViewMode}-${modalQualityMode}-${selectedImageSrc}`}
           src={selectedImageSrc}
           alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
         />
@@ -422,7 +550,7 @@ export default function Sightings() {
     if (selectedVideoSrc) {
       return (
         <video
-          key={`fallback-video-${modalViewMode}-${selectedVideoSrc}`}
+          key={`fallback-video-${modalViewMode}-${modalQualityMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
           autoPlay
@@ -466,15 +594,59 @@ export default function Sightings() {
                   onChange={handleConfidenceChange}
                 />
               </div>
-              <div className="sightingsPage__field">
+              <div
+                className="sightingsPage__field sightingsPage__field--dropdown"
+                ref={speciesMenuRef}
+              >
                 <label htmlFor="speciesFilter">Species</label>
-                <input
+                <button
+                  type="button"
                   id="speciesFilter"
-                  type="search"
-                  value={speciesQuery}
-                  placeholder="Search species"
-                  onChange={handleSpeciesQueryChange}
-                />
+                  className={`sightingsPage__multiselectButton${isSpeciesMenuOpen ? ' is-open' : ''}`}
+                  onClick={handleSpeciesMenuToggle}
+                  aria-haspopup="listbox"
+                  aria-expanded={isSpeciesMenuOpen}
+                >
+                  {speciesSelectionLabel}
+                </button>
+                {isSpeciesMenuOpen && (
+                  <div className="sightingsPage__multiselectMenu" role="listbox" tabIndex={-1}>
+                    <div className="sightingsPage__multiselectHeader">
+                      <span className="sightingsPage__multiselectSummary">
+                        {selectedSpecies.length === 0
+                          ? 'Showing all species'
+                          : `${selectedSpecies.length} selected`}
+                      </span>
+                      <button
+                        type="button"
+                        className="sightingsPage__multiselectAction"
+                        onClick={handleSpeciesReset}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="sightingsPage__multiselectList">
+                      {availableSpecies.length === 0 && (
+                        <li className="sightingsPage__multiselectEmpty">No species available</li>
+                      )}
+                      {availableSpecies.map((speciesName) => {
+                        const checked = selectedSpeciesSet.has(speciesName);
+                        return (
+                          <li key={speciesName}>
+                            <label className="sightingsPage__multiselectOption">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => handleSpeciesToggle(speciesName)}
+                              />
+                              <span>{speciesName}</span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
               <div className="sightingsPage__field">
                 <label htmlFor="locationFilter">Location</label>
@@ -639,27 +811,37 @@ export default function Sightings() {
               const hasDebugMedia = Boolean(
                 activeSighting.debugVideoUrl || activeSighting.debugPreviewUrl,
               );
-              const isDebugMode = modalViewMode === 'debug';
-              if (!hasDebugMedia) {
+              const previewVideoSrc = activeSighting.videoUrl || activeSighting.rawMediaUrl || null;
+              const previewImageSrc = activeSighting.previewUrl || activeSighting.rawPreviewUrl || null;
+              const hasHdMedia = Boolean(
+                (activeSighting.rawMediaUrl && activeSighting.rawMediaUrl !== previewVideoSrc)
+                || (activeSighting.rawPreviewUrl && activeSighting.rawPreviewUrl !== previewImageSrc),
+              );
+
+              if (!hasDebugMedia && !hasHdMedia) {
                 return null;
               }
+
               return (
                 <div className="sightingModal__controls">
-                  <button
-                    type="button"
-                    className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                    onClick={() => {
-                      const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
-                      setModalViewMode(nextMode);
-                      trackButton('sighting_toggle_view', {
-                        mode: nextMode,
-                        species: activeSighting?.species,
-                        location: activeSighting?.locationId,
-                      });
-                    }}
-                  >
-                    {isDebugMode ? 'Standard View' : 'Debug'}
-                  </button>
+                  {hasHdMedia && (
+                    <button
+                      type="button"
+                      className={`sightingModal__toggle${modalQualityMode === 'hd' ? ' is-active' : ''}`}
+                      onClick={handleQualityToggle}
+                    >
+                      {modalQualityMode === 'hd' ? 'Standard Quality' : 'View HD'}
+                    </button>
+                  )}
+                  {hasDebugMedia && (
+                    <button
+                      type="button"
+                      className={`sightingModal__toggle${modalViewMode === 'debug' ? ' is-active' : ''}`}
+                      onClick={handleViewModeToggle}
+                    >
+                      {modalViewMode === 'debug' ? 'Standard View' : 'Debug'}
+                    </button>
+                  )}
                 </div>
               );
             })()}
