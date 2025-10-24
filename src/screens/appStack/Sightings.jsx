@@ -66,6 +66,205 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const MOBILE_MAX_WIDTH = 768;
+
+const useIsMobileViewport = () => {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return () => {};
+    }
+
+    const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`);
+    const handleChange = (event) => {
+      setIsMobile(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleChange);
+    }
+
+    setIsMobile(mediaQuery.matches);
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else if (typeof mediaQuery.removeListener === 'function') {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, []);
+
+  return isMobile;
+};
+
+const SightingPreviewVideo = ({ src, poster, isMobile }) => {
+  const containerRef = useRef(null);
+  const videoRef = useRef(null);
+  const loadedSrcRef = useRef(null);
+  const [isInView, setIsInView] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return () => {};
+    }
+
+    if (typeof IntersectionObserver !== 'function') {
+      setIsInView(true);
+      return () => {};
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.target === containerRef.current) {
+          setIsInView(entry.isIntersecting);
+        }
+      });
+    }, { threshold: 0.15 });
+
+    observer.observe(containerRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setHasStarted(true);
+      return;
+    }
+
+    setHasStarted(false);
+  }, [isMobile, src]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      return;
+    }
+
+    if (!isInView && hasStarted) {
+      setHasStarted(false);
+    }
+  }, [isInView, hasStarted, isMobile]);
+
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl || !src) {
+      return;
+    }
+
+    const shouldLoad = isInView && (!isMobile || hasStarted);
+
+    if (shouldLoad) {
+      if (loadedSrcRef.current !== src) {
+        loadedSrcRef.current = src;
+        videoEl.src = src;
+      }
+
+      const playPromise = videoEl.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    } else if (loadedSrcRef.current) {
+      videoEl.pause();
+      videoEl.currentTime = 0;
+      videoEl.removeAttribute('src');
+      videoEl.load();
+      loadedSrcRef.current = null;
+    }
+  }, [src, isInView, isMobile, hasStarted]);
+
+  const handleStart = (event) => {
+    if (!isMobile) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.preventDefault();
+    setHasStarted(true);
+  };
+
+  const showPlayButton = isMobile && !hasStarted;
+
+  return (
+    <div className="sightingCard__videoWrapper" ref={containerRef}>
+      <video
+        ref={videoRef}
+        poster={poster || undefined}
+        muted
+        loop
+        playsInline
+        preload={isMobile ? 'none' : 'metadata'}
+      />
+      {showPlayButton && (
+        <button
+          type="button"
+          className="sightingCard__videoPlayButton"
+          onClick={handleStart}
+          aria-label="Play preview video"
+        >
+          <span className="sightingCard__videoPlayIcon" aria-hidden="true" />
+          <span className="sightingCard__videoPlayLabel">Tap to play</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
+const SightingCardMedia = ({ entry, onOpen, isMobile }) => {
+  const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
+  const debugMediaSrc = entry.debugUrl || null;
+  const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+  const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+  const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
+  const cardImageSrc = pickFirstSource(
+    entry.previewUrl,
+    entry.mediaType !== 'video' ? entry.mediaUrl : null,
+    debugImageSrc,
+  );
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpen(entry);
+    }
+  };
+
+  return (
+    <div className="sightingCard__media">
+      <div
+        role="button"
+        tabIndex={0}
+        className="sightingCard__mediaButton"
+        onClick={() => onOpen(entry)}
+        onKeyDown={handleKeyDown}
+        aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+      >
+        {entry.mediaType === 'video' && cardVideoSrc ? (
+          <SightingPreviewVideo src={cardVideoSrc} poster={cardImageSrc} isMobile={isMobile} />
+        ) : cardImageSrc ? (
+          <img src={cardImageSrc} alt={`${entry.species} sighting`} />
+        ) : (
+          <div className="sightingCard__placeholder">No preview available</div>
+        )}
+        <span className="sightingCard__badge">
+          {entry.mediaType === 'video' ? 'Video' : 'Image'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -82,6 +281,7 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const isMobileViewport = useIsMobileViewport();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -540,7 +740,8 @@ export default function Sightings() {
           key={`video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
+          autoPlay={!isMobileViewport}
+          preload={isMobileViewport ? 'none' : 'metadata'}
           playsInline
         />
       );
@@ -563,7 +764,8 @@ export default function Sightings() {
           key={`fallback-video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
-          autoPlay
+          autoPlay={!isMobileViewport}
+          preload={isMobileViewport ? 'none' : 'metadata'}
           playsInline
         />
       );
@@ -711,50 +913,11 @@ export default function Sightings() {
         <div className="sightingsPage__list">
           {filteredSightings.map((entry) => (
             <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
-              <div className="sightingCard__media">
-                <button
-                  type="button"
-                  className="sightingCard__mediaButton"
-                  onClick={() => handleOpenSighting(entry)}
-                  aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
-                >
-                  {(() => {
-                    const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                    const debugMediaSrc = entry.debugUrl || null;
-                    const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-                    const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-                    const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
-                    const cardImageSrc = pickFirstSource(
-                      entry.previewUrl,
-                      entry.mediaType !== 'video' ? entry.mediaUrl : null,
-                      debugImageSrc,
-                    );
-
-                    if (entry.mediaType === 'video' && cardVideoSrc) {
-                      return (
-                        <video
-                          src={cardVideoSrc}
-                          poster={cardImageSrc || undefined}
-                          muted
-                          loop
-                          playsInline
-                          autoPlay
-                          preload="metadata"
-                        />
-                      );
-                    }
-
-                    if (cardImageSrc) {
-                      return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
-                    }
-
-                    return <div className="sightingCard__placeholder">No preview available</div>;
-                  })()}
-                  <span className="sightingCard__badge">
-                    {entry.mediaType === 'video' ? 'Video' : 'Image'}
-                  </span>
-                </button>
-              </div>
+              <SightingCardMedia
+                entry={entry}
+                onOpen={handleOpenSighting}
+                isMobile={isMobileViewport}
+              />
               <div className="sightingCard__body">
                 <div className="sightingCard__header">
                   <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
