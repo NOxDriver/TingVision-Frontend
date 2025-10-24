@@ -11,7 +11,7 @@
   max-width: 1240px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .sightingsPage__header {
@@ -36,7 +36,7 @@
 .sightingsPage__controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -55,11 +55,18 @@
   color: #ffd6d6;
 }
 
+.sightingsPage__filterGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .sightingsPage__filter {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 220px;
+  min-width: 180px;
 }
 
 .sightingsPage__filter label {
@@ -130,6 +137,34 @@
   background: rgba(255, 140, 26, 0.32);
 }
 
+.sightingsPage__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.sightingsPage__field label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.sightingsPage__field input,
+.sightingsPage__field select {
+  background: rgba(24, 32, 16, 0.65);
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  border-radius: 10px;
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  font-size: 0.95rem;
+}
+
+.sightingsPage__field input::placeholder {
+  color: var(--color-text-muted);
+}
+
 .sightingsPage__empty {
   padding: 20px;
   border: 1px dashed rgba(203, 146, 74, 0.4);
@@ -142,7 +177,7 @@
 .sightingsPage__list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(clamp(280px, 32vw, 380px), 1fr));
-  gap: 32px;
+  gap: 20px;
 }
 
 .sightingCard {
@@ -233,21 +268,21 @@
 }
 
 .sightingCard__body {
-  padding: 28px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .sightingCard__header {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sightingCard__header h3 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
 }
 
 .sightingCard__subtitle {
@@ -260,8 +295,8 @@
 .sightingCard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  font-size: 0.98rem;
+  gap: 10px;
+  font-size: 0.95rem;
   color: var(--color-text-secondary);
 }
 
@@ -270,7 +305,7 @@
   justify-content: flex-start;
   align-items: stretch;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
   font-size: 0.9rem;
   color: var(--color-text-primary);
 }
@@ -278,7 +313,7 @@
 .sightingCard__footerGroup {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
   flex: 1 1 160px;
 }
@@ -288,7 +323,7 @@
 }
 
 .sightingCard__footerLabel {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-muted);
@@ -304,6 +339,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sightingCard__media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
 }
 
 .sightingsPage__pagination {
