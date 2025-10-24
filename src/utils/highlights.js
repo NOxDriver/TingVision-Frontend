@@ -68,6 +68,32 @@ export function formatTime(ts) {
   }
 }
 
+export function formatCountWithSpecies(species, count) {
+  const hasValidCount = typeof count === 'number' && !Number.isNaN(count) && count > 0;
+  const normalizedSpecies = typeof species === 'string' && species.trim().length > 0
+    ? species.trim()
+    : 'Unknown';
+
+  if (!hasValidCount) {
+    return normalizedSpecies;
+  }
+
+  if (count === 1) {
+    return `${count} ${normalizedSpecies}`;
+  }
+
+  const lowerSpecies = normalizedSpecies.toLowerCase();
+  let pluralSpecies = lowerSpecies;
+
+  if (lowerSpecies.endsWith('y') && lowerSpecies.length > 1 && !/[aeiou]y$/.test(lowerSpecies)) {
+    pluralSpecies = `${lowerSpecies.slice(0, -1)}ies`;
+  } else if (!lowerSpecies.endsWith('s')) {
+    pluralSpecies = `${lowerSpecies}s`;
+  }
+
+  return `${count} ${pluralSpecies}`;
+}
+
 export function buildHighlightEntry({
   category,
   speciesDoc,

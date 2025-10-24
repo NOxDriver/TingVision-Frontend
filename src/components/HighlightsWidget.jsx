@@ -13,6 +13,7 @@ import useAuthStore from '../stores/authStore';
 import {
   CATEGORY_META,
   buildHighlightEntry,
+  formatCountWithSpecies,
   formatOffset,
   formatPercent,
   formatTime,
@@ -478,11 +479,11 @@ export default function HighlightsWidget() {
                     </button>
                   </div>
                   <div className="highlightCard__body">
-                    <div className="highlightCard__label">{entry.label}</div>
+                    <div className="highlightCard__headline">
+                      <span className="highlightCard__label">{entry.label}</span>
+                      <h4 className="highlightCard__title">{formatCountWithSpecies(entry.species, entry.count)}</h4>
+                    </div>
                     <div className="highlightCard__meta">
-                      {typeof entry.count === 'number' && (
-                        <span>Count: {entry.count}</span>
-                      )}
                       {typeof entry.maxConf === 'number' && (
                         <span>Confidence: {formatPercent(entry.maxConf)}</span>
                       )}
