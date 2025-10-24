@@ -6,6 +6,7 @@ import {
   limit,
   orderBy,
   query,
+  startAfter,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import './Sightings.css';
@@ -19,6 +20,47 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 
 const SIGHTINGS_LIMIT = 50;
+
+const pluralizeSpecies = (species, count) => {
+  if (typeof species !== 'string' || species.trim().length === 0) {
+    return 'Unknown';
+  }
+
+  const trimmed = species.trim();
+  if (count === 1) {
+    return trimmed;
+  }
+
+  const words = trimmed.split(/\s+/);
+  const lastWord = words.pop();
+  const lower = lastWord.toLowerCase();
+  let pluralLower = lower;
+
+  if (/(?:s|x|z|ch|sh)$/.test(lower)) {
+    pluralLower = `${lower}es`;
+  } else if (/[bcdfghjklmnpqrstvwxyz]y$/.test(lower)) {
+    pluralLower = `${lower.slice(0, -1)}ies`;
+  } else {
+    pluralLower = `${lower}s`;
+  }
+
+  const preserveCase = lastWord[0] === lastWord[0].toUpperCase();
+  const pluralWord = preserveCase
+    ? pluralLower.charAt(0).toUpperCase() + pluralLower.slice(1)
+    : pluralLower;
+
+  words.push(pluralWord);
+  return words.join(' ');
+};
+
+const formatCountWithSpecies = (species, count) => {
+  if (typeof count !== 'number' || Number.isNaN(count)) {
+    return species || 'Unknown';
+  }
+
+  const formattedSpecies = pluralizeSpecies(species, count);
+  return `${count} ${formattedSpecies}`;
+};
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -63,11 +105,14 @@ const formatTimestampLabel = (value) => {
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const [lastDocRef, setLastDocRef] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -78,27 +123,43 @@ export default function Sightings() {
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
-  const loadSightings = useCallback(async () => {
+  const loadSightings = useCallback(async ({ append = false, cursor = null } = {}) => {
     if (!accessReady) {
       return;
     }
 
     if (!isAdmin && allowedLocationSet.size === 0) {
-      setSightings([]);
-      setError('');
-      setLoading(false);
+      if (!append) {
+        setSightings([]);
+        setError('');
+        setLoading(false);
+        setHasMore(false);
+        setLastDocRef(null);
+      }
       return;
     }
 
-    setLoading(true);
+    if (append && !cursor) {
+      return;
+    }
+
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setLastDocRef(null);
+      setHasMore(false);
+    }
     setError('');
 
     try {
-      const sightingsQuery = query(
-        collectionGroup(db, 'perSpecies'),
-        orderBy('createdAt', 'desc'),
-        limit(SIGHTINGS_LIMIT),
-      );
+      const constraints = [orderBy('createdAt', 'desc')];
+      if (cursor) {
+        constraints.push(startAfter(cursor));
+      }
+      constraints.push(limit(SIGHTINGS_LIMIT));
+
+      const sightingsQuery = query(collectionGroup(db, 'perSpecies'), ...constraints);
 
       const snapshot = await getDocs(sightingsQuery);
       if (!isMountedRef.current) {
@@ -106,7 +167,11 @@ export default function Sightings() {
       }
 
       if (snapshot.empty) {
-        setSightings([]);
+        if (!append) {
+          setSightings([]);
+        }
+        setHasMore(false);
+        setLastDocRef(null);
         return;
       }
 
@@ -161,16 +226,29 @@ export default function Sightings() {
         ? entries
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
 
-      setSightings(filteredEntries);
+      setSightings((prevEntries) => (append ? [...prevEntries, ...filteredEntries] : filteredEntries));
+
+      const docs = snapshot.docs;
+      const nextCursor = docs.length > 0 ? docs[docs.length - 1] : null;
+      setLastDocRef(nextCursor);
+      setHasMore(docs.length > 0);
     } catch (err) {
       console.error('Failed to fetch sightings', err);
       if (isMountedRef.current) {
         setError('Unable to load sightings');
-        setSightings([]);
+        if (!append) {
+          setSightings([]);
+          setHasMore(false);
+          setLastDocRef(null);
+        }
       }
     } finally {
       if (isMountedRef.current) {
-        setLoading(false);
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
       }
     }
   }, [accessReady, isAdmin, allowedLocationSet]);
@@ -407,12 +485,9 @@ export default function Sightings() {
               </div>
               <div className="sightingCard__body">
                 <div className="sightingCard__header">
-                  <h3>{entry.species}</h3>
+                  <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
                 </div>
                 <div className="sightingCard__meta">
-                  {typeof entry.count === 'number' && (
-                    <span>Count: {entry.count}</span>
-                  )}
                   {typeof entry.maxConf === 'number' && (
                     <span>Confidence: {formatPercent(entry.maxConf)}</span>
                   )}
@@ -435,6 +510,24 @@ export default function Sightings() {
             </article>
           ))}
         </div>
+        {hasMore && !loading && (
+          <div className="sightingsPage__pagination">
+            <button
+              type="button"
+              className="sightingsPage__loadMore"
+              onClick={() => {
+                if (loadingMore) {
+                  return;
+                }
+                trackButton('sightings_load_more');
+                loadSightings({ append: true, cursor: lastDocRef });
+              }}
+              disabled={loadingMore || !lastDocRef}
+            >
+              {loadingMore ? 'Loading more…' : 'Load more sightings'}
+            </button>
+          </div>
+        )}
       </div>
       {activeSighting && (
         <div

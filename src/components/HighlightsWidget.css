@@ -55,11 +55,11 @@
 .highlights__species {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   background: rgba(24, 32, 16, 0.82);
   border-radius: 18px;
   border: 1px solid rgba(203, 146, 74, 0.25);
-  padding: 20px;
+  padding: 24px;
 }
 
 .highlights__speciesHeader h3 {
@@ -70,24 +70,24 @@
 
 .highlights__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 28px;
 }
 
 .highlightCard {
-  border-radius: 14px;
+  border-radius: 18px;
   border: 1px solid var(--color-border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, rgba(255, 140, 26, 0.08), rgba(21, 31, 17, 0.92));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  background: linear-gradient(165deg, rgba(255, 140, 26, 0.12), rgba(21, 31, 17, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 22px 48px rgba(11, 15, 8, 0.38);
 }
 
 .highlightCard__media {
   position: relative;
   background: #050603;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
 }
 
 .highlightCard__mediaButton {
@@ -131,23 +131,23 @@
 }
 
 .highlightCard__body {
-  padding: 18px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .highlightCard__label {
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   color: var(--color-text-primary);
 }
 
 .highlightCard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.9rem;
+  gap: 14px;
+  font-size: 0.95rem;
   color: var(--color-text-secondary);
 }
 
