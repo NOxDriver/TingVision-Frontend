@@ -23,6 +23,7 @@ import {
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
 import { trackButton } from '../utils/analytics';
+import { isLikelyVideoUrl } from '../utils/media';
 
 const MIN_PHOTO_CONFIDENCE = 0.7;
 
@@ -39,6 +40,7 @@ export default function HighlightsWidget() {
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const [isHdEnabled, setIsHdEnabled] = useState(false);
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
@@ -48,6 +50,10 @@ export default function HighlightsWidget() {
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+
+  useEffect(() => {
+    setIsHdEnabled(false);
+  }, [activeEntry]);
 
   useEffect(() => {
     let isMounted = true;
@@ -302,39 +308,42 @@ export default function HighlightsWidget() {
     }
 
     const isVideo = activeEntry.mediaType === 'video';
+    const debugMedia = activeEntry.debugUrl || null;
+    const hasDebugMedia = Boolean(debugMedia);
+    const debugIsVideo = isLikelyVideoUrl(debugMedia);
+    const useDebugMedia = isDebugMode && hasDebugMedia;
+
     if (isVideo) {
-      const primaryVideo = activeEntry.rawMediaUrl
-        || activeEntry.videoUrl;
-      const debugVideo = activeEntry.debugVideoUrl;
-      const debugImage = activeEntry.debugPreviewUrl;
-
-      if (isDebugMode && debugVideo) {
-        return (
-          <video
-            key={`debug-${debugVideo}`}
-            src={debugVideo}
-            controls
-            autoPlay
-            playsInline
-          />
-        );
-      }
-
-      if (isDebugMode && !debugVideo && debugImage) {
+      if (useDebugMedia) {
+        if (debugIsVideo) {
+          return (
+            <video
+              key={`debug-${debugMedia}`}
+              src={debugMedia}
+              controls
+              autoPlay
+              playsInline
+            />
+          );
+        }
         return (
           <img
-            key={`debugimg-${debugImage}`}
-            src={debugImage}
+            key={`debugimg-${debugMedia}`}
+            src={debugMedia}
             alt={`${activeEntry.species} highlight debug`}
           />
         );
       }
 
-      if (primaryVideo) {
+      const primaryVideo = activeEntry.videoUrl || null;
+      const hdVideo = activeEntry.mediaType === 'video' ? activeEntry.mediaUrl || null : null;
+      const selectedVideo = primaryVideo || hdVideo || null;
+
+      if (selectedVideo) {
         return (
           <video
-            key={`primary-${primaryVideo}`}
-            src={primaryVideo}
+            key={`primary-${selectedVideo}`}
+            src={selectedVideo}
             controls
             autoPlay
             playsInline
@@ -342,23 +351,22 @@ export default function HighlightsWidget() {
         );
       }
 
-      if (debugVideo) {
-        return (
-          <video
-            key={`fallback-debug-${debugVideo}`}
-            src={debugVideo}
-            controls
-            autoPlay
-            playsInline
-          />
-        );
-      }
-
-      if (debugImage) {
+      if (hasDebugMedia) {
+        if (debugIsVideo) {
+          return (
+            <video
+              key={`fallback-debug-${debugMedia}`}
+              src={debugMedia}
+              controls
+              autoPlay
+              playsInline
+            />
+          );
+        }
         return (
           <img
-            key={`fallback-debugimg-${debugImage}`}
-            src={debugImage}
+            key={`fallback-debugimg-${debugMedia}`}
+            src={debugMedia}
             alt={`${activeEntry.species} highlight debug`}
           />
         );
@@ -377,51 +385,85 @@ export default function HighlightsWidget() {
       return <div className="highlightCard__placeholder">No preview available</div>;
     }
 
-    const rawPreview = activeEntry.rawPreviewUrl;
-    const primaryPreview = activeEntry.previewUrl;
-    const debugPreview = activeEntry.debugPreviewUrl;
-    const displayDetails = (() => {
-      if (isDebugMode && debugPreview) {
-        return { src: debugPreview, isDebug: true };
-      }
-      if (rawPreview) {
-        return { src: rawPreview, isDebug: false };
-      }
-      if (primaryPreview) {
-        return { src: primaryPreview, isDebug: false };
-      }
-      if (debugPreview) {
-        return { src: debugPreview, isDebug: true };
-      }
-      return null;
-    })();
+    const standardImage = activeEntry.previewUrl || null;
+    const hdImage = activeEntry.mediaUrl || null;
 
-    if (!displayDetails) {
-      return <div className="highlightCard__placeholder">No preview available</div>;
+    if (useDebugMedia) {
+      if (debugIsVideo) {
+        return (
+          <video
+            key={`debug-${debugMedia}`}
+            src={debugMedia}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+      return (
+        <img
+          key={`debugimg-${debugMedia}`}
+          src={debugMedia}
+          alt={`${activeEntry.species} highlight debug`}
+        />
+      );
     }
 
-    const { src: displaySrc, isDebug } = displayDetails;
-    return (
-      <img
-        key={`image-${displaySrc}`}
-        src={displaySrc}
-        alt={`${activeEntry.species} highlight ${isDebug ? 'debug ' : ''}enlarged`}
-      />
-    );
+    const hasHdImageAlternative = Boolean(hdImage && hdImage !== standardImage);
+    const shouldUseHdImage = isHdEnabled && hasHdImageAlternative;
+    const displayImage = shouldUseHdImage ? hdImage : (standardImage || hdImage || null);
+
+    if (displayImage) {
+      const isHdImage = displayImage === hdImage && hdImage;
+      const hdLabel = isHdImage ? ' HD' : '';
+      return (
+        <img
+          key={`image-${modalViewMode}-${displayImage}`}
+          src={displayImage}
+          alt={`${activeEntry.species} highlight${hdLabel} enlarged`}
+        />
+      );
+    }
+
+    if (hasDebugMedia) {
+      if (debugIsVideo) {
+        return (
+          <video
+            key={`fallback-debug-${debugMedia}`}
+            src={debugMedia}
+            controls
+            autoPlay
+            playsInline
+          />
+        );
+      }
+      return (
+        <img
+          key={`fallback-debugimg-${debugMedia}`}
+          src={debugMedia}
+          alt={`${activeEntry.species} highlight debug`}
+        />
+      );
+    }
+
+    return <div className="highlightCard__placeholder">No preview available</div>;
   };
+
+  const hasHdImageAlternative = Boolean(
+    activeEntry
+    && activeEntry.mediaType !== 'video'
+    && activeEntry.mediaUrl
+    && activeEntry.mediaUrl !== activeEntry.previewUrl,
+  );
+
+  const hasDebugMedia = Boolean(activeEntry?.debugUrl);
 
   const hasModalMedia = Boolean(
     activeEntry
-    && ((activeEntry.mediaType === 'video'
-      && (activeEntry.rawMediaUrl
-        || activeEntry.videoUrl
-        || activeEntry.debugVideoUrl
-        || activeEntry.previewUrl
-        || activeEntry.debugPreviewUrl))
-      || (activeEntry.mediaType !== 'video'
-        && (activeEntry.rawPreviewUrl
-          || activeEntry.previewUrl
-          || activeEntry.debugPreviewUrl))),
+    && (activeEntry.videoUrl
+      || activeEntry.mediaUrl
+      || activeEntry.previewUrl
+      || activeEntry.debugUrl),
   );
 
   return (
@@ -468,11 +510,17 @@ export default function HighlightsWidget() {
                       onClick={() => handleOpenEntry(entry)}
                       aria-label={`Open highlight preview for ${entry.species}`}
                     >
-                      {entry.previewUrl ? (
-                        <img src={entry.previewUrl} alt={`${entry.species} highlight`} />
-                      ) : (
-                        <div className="highlightCard__placeholder">No preview available</div>
-                      )}
+                      {(() => {
+                        const fallbackImage = entry.mediaType !== 'video' ? entry.mediaUrl : null;
+                        const debugImage = !isLikelyVideoUrl(entry.debugUrl)
+                          ? entry.debugUrl
+                          : null;
+                        const previewSrc = entry.previewUrl || fallbackImage || debugImage;
+                        if (previewSrc) {
+                          return <img src={previewSrc} alt={`${entry.species} highlight`} />;
+                        }
+                        return <div className="highlightCard__placeholder">No preview available</div>;
+                      })()}
                       <span className="highlightCard__badge">
                         {entry.mediaType === 'video' ? 'Video' : 'Image'}
                       </span>
@@ -533,7 +581,24 @@ export default function HighlightsWidget() {
             </button>
             {hasModalMedia && (
               <div className="highlightModal__controls">
-                {(activeEntry.debugVideoUrl || activeEntry.debugPreviewUrl) && (
+                {hasHdImageAlternative && (
+                  <button
+                    type="button"
+                    className={`highlightModal__toggle${isHdEnabled ? ' is-active' : ''}`}
+                    onClick={() => {
+                      const nextValue = !isHdEnabled;
+                      setIsHdEnabled(nextValue);
+                      trackButton('highlight_toggle_hd', {
+                        enabled: nextValue,
+                        species: activeEntry?.species,
+                        category: activeEntry?.category,
+                      });
+                    }}
+                  >
+                    {isHdEnabled ? 'Standard Quality' : 'View in HD'}
+                  </button>
+                )}
+                {hasDebugMedia && (
                   <button
                     type="button"
                     className={`highlightModal__toggle${isDebugMode ? ' is-active' : ''}`}
