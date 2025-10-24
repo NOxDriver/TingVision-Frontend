@@ -29,6 +29,42 @@ const formatDate = (value) => {
   }
 };
 
+const formatRelativeDateTime = (value) => {
+  if (!(value instanceof Date)) {
+    return '';
+  }
+
+  const now = new Date();
+  const target = new Date(value);
+
+  const timeLabel = formatTime(target);
+  const todayString = now.toDateString();
+  const targetString = target.toDateString();
+
+  let prefix = '';
+  if (targetString === todayString) {
+    prefix = 'Today';
+  } else {
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (targetString === yesterday.toDateString()) {
+      prefix = 'Yesterday';
+    } else {
+      prefix = formatDate(target);
+    }
+  }
+
+  if (!prefix) {
+    return timeLabel;
+  }
+
+  if (!timeLabel) {
+    return prefix;
+  }
+
+  return `${prefix} @ ${timeLabel}`;
+};
+
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -187,11 +223,12 @@ export default function Sightings() {
   };
 
   const handleConfidenceChange = (event) => {
-    const nextValue = Number(event.target.value) / 100;
-    setConfidenceThreshold(nextValue);
+    const rawValue = Number(event.target.value);
+    const boundedValue = Math.min(Math.max(rawValue, 0), 95);
+    setConfidenceThreshold(boundedValue / 100);
   };
 
-  const confidencePercentage = Math.round(confidenceThreshold * 100);
+  const confidencePercentage = Math.min(Math.max(Math.round(confidenceThreshold * 100), 0), 95);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -287,7 +324,7 @@ export default function Sightings() {
                 id="confidenceFilter"
                 type="range"
                 min="0"
-                max="100"
+                max="95"
                 step="5"
                 value={confidencePercentage}
                 onChange={handleConfidenceChange}
@@ -355,7 +392,7 @@ export default function Sightings() {
                   <span className="sightingCard__location">{entry.locationId}</span>
                   {entry.createdAt && (
                     <time dateTime={entry.createdAt.toISOString()}>
-                      {`${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}`.trim()}
+                      {formatRelativeDateTime(entry.createdAt)}
                     </time>
                   )}
                 </div>
@@ -410,7 +447,7 @@ export default function Sightings() {
               <h3>{activeSighting.species}</h3>
               {activeSighting.createdAt && (
                 <time dateTime={activeSighting.createdAt.toISOString()}>
-                  {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                  {formatRelativeDateTime(activeSighting.createdAt)}
                 </time>
               )}
             </div>

@@ -42,7 +42,7 @@ export function formatOffset(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return '—';
   }
-  return `${(value * 100).toFixed(1)}% offset`;
+  return `${(value * 100).toFixed(1)}% from center`;
 }
 
 export function normalizeDate(value) {
