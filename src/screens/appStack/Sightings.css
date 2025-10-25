@@ -494,25 +494,28 @@
   padding: 12px 20px 20px;
 }
 
+
 .sightingCard__actionsButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 140, 26, 0.6);
-  background: rgba(255, 140, 26, 0.24);
-  color: var(--color-text-primary);
-  font-weight: 500;
+  border: 1px solid #128c7e;
+  background: #25d366;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sightingCard__actionsButton:hover,
 .sightingCard__actionsButton:focus-visible {
   transform: translateY(-1px);
-  background: rgba(255, 140, 26, 0.32);
+  background: #1ebe5d;
+  box-shadow: 0 4px 10px rgba(18, 140, 126, 0.25);
 }
 
 .sightingCard__actionsButton:disabled {
