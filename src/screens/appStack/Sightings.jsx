@@ -23,6 +23,7 @@ import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
 
 const SIGHTINGS_PAGE_SIZE = 50;
+const SEND_WHATSAPP_ENDPOINT = process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT || '';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -220,6 +221,7 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [sendStatusMap, setSendStatusMap] = useState({});
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -585,6 +587,119 @@ export default function Sightings() {
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
 
+  const handleSendToWhatsApp = useCallback(
+    async (entry) => {
+      if (!entry || typeof entry.id !== 'string') {
+        return;
+      }
+
+      trackButton('sightings_send_whatsapp');
+
+      if (!SEND_WHATSAPP_ENDPOINT) {
+        setSendStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: {
+            state: 'error',
+            message: 'WhatsApp sending is not configured.',
+          },
+        }));
+        return;
+      }
+
+      if (!entry.locationId) {
+        setSendStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: {
+            state: 'error',
+            message: 'Location information is missing for this sighting.',
+          },
+        }));
+        return;
+      }
+
+      const mediaSource = pickFirstSource(entry.mediaUrl, entry.videoUrl, entry.previewUrl);
+      if (!mediaSource) {
+        setSendStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: {
+            state: 'error',
+            message: 'No media is available to send for this sighting.',
+          },
+        }));
+        return;
+      }
+
+      const payload = {
+        locationId: entry.locationId,
+        gcp_url: mediaSource,
+        media_url: mediaSource,
+        timestamp:
+          entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
+            ? entry.createdAt.toISOString()
+            : undefined,
+      };
+
+      setSendStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: { state: 'pending' },
+      }));
+
+      try {
+        const response = await fetch(SEND_WHATSAPP_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        const responseBody = contentType.includes('application/json')
+          ? await response.json().catch(() => ({}))
+          : await response.text();
+
+        if (!response.ok) {
+          const errorMessage =
+            typeof responseBody === 'string'
+              ? responseBody
+              : responseBody?.error || 'Failed to send WhatsApp alert';
+          throw new Error(errorMessage);
+        }
+
+        trackEvent('sightings_send_whatsapp_success', {
+          location: entry.locationId,
+          mediaType: entry.mediaType,
+        });
+
+        setSendStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: {
+            state: 'success',
+            message: 'Sent to WhatsApp',
+          },
+        }));
+      } catch (err) {
+        console.error('Failed to send WhatsApp alert', err);
+        const message = err instanceof Error && err.message ? err.message : 'Failed to send to WhatsApp';
+
+        trackEvent('sightings_send_whatsapp_error', {
+          location: entry.locationId,
+          mediaType: entry.mediaType,
+          error: message,
+        });
+
+        setSendStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: {
+            state: 'error',
+            message,
+          },
+        }));
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!activeSighting) {
       return;
@@ -850,79 +965,106 @@ export default function Sightings() {
         )}
 
         <div className="sightingsPage__list">
-          {filteredSightings.map((entry) => (
-            <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
-              <div className="sightingCard__media">
-                <button
-                  type="button"
-                  className="sightingCard__mediaButton"
-                  onClick={() => handleOpenSighting(entry)}
-                  aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
-                >
-                  {(() => {
-                    const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                    const debugMediaSrc = entry.debugUrl || null;
-                    const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-                    const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-                    const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
-                    const cardImageSrc = pickFirstSource(
-                      entry.previewUrl,
-                      entry.mediaType !== 'video' ? entry.mediaUrl : null,
-                      debugImageSrc,
-                    );
+          {filteredSightings.map((entry) => {
+            const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
+            const isSending = sendStatus.state === 'pending';
 
-                    if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
-                      return (
-                        <ManagedVideoPreview videoSrc={cardVideoSrc} posterSrc={cardImageSrc} />
+            return (
+              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+                <div className="sightingCard__media">
+                  <button
+                    type="button"
+                    className="sightingCard__mediaButton"
+                    onClick={() => handleOpenSighting(entry)}
+                    aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+                  >
+                    {(() => {
+                      const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
+                      const debugMediaSrc = entry.debugUrl || null;
+                      const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+                      const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
+                      const cardImageSrc = pickFirstSource(
+                        entry.previewUrl,
+                        entry.mediaType !== 'video' ? entry.mediaUrl : null,
+                        debugImageSrc,
                       );
-                    }
 
-                    if (cardImageSrc) {
-                      return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
-                    }
+                      if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
+                        return (
+                          <ManagedVideoPreview videoSrc={cardVideoSrc} posterSrc={cardImageSrc} />
+                        );
+                      }
 
-                    if (entry.mediaType === 'video' && cardVideoSrc && shouldDisableAutoplay) {
-                      return (
-                        <div className="sightingCard__placeholder">Tap to open video</div>
-                      );
-                    }
+                      if (cardImageSrc) {
+                        return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
+                      }
 
-                    return <div className="sightingCard__placeholder">No preview available</div>;
-                  })()}
-                  <span className="sightingCard__badge">
-                    {entry.mediaType === 'video' ? 'Video' : 'Image'}
-                  </span>
-                </button>
-              </div>
-              <div className="sightingCard__body">
-                <div className="sightingCard__header">
-                  <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
-                  {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
-                    <span className="sightingCard__subtitle">{entry.species}</span>
-                  )}
+                      if (entry.mediaType === 'video' && cardVideoSrc && shouldDisableAutoplay) {
+                        return (
+                          <div className="sightingCard__placeholder">Tap to open video</div>
+                        );
+                      }
+
+                      return <div className="sightingCard__placeholder">No preview available</div>;
+                    })()}
+                    <span className="sightingCard__badge">
+                      {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                    </span>
+                  </button>
                 </div>
-                <div className="sightingCard__meta">
-                  {typeof entry.maxConf === 'number' && (
-                    <span>Confidence: {formatPercent(entry.maxConf)}</span>
-                  )}
-                </div>
-                <div className="sightingCard__footer">
-                  <div className="sightingCard__footerGroup">
-                    <span className="sightingCard__footerLabel">Location</span>
-                    <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
+                <div className="sightingCard__body">
+                  <div className="sightingCard__header">
+                    <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
+                    {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
+                      <span className="sightingCard__subtitle">{entry.species}</span>
+                    )}
                   </div>
-                  {entry.createdAt && (
-                    <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
-                      <span className="sightingCard__footerLabel">Captured</span>
-                      <time dateTime={entry.createdAt.toISOString()}>
-                        {formatTimestampLabel(entry.createdAt)}
-                      </time>
+                  <div className="sightingCard__meta">
+                    {typeof entry.maxConf === 'number' && (
+                      <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                  </div>
+                  <div className="sightingCard__footer">
+                    <div className="sightingCard__footerGroup">
+                      <span className="sightingCard__footerLabel">Location</span>
+                      <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
+                    </div>
+                    {entry.createdAt && (
+                      <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
+                        <span className="sightingCard__footerLabel">Captured</span>
+                        <time dateTime={entry.createdAt.toISOString()}>
+                          {formatTimestampLabel(entry.createdAt)}
+                        </time>
+                      </div>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <div className="sightingCard__actions">
+                      <button
+                        type="button"
+                        className="sightingCard__actionsButton"
+                        onClick={() => handleSendToWhatsApp(entry)}
+                        disabled={isSending}
+                      >
+                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                      </button>
+                      {sendStatus.state === 'success' && sendStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                          {sendStatus.message}
+                        </span>
+                      )}
+                      {sendStatus.state === 'error' && sendStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                          {sendStatus.message}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         {hasSightings && hasMore && (

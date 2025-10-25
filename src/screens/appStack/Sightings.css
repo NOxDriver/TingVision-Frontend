@@ -488,22 +488,50 @@
 
 .sightingCard__actions {
   display: flex;
-  justify-content: flex-end;
-  padding: 0 20px 20px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 12px 20px 20px;
 }
 
-.sightingCard__actions a {
+.sightingCard__actionsButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  color: var(--color-accent);
-  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 140, 26, 0.6);
+  background: rgba(255, 140, 26, 0.24);
+  color: var(--color-text-primary);
   font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 
-.sightingCard__actions a:hover,
-.sightingCard__actions a:focus-visible {
-  text-decoration: underline;
+.sightingCard__actionsButton:hover,
+.sightingCard__actionsButton:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.32);
+}
+
+.sightingCard__actionsButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sightingCard__actionsMessage {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.sightingCard__actionsMessage--success {
+  color: #7dd3ae;
+}
+
+.sightingCard__actionsMessage--error {
+  color: #ff9a9a;
 }
 
 .sightingModal {
