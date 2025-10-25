@@ -450,6 +450,56 @@
   text-overflow: ellipsis;
 }
 
+.sightingCard__adminActions {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.sightingCard__actionButton {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 140, 26, 0.65);
+  background: rgba(255, 140, 26, 0.24);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.sightingCard__actionButton:hover,
+.sightingCard__actionButton:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.32);
+}
+
+.sightingCard__actionButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sightingCard__actionButton--success {
+  border-color: rgba(77, 209, 140, 0.65);
+  background: rgba(77, 209, 140, 0.25);
+  color: #d8ffe9;
+}
+
+.sightingCard__actionButton--error {
+  border-color: rgba(255, 105, 105, 0.65);
+  background: rgba(255, 105, 105, 0.25);
+  color: #ffe3e3;
+}
+
+.sightingCard__actionFeedback {
+  font-size: 0.8rem;
+  color: rgba(255, 200, 200, 0.95);
+  text-align: right;
+}
+
 .sightingCard__media video {
   width: 100%;
   height: 100%;
