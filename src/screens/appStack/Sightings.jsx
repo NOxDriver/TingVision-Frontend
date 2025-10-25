@@ -23,7 +23,9 @@ import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
 
 const SIGHTINGS_PAGE_SIZE = 50;
-const SEND_WHATSAPP_ENDPOINT = process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT || '';
+const SEND_WHATSAPP_ENDPOINT =
+  process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT ||
+  'https://send-manual-whatsapp-alert-186628423921.us-central1.run.app';
 
 const formatDate = (value) => {
   if (!value) return '';
