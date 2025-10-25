@@ -20,6 +20,7 @@ import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
+import { getManualWhatsAppEndpoint, sendManualWhatsAppAlert } from '../../utils/whatsapp';
 import usePageTitle from '../../hooks/usePageTitle';
 
 const SIGHTINGS_PAGE_SIZE = 50;
@@ -220,17 +221,21 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [whatsAppStatusMap, setWhatsAppStatusMap] = useState({});
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
   const speciesMenuRef = useRef(null);
+  const whatsAppControllersRef = useRef(new Map());
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+  const manualWhatsAppEndpoint = useMemo(() => getManualWhatsAppEndpoint(), []);
+  const canSendToWhatsApp = isAdmin && manualWhatsAppEndpoint;
 
   usePageTitle('Sightings');
 
@@ -382,8 +387,101 @@ export default function Sightings() {
 
     return () => {
       isMountedRef.current = false;
+      whatsAppControllersRef.current.forEach((controller) => {
+        if (controller && typeof controller.abort === 'function') {
+          controller.abort();
+        }
+      });
+      whatsAppControllersRef.current.clear();
     };
   }, [loadSightings]);
+
+  const handleSendToWhatsApp = useCallback(async (entry) => {
+    if (!entry || !canSendToWhatsApp) {
+      return;
+    }
+
+    const entryId = entry.id;
+    const preferredMedia = entry.mediaType === 'video'
+      ? pickFirstSource(entry.mediaUrl, entry.videoUrl, entry.previewUrl, entry.debugUrl)
+      : pickFirstSource(entry.mediaUrl, entry.previewUrl, entry.debugUrl, entry.videoUrl);
+
+    if (!preferredMedia) {
+      setWhatsAppStatusMap((prev) => ({
+        ...prev,
+        [entryId]: {
+          state: 'error',
+          message: 'No media available to share.',
+        },
+      }));
+      return;
+    }
+
+    const existingController = whatsAppControllersRef.current.get(entryId);
+    if (existingController && typeof existingController.abort === 'function') {
+      existingController.abort();
+    }
+
+    const controller = new AbortController();
+    whatsAppControllersRef.current.set(entryId, controller);
+
+    setWhatsAppStatusMap((prev) => ({
+      ...prev,
+      [entryId]: { state: 'loading' },
+    }));
+
+    trackButton('sighting_send_whatsapp', {
+      location: entry.locationId,
+      species: entry.species,
+    });
+
+    try {
+      await sendManualWhatsAppAlert({
+        mediaUrl: preferredMedia,
+        locationId: entry.locationId,
+        timestamp: entry.createdAt,
+        signal: controller.signal,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setWhatsAppStatusMap((prev) => ({
+        ...prev,
+        [entryId]: { state: 'success' },
+      }));
+
+      trackEvent('sighting_send_whatsapp_success', {
+        location: entry.locationId,
+        species: entry.species,
+      });
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
+
+      console.error('Failed to send WhatsApp alert', err);
+
+      if (isMountedRef.current) {
+        setWhatsAppStatusMap((prev) => ({
+          ...prev,
+          [entryId]: {
+            state: 'error',
+            message: err?.message || 'Failed to send WhatsApp alert.',
+          },
+        }));
+      }
+
+      trackEvent('sighting_send_whatsapp_error', {
+        location: entry.locationId,
+        species: entry.species,
+        message: err?.message,
+      });
+    } finally {
+      whatsAppControllersRef.current.delete(entryId);
+    }
+  }, [canSendToWhatsApp]);
 
   const availableLocations = useMemo(() => {
     const ids = sightings
@@ -920,6 +1018,39 @@ export default function Sightings() {
                     </div>
                   )}
                 </div>
+                {canSendToWhatsApp && (() => {
+                  const status = whatsAppStatusMap[entry.id] || {};
+                  const state = status.state;
+                  const isSending = state === 'loading';
+                  const isSuccess = state === 'success';
+                  const isError = state === 'error';
+                  const statusMessage = isError
+                    ? status.message || 'Failed to send WhatsApp alert.'
+                    : 'Sent to WhatsApp';
+                  const statusClass = [
+                    'sightingCard__actionStatus',
+                    isSuccess ? 'sightingCard__actionStatus--success' : '',
+                    isError ? 'sightingCard__actionStatus--error' : '',
+                  ].filter(Boolean).join(' ');
+
+                  return (
+                    <div className="sightingCard__actions">
+                      <button
+                        type="button"
+                        className="sightingCard__actionButton"
+                        onClick={() => handleSendToWhatsApp(entry)}
+                        disabled={isSending}
+                      >
+                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                      </button>
+                      {(isSuccess || isError) && (
+                        <span className={statusClass} aria-live="polite">
+                          {statusMessage}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </article>
           ))}
