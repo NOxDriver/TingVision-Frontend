@@ -21,8 +21,10 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
+import { isWhatsAppAlertConfigured, sendManualWhatsAppAlert } from '../../utils/whatsapp';
 
 const SIGHTINGS_PAGE_SIZE = 50;
+const WHATSAPP_ALERT_ENABLED = isWhatsAppAlertConfigured();
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -65,6 +67,18 @@ const formatTimestampLabel = (value) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const getWhatsAppMediaUrl = (entry) => {
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.mediaType === 'video') {
+    return pickFirstSource(entry.mediaUrl, entry.videoUrl, entry.previewUrl, entry.debugUrl);
+  }
+
+  return pickFirstSource(entry.mediaUrl, entry.previewUrl, entry.videoUrl, entry.debugUrl);
+};
 
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -220,19 +234,29 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [whatsAppStatuses, setWhatsAppStatuses] = useState({});
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
   const speciesMenuRef = useRef(null);
+  const statusResetTimersRef = useRef(new Map());
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
+  const canSendWhatsApp = isAdmin && WHATSAPP_ALERT_ENABLED;
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   usePageTitle('Sightings');
+
+  useEffect(() => () => {
+    statusResetTimersRef.current.forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    statusResetTimersRef.current.clear();
+  }, []);
 
   const loadSightings = useCallback(async (options = {}) => {
     const { append = false, cursor = null } = options;
@@ -513,6 +537,87 @@ export default function Sightings() {
       location: entry?.locationId,
     });
   };
+
+  const handleSendToWhatsApp = useCallback(async (entry) => {
+    if (!entry || !canSendWhatsApp) {
+      return;
+    }
+
+    const entryId = entry.id;
+    const mediaUrl = getWhatsAppMediaUrl(entry);
+    const locationIdValue = typeof entry.locationId === 'string' ? entry.locationId.trim() : '';
+    const timestampValue = entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
+      ? entry.createdAt.toISOString()
+      : (typeof entry.createdAt === 'string' ? entry.createdAt : '');
+
+    if (statusResetTimersRef.current.has(entryId)) {
+      clearTimeout(statusResetTimersRef.current.get(entryId));
+      statusResetTimersRef.current.delete(entryId);
+    }
+
+    if (!mediaUrl) {
+      setWhatsAppStatuses((prev) => ({
+        ...prev,
+        [entryId]: { status: 'error', error: 'No media available for this sighting.' },
+      }));
+      return;
+    }
+
+    if (!locationIdValue) {
+      setWhatsAppStatuses((prev) => ({
+        ...prev,
+        [entryId]: { status: 'error', error: 'Location information is missing for this sighting.' },
+      }));
+      return;
+    }
+
+    setWhatsAppStatuses((prev) => ({
+      ...prev,
+      [entryId]: { status: 'loading' },
+    }));
+
+    trackButton('sighting_send_whatsapp', {
+      mediaType: entry.mediaType,
+      location: locationIdValue,
+    });
+
+    try {
+      await sendManualWhatsAppAlert({
+        mediaUrl,
+        locationId: locationIdValue,
+        timestamp: timestampValue,
+        mediaType: entry.mediaType,
+      });
+
+      setWhatsAppStatuses((prev) => ({
+        ...prev,
+        [entryId]: { status: 'success' },
+      }));
+
+      const timerId = setTimeout(() => {
+        setWhatsAppStatuses((prev) => {
+          if (!prev[entryId] || prev[entryId].status !== 'success') {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[entryId];
+          return next;
+        });
+        statusResetTimersRef.current.delete(entryId);
+      }, 4000);
+
+      statusResetTimersRef.current.set(entryId, timerId);
+    } catch (err) {
+      console.error('Failed to send WhatsApp alert', err);
+      setWhatsAppStatuses((prev) => ({
+        ...prev,
+        [entryId]: {
+          status: 'error',
+          error: err?.message || 'Unable to send WhatsApp alert.',
+        },
+      }));
+    }
+  }, [canSendWhatsApp]);
 
   const handleCloseSighting = () => {
     setActiveSighting(null);
@@ -850,15 +955,36 @@ export default function Sightings() {
         )}
 
         <div className="sightingsPage__list">
-          {filteredSightings.map((entry) => (
-            <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
-              <div className="sightingCard__media">
-                <button
-                  type="button"
-                  className="sightingCard__mediaButton"
-                  onClick={() => handleOpenSighting(entry)}
-                  aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
-                >
+          {filteredSightings.map((entry) => {
+            const whatsAppState = whatsAppStatuses[entry.id] || {};
+            const whatsAppStatus = whatsAppState.status || 'idle';
+            const whatsAppError = whatsAppState.error || '';
+            const isSendingWhatsApp = whatsAppStatus === 'loading';
+            const actionButtonClasses = ['sightingCard__actionButton'];
+            if (whatsAppStatus === 'success') {
+              actionButtonClasses.push('sightingCard__actionButton--success');
+            } else if (whatsAppStatus === 'error') {
+              actionButtonClasses.push('sightingCard__actionButton--error');
+            }
+
+            let actionButtonLabel = 'Send to WhatsApp';
+            if (isSendingWhatsApp) {
+              actionButtonLabel = 'Sending...';
+            } else if (whatsAppStatus === 'success') {
+              actionButtonLabel = 'Sent!';
+            } else if (whatsAppStatus === 'error') {
+              actionButtonLabel = 'Try again';
+            }
+
+            return (
+              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+                <div className="sightingCard__media">
+                  <button
+                    type="button"
+                    className="sightingCard__mediaButton"
+                    onClick={() => handleOpenSighting(entry)}
+                    aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+                  >
                   {(() => {
                     const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
                     const debugMediaSrc = entry.debugUrl || null;
@@ -920,9 +1046,27 @@ export default function Sightings() {
                     </div>
                   )}
                 </div>
+                {canSendWhatsApp && (
+                  <div className="sightingCard__adminActions">
+                    <button
+                      type="button"
+                      className={actionButtonClasses.join(' ')}
+                      onClick={() => handleSendToWhatsApp(entry)}
+                      disabled={isSendingWhatsApp}
+                    >
+                      {actionButtonLabel}
+                    </button>
+                    {whatsAppStatus === 'error' && whatsAppError && (
+                      <p className="sightingCard__actionFeedback" role="alert">
+                        {whatsAppError}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         {hasSightings && hasMore && (
