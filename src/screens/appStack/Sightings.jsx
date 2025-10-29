@@ -21,6 +21,12 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
+import { FiEdit2 } from 'react-icons/fi';
+import {
+  applySightingCorrection,
+  describeSpeciesChange,
+  buildCorrectionNote,
+} from '../../utils/sightings/corrections';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
@@ -224,11 +230,18 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [editTarget, setEditTarget] = useState(null);
+  const [editMode, setEditMode] = useState('animal');
+  const [editSpeciesInput, setEditSpeciesInput] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
+  const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
@@ -237,6 +250,21 @@ export default function Sightings() {
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   usePageTitle('Sightings');
+
+  const actorName = useMemo(() => {
+    if (!user) {
+      return 'Admin';
+    }
+
+    const candidates = [user.displayName, user.email, user.phoneNumber];
+    const preferred = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+
+    if (preferred) {
+      return preferred.trim();
+    }
+
+    return typeof user.uid === 'string' && user.uid.length > 0 ? user.uid : 'Admin';
+  }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
     const { append = false, cursor = null } = options;
@@ -330,6 +358,12 @@ export default function Sightings() {
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
+            meta: {
+              parentPath: parentRef.path,
+              speciesDocPath: docSnap.ref.path,
+              parentDoc,
+              speciesDoc,
+            },
           };
         })
         .filter(Boolean)
@@ -588,6 +622,174 @@ export default function Sightings() {
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
+
+  const editChange = useMemo(() => {
+    if (!editTarget) {
+      return null;
+    }
+    return describeSpeciesChange({ mode: editMode, species: editSpeciesInput });
+  }, [editTarget, editMode, editSpeciesInput]);
+
+  const editNotePreview = useMemo(() => {
+    if (!editTarget || !editChange) {
+      return '';
+    }
+    return buildCorrectionNote({
+      actor: actorName,
+      previousSpecies: editTarget.species,
+      nextLabel: editChange.label,
+      locationId: editTarget.locationId,
+      folderLabel: editChange.folderLabel,
+      includeTimestamp: false,
+    });
+  }, [editTarget, editChange, actorName]);
+
+  const handleOpenEditModal = useCallback((entry) => {
+    if (!entry) {
+      return;
+    }
+
+    const normalizedSpecies = typeof entry.species === 'string' ? entry.species.trim() : '';
+    const initialMode = normalizedSpecies.toLowerCase() === 'background' ? 'background' : 'animal';
+
+    setEditTarget(entry);
+    setEditMode(initialMode);
+    setEditSpeciesInput(initialMode === 'animal' ? normalizedSpecies : '');
+    setEditError('');
+  }, []);
+
+  const handleCloseEditModal = useCallback(() => {
+    if (editSaving) {
+      return;
+    }
+    setEditTarget(null);
+    setEditMode('animal');
+    setEditSpeciesInput('');
+    setEditError('');
+  }, [editSaving]);
+
+  const handleEditModeChange = useCallback((event) => {
+    const nextMode = event.target.value;
+    setEditMode(nextMode);
+    if (nextMode === 'background') {
+      setEditSpeciesInput('');
+    }
+  }, []);
+
+  const handleDismissFeedback = useCallback(() => {
+    setEditFeedback({ type: '', text: '' });
+  }, []);
+
+  const handleSubmitEdit = useCallback(
+    async (event) => {
+      event.preventDefault();
+      if (!editTarget) {
+        return;
+      }
+
+      if (editMode === 'animal') {
+        const trimmed = editSpeciesInput.trim();
+        if (!trimmed) {
+          setEditError('Please enter a species name.');
+          return;
+        }
+      }
+
+      setEditSaving(true);
+      setEditError('');
+
+      try {
+        const change = describeSpeciesChange({ mode: editMode, species: editSpeciesInput });
+        const finalNote = buildCorrectionNote({
+          actor: actorName,
+          previousSpecies: editTarget.species,
+          nextLabel: change.label,
+          locationId: editTarget.locationId,
+          folderLabel: change.folderLabel,
+        });
+
+        const result = await applySightingCorrection({
+          entry: editTarget,
+          mode: editMode,
+          nextSpeciesName: editSpeciesInput,
+          actor: actorName,
+          note: finalNote,
+          change,
+        });
+
+        setSightings((prev) =>
+          prev.map((item) => {
+            if (item.id !== editTarget.id) {
+              return item;
+            }
+
+            const nextMeta = {
+              ...(item.meta || {}),
+              parentDoc: {
+                ...(item.meta?.parentDoc || {}),
+                ...result.parentDocUpdates,
+              },
+              speciesDoc: {
+                ...(item.meta?.speciesDoc || {}),
+                ...(result.speciesDocUpdates || {}),
+              },
+            };
+
+            return {
+              ...item,
+              species: result.change.label,
+              mediaUrl: result.parentDocUpdates.mediaUrl ?? item.mediaUrl,
+              previewUrl: result.parentDocUpdates.previewUrl ?? item.previewUrl,
+              videoUrl: result.parentDocUpdates.videoUrl ?? item.videoUrl,
+              debugUrl: result.parentDocUpdates.debugUrl ?? item.debugUrl,
+              meta: nextMeta,
+            };
+          }),
+        );
+
+        setActiveSighting((prev) => {
+          if (!prev || prev.id !== editTarget.id) {
+            return prev;
+          }
+
+          const nextMeta = prev.meta
+            ? {
+                ...prev.meta,
+                parentDoc: {
+                  ...(prev.meta.parentDoc || {}),
+                  ...result.parentDocUpdates,
+                },
+                speciesDoc: {
+                  ...(prev.meta.speciesDoc || {}),
+                  ...(result.speciesDocUpdates || {}),
+                },
+              }
+            : prev.meta;
+
+          return {
+            ...prev,
+            species: result.change.label,
+            mediaUrl: result.parentDocUpdates.mediaUrl ?? prev.mediaUrl,
+            previewUrl: result.parentDocUpdates.previewUrl ?? prev.previewUrl,
+            videoUrl: result.parentDocUpdates.videoUrl ?? prev.videoUrl,
+            debugUrl: result.parentDocUpdates.debugUrl ?? prev.debugUrl,
+            meta: nextMeta,
+          };
+        });
+
+        setEditFeedback({ type: 'success', text: `Sighting corrected to ${result.change.label}.` });
+        setEditTarget(null);
+        setEditMode('animal');
+        setEditSpeciesInput('');
+      } catch (err) {
+        console.error('Failed to correct sighting', err);
+        setEditError(err?.message || 'Unable to update sighting.');
+      } finally {
+        setEditSaving(false);
+      }
+    },
+    [editTarget, editMode, editSpeciesInput, actorName],
+  );
 
   const handleSendToWhatsApp = useCallback(
     async (entry) => {
@@ -954,6 +1156,22 @@ export default function Sightings() {
           </div>
         </header>
 
+        {editFeedback.text && (
+          <div
+            className={`sightingsPage__alert sightingsPage__alert--${editFeedback.type === 'error' ? 'error' : 'success'}`}
+          >
+            <span>{editFeedback.text}</span>
+            <button
+              type="button"
+              className="sightingsPage__alertClose"
+              onClick={handleDismissFeedback}
+              aria-label="Dismiss correction message"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {noAssignedLocations && (
           <div className="sightingsPage__empty">No locations have been assigned to your account yet.</div>
         )}
@@ -970,7 +1188,6 @@ export default function Sightings() {
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
-
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1043,14 +1260,26 @@ export default function Sightings() {
                   </div>
                   {isAdmin && (
                     <div className="sightingCard__actions">
-                      <button
-                        type="button"
-                        className="sightingCard__actionsButton"
-                        onClick={() => handleSendToWhatsApp(entry)}
-                        disabled={isSending}
-                      >
-                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                      </button>
+                      <div className="sightingCard__actionsRow">
+                        <button
+                          type="button"
+                          className="sightingCard__editButton"
+                          onClick={() => handleOpenEditModal(entry)}
+                          disabled={editSaving}
+                          aria-label={`Edit sighting for ${entry.species}`}
+                          title="Edit sighting"
+                        >
+                          <FiEdit2 />
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton"
+                          onClick={() => handleSendToWhatsApp(entry)}
+                          disabled={isSending}
+                        >
+                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                      </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
                           {sendStatus.message}
@@ -1085,11 +1314,117 @@ export default function Sightings() {
           </div>
         )}
       </div>
-            {activeSighting && (
-              <div
-                className="sightingModal"
-                role="dialog"
-                aria-modal="true"
+
+      {editTarget && (
+        <div
+          className="sightingEditModal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sightingEditModalTitle"
+          onClick={handleCloseEditModal}
+        >
+          <div
+            className="sightingEditModal__content"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="sightingEditModal__close"
+              onClick={handleCloseEditModal}
+              disabled={editSaving}
+            >
+              Close
+            </button>
+            <h2 id="sightingEditModalTitle" className="sightingEditModal__title">Edit sighting</h2>
+            <form onSubmit={handleSubmitEdit} className="sightingEditModal__form">
+              <div className="sightingEditModal__section">
+                <span className="sightingEditModal__label">Current classification</span>
+                <p className="sightingEditModal__current">{editTarget.species || 'Unknown'}</p>
+              </div>
+              <div className="sightingEditModal__section">
+                <span className="sightingEditModal__label">Update classification</span>
+                <div className="sightingEditModal__radioGroup">
+                  <label>
+                    <input
+                      type="radio"
+                      name="sightingEditMode"
+                      value="animal"
+                      checked={editMode === 'animal'}
+                      onChange={handleEditModeChange}
+                      disabled={editSaving}
+                    />
+                    <span>Animal</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="sightingEditMode"
+                      value="background"
+                      checked={editMode === 'background'}
+                      onChange={handleEditModeChange}
+                      disabled={editSaving}
+                    />
+                    <span>Background</span>
+                  </label>
+                </div>
+              </div>
+              {editMode === 'animal' && (
+                <div className="sightingEditModal__section">
+                  <label className="sightingEditModal__label" htmlFor="sightingEditSpecies">
+                    Species
+                  </label>
+                  <input
+                    id="sightingEditSpecies"
+                    type="text"
+                    value={editSpeciesInput}
+                    onChange={(event) => setEditSpeciesInput(event.target.value)}
+                    className="sightingEditModal__input"
+                    placeholder="Enter species name"
+                    list="sightingEditSpeciesOptions"
+                    disabled={editSaving}
+                    required
+                  />
+                  <datalist id="sightingEditSpeciesOptions">
+                    {availableSpecies.map(({ label }) => (
+                      <option key={label} value={label} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+              <div className="sightingEditModal__section">
+                <span className="sightingEditModal__label">Notes</span>
+                <p className="sightingEditModal__note">
+                  {editNotePreview || 'A note describing this correction will be recorded.'}
+                </p>
+              </div>
+              {editError && <p className="sightingEditModal__error">{editError}</p>}
+              <div className="sightingEditModal__actions">
+                <button
+                  type="button"
+                  className="sightingEditModal__secondary"
+                  onClick={handleCloseEditModal}
+                  disabled={editSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="sightingEditModal__primary"
+                  disabled={editSaving}
+                >
+                  {editSaving ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {activeSighting && (
+        <div
+          className="sightingModal"
+          role="dialog"
+          aria-modal="true"
           onClick={handleCloseSighting}
         >
           <div
