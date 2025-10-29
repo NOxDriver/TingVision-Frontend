@@ -524,6 +524,45 @@
   transform: none;
 }
 
+.sightingCard__actionsRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sightingCard__editButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  background: rgba(29, 41, 20, 0.75);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sightingCard__editButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sightingCard__editButton:hover,
+.sightingCard__editButton:focus-visible {
+  background: rgba(255, 140, 26, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 140, 26, 0.2);
+}
+
+.sightingCard__editButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .sightingCard__actionsMessage {
   font-size: 0.85rem;
   color: var(--color-text-secondary);
@@ -535,6 +574,46 @@
 
 .sightingCard__actionsMessage--error {
   color: #ff9a9a;
+}
+
+.sightingsPage__alert {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+}
+
+.sightingsPage__alert--success {
+  background: rgba(77, 209, 140, 0.18);
+  border-color: rgba(77, 209, 140, 0.45);
+  color: #c4f1d4;
+}
+
+.sightingsPage__alert--error {
+  background: rgba(255, 111, 111, 0.18);
+  border-color: rgba(255, 111, 111, 0.55);
+  color: #ffd6d6;
+}
+
+.sightingsPage__alertClose {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingsPage__alertClose:hover,
+.sightingsPage__alertClose:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .sightingModal {
@@ -611,6 +690,162 @@
 .sightingModal__placeholder {
   color: var(--color-text-muted);
   font-size: 0.95rem;
+}
+
+.sightingEditModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 15, 8, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1100;
+}
+
+.sightingEditModal__content {
+  background: rgba(24, 32, 16, 0.95);
+  border-radius: 18px;
+  padding: 28px;
+  width: min(520px, 90vw);
+  color: var(--color-text-primary);
+  box-shadow: 0 28px 48px rgba(11, 15, 8, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sightingEditModal__close {
+  align-self: flex-end;
+  border: 1px solid rgba(255, 111, 111, 0.35);
+  background: rgba(255, 111, 111, 0.16);
+  color: #ffd6d6;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.sightingEditModal__close:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sightingEditModal__title {
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.sightingEditModal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sightingEditModal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sightingEditModal__label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.sightingEditModal__current {
+  margin: 0;
+  font-weight: 600;
+}
+
+.sightingEditModal__radioGroup {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sightingEditModal__radioGroup label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+}
+
+.sightingEditModal__input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(203, 146, 74, 0.35);
+  background: rgba(9, 13, 7, 0.75);
+  color: var(--color-text-primary);
+}
+
+.sightingEditModal__input:disabled {
+  opacity: 0.6;
+}
+
+.sightingEditModal__note {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  background: rgba(255, 140, 26, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+  line-height: 1.4;
+}
+
+.sightingEditModal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.sightingEditModal__primary,
+.sightingEditModal__secondary {
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingEditModal__primary {
+  background: rgba(255, 140, 26, 0.28);
+  border-color: rgba(255, 140, 26, 0.65);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.sightingEditModal__primary:hover,
+.sightingEditModal__primary:focus-visible {
+  background: rgba(255, 140, 26, 0.4);
+  transform: translateY(-1px);
+}
+
+.sightingEditModal__secondary {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.35);
+  color: var(--color-text-secondary);
+}
+
+.sightingEditModal__secondary:hover,
+.sightingEditModal__secondary:focus-visible {
+  background: rgba(148, 163, 184, 0.2);
+  transform: translateY(-1px);
+}
+
+.sightingEditModal__primary:disabled,
+.sightingEditModal__secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sightingEditModal__error {
+  margin: 0;
+  color: #ff9a9a;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {
