@@ -389,9 +389,41 @@
   gap: 4px;
 }
 
+.sightingCard__headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .sightingCard__header h3 {
   margin: 0;
   font-size: 1.25rem;
+}
+
+.sightingCard__iconButton {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sightingCard__iconButton:hover,
+.sightingCard__iconButton:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.sightingCard__iconButton svg {
+  width: 18px;
+  height: 18px;
 }
 
 .sightingCard__subtitle {
@@ -535,6 +567,179 @@
 
 .sightingCard__actionsMessage--error {
   color: #ff9a9a;
+}
+
+.sightingEditModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 15, 8, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1100;
+}
+
+.sightingEditModal__content {
+  width: min(520px, 95vw);
+  background: rgba(21, 31, 17, 0.96);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--color-text-primary);
+  box-shadow: 0 30px 60px rgba(11, 15, 8, 0.55);
+}
+
+.sightingEditModal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sightingEditModal__header h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.sightingEditModal__close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sightingEditModal__close:hover,
+.sightingEditModal__close:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.sightingEditModal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sightingEditModal__fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sightingEditModal__fieldset legend {
+  padding: 0 6px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.sightingEditModal__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.sightingEditModal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sightingEditModal__field label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.sightingEditModal__field input,
+.sightingEditModal__field textarea {
+  background: rgba(11, 15, 8, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.sightingEditModal__field input:focus-visible,
+.sightingEditModal__field textarea:focus-visible {
+  outline: none;
+  border-color: rgba(255, 204, 102, 0.6);
+  box-shadow: 0 0 0 2px rgba(255, 204, 102, 0.25);
+}
+
+.sightingEditModal__message {
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.sightingEditModal__message--error {
+  background: rgba(255, 99, 99, 0.18);
+  color: #ffb4b4;
+}
+
+.sightingEditModal__message--success {
+  background: rgba(77, 182, 106, 0.2);
+  color: #bff0d0;
+}
+
+.sightingEditModal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.sightingEditModal__button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #37b679, #25d366);
+  color: #032412;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.sightingEditModal__button:hover,
+.sightingEditModal__button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 211, 102, 0.35);
+  outline: none;
+}
+
+.sightingEditModal__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.sightingEditModal__button--secondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--color-text-secondary);
+}
+
+.sightingEditModal__button--secondary:hover,
+.sightingEditModal__button--secondary:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-primary);
 }
 
 .sightingModal {
