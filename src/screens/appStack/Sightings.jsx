@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import './Sightings.css';
+import { FiEdit2 } from 'react-icons/fi';
 import {
   buildHighlightEntry,
   formatCountWithSpecies,
@@ -21,6 +22,7 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
+import { applySightingCorrection } from '../../utils/sightings';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
@@ -207,6 +209,148 @@ const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
   );
 };
 
+const EditSightingModal = ({
+  isOpen,
+  entry,
+  formState,
+  onFormChange,
+  onClose,
+  onSubmit,
+  isSubmitting,
+  error,
+}) => {
+  if (!isOpen || !entry) {
+    return null;
+  }
+
+  const isBackground = formState.classification === 'background';
+  const radioName = `edit-classification-${entry.id}`;
+
+  const handleOverlayClick = () => {
+    if (!isSubmitting) {
+      onClose();
+    }
+  };
+
+  const handleClassificationChange = (event) => {
+    const { value } = event.target;
+    if (value === 'background') {
+      onFormChange({ classification: 'background', species: '' });
+    } else {
+      onFormChange({ classification: 'animal' });
+    }
+  };
+
+  const handleSpeciesChange = (event) => {
+    onFormChange({ species: event.target.value });
+  };
+
+  const handleNotesChange = (event) => {
+    onFormChange({ notes: event.target.value });
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
+    onSubmit();
+  };
+
+  return (
+    <div className="editSightingModal" role="dialog" aria-modal="true" onClick={handleOverlayClick}>
+      <div
+        className="editSightingModal__content"
+        role="document"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="editSightingModal__header">
+          <h2>Edit sighting</h2>
+          <button
+            type="button"
+            className="editSightingModal__close"
+            onClick={onClose}
+            aria-label="Close edit sighting dialog"
+            disabled={isSubmitting}
+          >
+            Close
+          </button>
+        </header>
+        <form className="editSightingModal__form" onSubmit={handleSubmit}>
+          <div className="editSightingModal__fieldGroup">
+            <span className="editSightingModal__label">Classification</span>
+            <label className="editSightingModal__radio">
+              <input
+                type="radio"
+                name={radioName}
+                value="animal"
+                checked={!isBackground}
+                onChange={handleClassificationChange}
+                disabled={isSubmitting}
+              />
+              <span>Animal</span>
+            </label>
+            <label className="editSightingModal__radio">
+              <input
+                type="radio"
+                name={radioName}
+                value="background"
+                checked={isBackground}
+                onChange={handleClassificationChange}
+                disabled={isSubmitting}
+              />
+              <span>Background</span>
+            </label>
+          </div>
+          {!isBackground && (
+            <div className="editSightingModal__field">
+              <label htmlFor={`editSightingSpecies-${entry.id}`}>Species name</label>
+              <input
+                id={`editSightingSpecies-${entry.id}`}
+                type="text"
+                value={formState.species}
+                onChange={handleSpeciesChange}
+                placeholder="Enter species name"
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+          )}
+          <div className="editSightingModal__field">
+            <label htmlFor={`editSightingNotes-${entry.id}`}>Notes</label>
+            <textarea
+              id={`editSightingNotes-${entry.id}`}
+              value={formState.notes}
+              onChange={handleNotesChange}
+              placeholder="Add context for this correction"
+              disabled={isSubmitting}
+              rows={3}
+            />
+          </div>
+          {error && <p className="editSightingModal__error">{error}</p>}
+          <div className="editSightingModal__footer">
+            <button
+              type="button"
+              className="editSightingModal__secondary"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="editSightingModal__primary"
+              disabled={isSubmitting || (!isBackground && formState.species.trim().length === 0)}
+            >
+              {isSubmitting ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -224,19 +368,145 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [editStatusMap, setEditStatusMap] = useState({});
+  const [editDialog, setEditDialog] = useState({ isOpen: false, target: null });
+  const [editFormState, setEditFormState] = useState({ classification: 'animal', species: '', notes: '' });
+  const [editError, setEditError] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
+  const profile = useAuthStore((state) => state.profile);
   const speciesMenuRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+  const performerLabel = useMemo(() => {
+    if (!profile) {
+      return '';
+    }
+
+    if (typeof profile.fullName === 'string' && profile.fullName.trim().length > 0) {
+      return profile.fullName.trim();
+    }
+
+    const nameParts = [profile.firstName, profile.lastName]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+    if (nameParts.length > 0) {
+      return nameParts.join(' ');
+    }
+
+    if (typeof profile.email === 'string' && profile.email.length > 0) {
+      return profile.email;
+    }
+
+    if (typeof profile.id === 'string' && profile.id.length > 0) {
+      return profile.id;
+    }
+
+    return '';
+  }, [profile]);
 
   usePageTitle('Sightings');
+
+  const handleEditFormChange = useCallback((changes) => {
+    setEditFormState((prev) => ({
+      ...prev,
+      ...changes,
+    }));
+  }, []);
+
+  const handleOpenEditSighting = useCallback((entry) => {
+    if (!entry) {
+      return;
+    }
+
+    const classification = entry?.extra?.isBackground || entry?.parentDocData?.isBackground
+      ? 'background'
+      : 'animal';
+
+    setEditFormState({
+      classification,
+      species: classification === 'background' ? '' : entry.species || '',
+      notes: '',
+    });
+    setEditError('');
+    setEditDialog({ isOpen: true, target: entry });
+  }, []);
+
+  const handleCloseEditSighting = useCallback(() => {
+    setEditDialog({ isOpen: false, target: null });
+    setEditFormState({ classification: 'animal', species: '', notes: '' });
+    setEditError('');
+    setIsSavingEdit(false);
+  }, []);
+
+  const handleSubmitEditSighting = useCallback(async () => {
+    if (!editDialog.target) {
+      return;
+    }
+
+    const targetEntry = editDialog.target;
+    const classification = editFormState.classification === 'background' ? 'background' : 'animal';
+    const speciesValue = classification === 'background' ? '' : editFormState.species;
+
+    if (classification !== 'background' && (!speciesValue || speciesValue.trim().length === 0)) {
+      setEditError('Please provide a species name.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError('');
+    setEditStatusMap((prev) => ({
+      ...prev,
+      [targetEntry.id]: { state: 'pending', message: 'Saving changes…' },
+    }));
+
+    try {
+      const { updatedEntry } = await applySightingCorrection({
+        entry: targetEntry,
+        parentDocRef: targetEntry.parentDocRef,
+        speciesDocRef: targetEntry.speciesDocRef,
+        parentDocData: targetEntry.parentDocData,
+        speciesDocData: targetEntry.speciesDocData,
+        newSpecies: speciesValue,
+        classification,
+        notes: editFormState.notes,
+        performedBy: performerLabel,
+      });
+
+      trackEvent('sighting_edit', {
+        classification,
+        location: updatedEntry.locationId,
+        parentId: updatedEntry.parentId,
+        species: updatedEntry.species,
+      });
+
+      setSightings((prev) => prev.map((item) => (item.id === updatedEntry.id ? { ...item, ...updatedEntry } : item)));
+      setActiveSighting((prev) => (prev && prev.id === updatedEntry.id ? { ...prev, ...updatedEntry } : prev));
+      setEditStatusMap((prev) => ({
+        ...prev,
+        [updatedEntry.id]: { state: 'success', message: 'Sighting updated' },
+      }));
+      setEditDialog({ isOpen: false, target: null });
+      setEditFormState({ classification: 'animal', species: '', notes: '' });
+    } catch (err) {
+      console.error('Failed to update sighting', err);
+      const message = err?.message || 'Unable to update sighting';
+      setEditError(message);
+      setEditStatusMap((prev) => ({
+        ...prev,
+        [targetEntry.id]: { state: 'error', message },
+      }));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }, [editDialog, editFormState, performerLabel]);
 
   const loadSightings = useCallback(async (options = {}) => {
     const { append = false, cursor = null } = options;
@@ -330,6 +600,10 @@ export default function Sightings() {
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
+            parentDocRef: parentRef,
+            speciesDocRef: docSnap.ref,
+            parentDocData: { ...parentDoc },
+            speciesDocData: { ...speciesDoc },
           };
         })
         .filter(Boolean)
@@ -970,6 +1244,9 @@ export default function Sightings() {
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
+            const editStatus = editStatusMap[entry.id] || { state: 'idle', message: '' };
+            const isEditingThisEntry = editDialog.target?.id === entry.id && isSavingEdit;
+            const isEditBusy = editStatus.state === 'pending' || isEditingThisEntry;
 
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
@@ -1043,14 +1320,26 @@ export default function Sightings() {
                   </div>
                   {isAdmin && (
                     <div className="sightingCard__actions">
-                      <button
-                        type="button"
-                        className="sightingCard__actionsButton"
-                        onClick={() => handleSendToWhatsApp(entry)}
-                        disabled={isSending}
-                      >
-                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                      </button>
+                      <div className="sightingCard__actionsRow">
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton"
+                          onClick={() => handleSendToWhatsApp(entry)}
+                          disabled={isSending}
+                        >
+                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__editButton"
+                          onClick={() => handleOpenEditSighting(entry)}
+                          disabled={isEditBusy}
+                          aria-label={`Edit sighting for ${entry.species}`}
+                          title="Edit sighting"
+                        >
+                          <FiEdit2 aria-hidden="true" />
+                        </button>
+                      </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
                           {sendStatus.message}
@@ -1059,6 +1348,19 @@ export default function Sightings() {
                       {sendStatus.state === 'error' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
                           {sendStatus.message}
+                        </span>
+                      )}
+                      {editStatus.message && (
+                        <span
+                          className={`sightingCard__actionsMessage${
+                            editStatus.state === 'success'
+                              ? ' sightingCard__actionsMessage--success'
+                              : editStatus.state === 'error'
+                                ? ' sightingCard__actionsMessage--error'
+                                : ''
+                          }`}
+                        >
+                          {editStatus.message}
                         </span>
                       )}
                     </div>
@@ -1085,11 +1387,21 @@ export default function Sightings() {
           </div>
         )}
       </div>
-            {activeSighting && (
-              <div
-                className="sightingModal"
-                role="dialog"
-                aria-modal="true"
+      <EditSightingModal
+        isOpen={editDialog.isOpen}
+        entry={editDialog.target}
+        formState={editFormState}
+        onFormChange={handleEditFormChange}
+        onClose={handleCloseEditSighting}
+        onSubmit={handleSubmitEditSighting}
+        isSubmitting={isSavingEdit}
+        error={editError}
+      />
+      {activeSighting && (
+        <div
+          className="sightingModal"
+          role="dialog"
+          aria-modal="true"
           onClick={handleCloseSighting}
         >
           <div
