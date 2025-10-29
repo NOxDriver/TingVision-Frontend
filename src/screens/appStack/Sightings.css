@@ -494,6 +494,12 @@
   padding: 12px 20px 20px;
 }
 
+.sightingCard__actionsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 
 .sightingCard__actionsButton {
   display: inline-flex;
@@ -522,6 +528,35 @@
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.sightingCard__editButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(203, 146, 74, 0.5);
+  background: rgba(18, 26, 14, 0.9);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sightingCard__editButton:hover,
+.sightingCard__editButton:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.22);
+  box-shadow: 0 4px 12px rgba(11, 15, 8, 0.45);
+}
+
+.sightingCard__editButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .sightingCard__actionsMessage {
@@ -611,6 +646,201 @@
 .sightingModal__placeholder {
   color: var(--color-text-muted);
   font-size: 0.95rem;
+}
+
+.editSightingModal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 15, 8, 0.8);
+  z-index: 1200;
+}
+
+.editSightingModal__content {
+  background: rgba(18, 26, 14, 0.95);
+  border: 1px solid rgba(203, 146, 74, 0.4);
+  border-radius: 18px;
+  width: min(520px, 95vw);
+  box-shadow: 0 22px 48px rgba(11, 15, 8, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+  color: var(--color-text-primary);
+}
+
+.editSightingModal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.editSightingModal__header h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.editSightingModal__close {
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  background: rgba(29, 41, 20, 0.75);
+  color: var(--color-text-primary);
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editSightingModal__close:hover,
+.editSightingModal__close:focus-visible {
+  background: rgba(255, 140, 26, 0.24);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(11, 15, 8, 0.4);
+}
+
+.editSightingModal__close:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.editSightingModal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.editSightingModal__fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editSightingModal__label {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.editSightingModal__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+}
+
+.editSightingModal__radio input {
+  accent-color: var(--color-accent, #ff8c1a);
+}
+
+.editSightingModal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editSightingModal__field label {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.editSightingModal__field input,
+.editSightingModal__field textarea {
+  background: rgba(24, 32, 16, 0.75);
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editSightingModal__field input:focus,
+.editSightingModal__field textarea:focus {
+  border-color: rgba(255, 140, 26, 0.6);
+  box-shadow: 0 0 0 2px rgba(255, 140, 26, 0.2);
+  outline: none;
+}
+
+.editSightingModal__field input:disabled,
+.editSightingModal__field textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.editSightingModal__field textarea {
+  min-height: 96px;
+}
+
+.editSightingModal__error {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #ff9a9a;
+}
+
+.editSightingModal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.editSightingModal__primary,
+.editSightingModal__secondary {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 146, 74, 0.5);
+  background: rgba(24, 32, 16, 0.85);
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editSightingModal__secondary:hover,
+.editSightingModal__secondary:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(203, 146, 74, 0.22);
+  box-shadow: 0 8px 18px rgba(11, 15, 8, 0.4);
+}
+
+.editSightingModal__primary {
+  border-color: rgba(255, 140, 26, 0.6);
+  background: rgba(255, 140, 26, 0.3);
+  font-weight: 600;
+}
+
+.editSightingModal__primary:hover,
+.editSightingModal__primary:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.4);
+  box-shadow: 0 12px 22px rgba(11, 15, 8, 0.45);
+}
+
+.editSightingModal__primary:disabled,
+.editSightingModal__secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 600px) {
+  .editSightingModal {
+    padding: 16px;
+  }
+
+  .editSightingModal__content {
+    padding: 20px;
+  }
 }
 
 @media (max-width: 768px) {
