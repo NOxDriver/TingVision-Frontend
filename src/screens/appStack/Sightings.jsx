@@ -8,7 +8,8 @@ import {
   query,
   startAfter,
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions as firebaseFunctions } from '../../firebase';
 import './Sightings.css';
 import {
   buildHighlightEntry,
@@ -68,6 +69,18 @@ const formatTimestampLabel = (value) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const slugify = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+};
 
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -224,6 +237,13 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [editingSighting, setEditingSighting] = useState(null);
+  const [correctionForm, setCorrectionForm] = useState({
+    mode: 'animal',
+    species: '',
+    additionalNotes: '',
+  });
+  const [correctionState, setCorrectionState] = useState({ status: 'idle', error: '', message: '' });
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -310,7 +330,7 @@ export default function Sightings() {
       const parentDataMap = new Map();
       parentSnaps.forEach((snap) => {
         if (!snap.exists()) return;
-        parentDataMap.set(snap.ref.path, { id: snap.id, ...snap.data() });
+        parentDataMap.set(snap.ref.path, { id: snap.id, __docPath: snap.ref.path, ...snap.data() });
       });
 
       const entries = snapshot.docs
@@ -327,9 +347,35 @@ export default function Sightings() {
             parentDoc,
           });
 
+          const parentLocationId = parentDoc?.locationId || null;
+          const storagePaths = {
+            media: parentDoc?.storagePathMedia || null,
+            preview: parentDoc?.storagePathPreview || null,
+            raw: parentDoc?.storagePathRawMedia || null,
+            rawPreview: parentDoc?.storagePathRawPreview || null,
+            rawVideo: parentDoc?.storagePathRawVideo || null,
+            video: parentDoc?.storagePathVideo || null,
+            hdPreview: parentDoc?.storagePathHdPreview || null,
+            debug: parentDoc?.storagePathDebug || null,
+            debugPreview: parentDoc?.storagePathDebugPreview || null,
+            debugVideo: parentDoc?.storagePathDebugVideo || null,
+          };
+
+          const speciesName = typeof speciesDoc?.species === 'string' && speciesDoc.species.length > 0
+            ? speciesDoc.species
+            : entry.species;
+
+          const storageSlug = slugify(speciesName);
+
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
+            sightingDocPath: parentRef.path,
+            speciesDocPath: docSnap.ref.path,
+            storagePaths,
+            storageSlug,
+            originalSpecies: speciesName,
+            locationId: parentLocationId || entry.locationId,
           };
         })
         .filter(Boolean)
@@ -495,6 +541,28 @@ export default function Sightings() {
   const hasAnySightings = sightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
 
+  const correctionSummary = useMemo(() => {
+    if (!editingSighting) {
+      return '';
+    }
+
+    const currentSpecies = editingSighting?.originalSpecies || editingSighting?.species || 'Unknown';
+    if (correctionForm.mode === 'background') {
+      return `Marked as background (previous: ${currentSpecies})`;
+    }
+
+    const targetSpecies = correctionForm.species?.trim();
+    if (!targetSpecies) {
+      return `Species correction pending (previous: ${currentSpecies})`;
+    }
+
+    if (targetSpecies.toLowerCase() === currentSpecies.toLowerCase()) {
+      return `Confirmed species remains ${currentSpecies}`;
+    }
+
+    return `Species corrected from ${currentSpecies} to ${targetSpecies}`;
+  }, [editingSighting, correctionForm]);
+
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
       return 'sightingCard--unknown';
@@ -587,7 +655,107 @@ export default function Sightings() {
     trackEvent('sightings_media_filter', { mediaType: nextValue });
   };
 
+  const handleOpenEditSighting = (entry) => {
+    const initialSpecies = entry?.originalSpecies || entry?.species || '';
+    setEditingSighting(entry);
+    setCorrectionForm({
+      mode: 'animal',
+      species: initialSpecies,
+      additionalNotes: '',
+    });
+    setCorrectionState({ status: 'idle', error: '', message: '' });
+    trackEvent('sighting_edit_open', {
+      species: entry?.species,
+      location: entry?.locationId,
+    });
+  };
+
+  const handleCloseEditSighting = () => {
+    setEditingSighting(null);
+    setCorrectionState({ status: 'idle', error: '', message: '' });
+    setCorrectionForm((prev) => ({ ...prev, additionalNotes: '' }));
+    trackEvent('sighting_edit_close');
+  };
+
+  const handleCorrectionModeChange = (event) => {
+    const nextMode = event.target.value === 'background' ? 'background' : 'animal';
+    setCorrectionForm((prev) => ({
+      ...prev,
+      mode: nextMode,
+    }));
+  };
+
+  const handleCorrectionSpeciesChange = (event) => {
+    const { value } = event.target;
+    setCorrectionForm((prev) => ({
+      ...prev,
+      species: value,
+    }));
+  };
+
+  const handleCorrectionNotesChange = (event) => {
+    const { value } = event.target;
+    setCorrectionForm((prev) => ({
+      ...prev,
+      additionalNotes: value,
+    }));
+  };
+
+  const handleCorrectionSubmit = async (event) => {
+    event.preventDefault();
+    if (!editingSighting) {
+      return;
+    }
+
+    const noteSummary = correctionSummary;
+    const additionalNotes = correctionForm.additionalNotes?.trim() || '';
+    const isBackground = correctionForm.mode === 'background';
+    const targetSpecies = isBackground ? '' : (correctionForm.species || '').trim();
+
+    if (!isBackground && !targetSpecies) {
+      setCorrectionState({ status: 'error', error: 'Please provide a species name.', message: '' });
+      return;
+    }
+
+    const currentSlug = editingSighting.storageSlug
+      || slugify(editingSighting.originalSpecies || editingSighting.species || '');
+    const destinationSlug = isBackground ? 'background' : slugify(targetSpecies);
+
+    setCorrectionState({ status: 'pending', error: '', message: '' });
+
+    try {
+      const correctSighting = httpsCallable(firebaseFunctions, 'correctSighting');
+      await correctSighting({
+        sightingDocPath: editingSighting.sightingDocPath,
+        speciesDocPath: editingSighting.speciesDocPath,
+        markBackground: isBackground,
+        newSpecies: isBackground ? null : targetSpecies,
+        currentSlug,
+        destinationSlug,
+        noteSummary,
+        additionalNotes,
+        storagePaths: editingSighting.storagePaths || {},
+        locationId: editingSighting.locationId || null,
+      });
+
+      setCorrectionState({ status: 'success', error: '', message: 'Sighting updated successfully.' });
+      trackEvent('sighting_edit_success', {
+        species: editingSighting?.species,
+        updatedSpecies: isBackground ? 'background' : targetSpecies,
+      });
+      loadSightings();
+    } catch (err) {
+      console.error('Failed to correct sighting', err);
+      const errorMessage = err?.message || 'Unable to update sighting.';
+      setCorrectionState({ status: 'error', error: errorMessage, message: '' });
+      trackEvent('sighting_edit_error', {
+        message: errorMessage,
+      });
+    }
+  };
+
   const confidencePercentage = Math.round(confidenceThreshold * 100);
+  const isCorrectionPending = correctionState.status === 'pending';
 
   const handleSendToWhatsApp = useCallback(
     async (entry) => {
@@ -1045,6 +1213,23 @@ export default function Sightings() {
                     <div className="sightingCard__actions">
                       <button
                         type="button"
+                        className="sightingCard__editButton"
+                        onClick={() => handleOpenEditSighting(entry)}
+                        aria-label={`Edit sighting for ${entry.species}`}
+                      >
+                        <svg
+                          className="sightingCard__editIcon"
+                          viewBox="0 0 24 24"
+                          role="img"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 1.33h-.83v-.83l9.06-9.06.83.83-9.06 9.06zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
+                        <span className="sightingCard__editLabel">Edit</span>
+                      </button>
+                      <button
+                        type="button"
                         className="sightingCard__actionsButton"
                         onClick={() => handleSendToWhatsApp(entry)}
                         disabled={isSending}
@@ -1085,11 +1270,145 @@ export default function Sightings() {
           </div>
         )}
       </div>
-            {activeSighting && (
-              <div
-                className="sightingModal"
-                role="dialog"
-                aria-modal="true"
+
+      {isAdmin && editingSighting && (
+        <div
+          className="editSightingModal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editSightingTitle"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !isCorrectionPending) {
+              handleCloseEditSighting();
+            }
+          }}
+        >
+          <div className="editSightingModal__content" onClick={(event) => event.stopPropagation()}>
+            <header className="editSightingModal__header">
+              <h2 id="editSightingTitle">Edit sighting</h2>
+              <button
+                type="button"
+                className="editSightingModal__close"
+                onClick={handleCloseEditSighting}
+                disabled={isCorrectionPending}
+                aria-label="Close edit sighting"
+              >
+                Close
+              </button>
+            </header>
+            <div className="editSightingModal__body">
+              <div className="editSightingModal__context">
+                <span className="editSightingModal__contextLabel">Location</span>
+                <span className="editSightingModal__contextValue">{editingSighting.locationId || 'Unknown location'}</span>
+              </div>
+              <div className="editSightingModal__context">
+                <span className="editSightingModal__contextLabel">Current species</span>
+                <span className="editSightingModal__contextValue">{editingSighting.species}</span>
+              </div>
+              <form className="editSightingModal__form" onSubmit={handleCorrectionSubmit}>
+                <fieldset className="editSightingModal__fieldGroup">
+                  <legend>Classification</legend>
+                  <label className="editSightingModal__option">
+                    <input
+                      type="radio"
+                      name="editSightingMode"
+                      value="animal"
+                      checked={correctionForm.mode === 'animal'}
+                      onChange={handleCorrectionModeChange}
+                      disabled={isCorrectionPending}
+                    />
+                    <span>Animal</span>
+                  </label>
+                  <label className="editSightingModal__option">
+                    <input
+                      type="radio"
+                      name="editSightingMode"
+                      value="background"
+                      checked={correctionForm.mode === 'background'}
+                      onChange={handleCorrectionModeChange}
+                      disabled={isCorrectionPending}
+                    />
+                    <span>Background</span>
+                  </label>
+                </fieldset>
+
+                {correctionForm.mode === 'animal' && (
+                  <div className="editSightingModal__field">
+                    <label htmlFor="editSightingSpecies">Species name</label>
+                    <input
+                      id="editSightingSpecies"
+                      type="text"
+                      value={correctionForm.species}
+                      onChange={handleCorrectionSpeciesChange}
+                      disabled={isCorrectionPending}
+                      list="editSightingSpeciesOptions"
+                    />
+                    {availableSpecies.length > 0 && (
+                      <datalist id="editSightingSpeciesOptions">
+                        {availableSpecies.map(({ value, label }) => (
+                          <option key={value} value={label} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                )}
+
+                <div className="editSightingModal__summary">
+                  <span className="editSightingModal__summaryLabel">Summary</span>
+                  <p>{correctionSummary}</p>
+                </div>
+
+                <div className="editSightingModal__field">
+                  <label htmlFor="editSightingNotes">Additional notes</label>
+                  <textarea
+                    id="editSightingNotes"
+                    rows="3"
+                    value={correctionForm.additionalNotes}
+                    onChange={handleCorrectionNotesChange}
+                    placeholder="Optional context for this correction"
+                    disabled={isCorrectionPending}
+                  />
+                </div>
+
+                {correctionState.status === 'error' && correctionState.error && (
+                  <div className="editSightingModal__status editSightingModal__status--error">
+                    {correctionState.error}
+                  </div>
+                )}
+                {correctionState.status === 'success' && correctionState.message && (
+                  <div className="editSightingModal__status editSightingModal__status--success">
+                    {correctionState.message}
+                  </div>
+                )}
+
+                <div className="editSightingModal__actions">
+                  <button
+                    type="button"
+                    className="editSightingModal__cancel"
+                    onClick={handleCloseEditSighting}
+                    disabled={isCorrectionPending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="editSightingModal__submit"
+                    disabled={isCorrectionPending}
+                  >
+                    {isCorrectionPending ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSighting && (
+        <div
+          className="sightingModal"
+          role="dialog"
+          aria-modal="true"
           onClick={handleCloseSighting}
         >
           <div
