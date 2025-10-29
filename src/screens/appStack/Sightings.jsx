@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
+  doc,
   getDoc,
   getDocs,
   limit,
   orderBy,
   query,
+  serverTimestamp,
   startAfter,
+  writeBatch,
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { ref, getBlob, uploadBytes, deleteObject, getMetadata } from 'firebase/storage';
+import { db, storage } from '../../firebase';
 import './Sightings.css';
 import {
   buildHighlightEntry,
@@ -21,6 +25,7 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
+import { FiEdit2 } from 'react-icons/fi';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
@@ -68,6 +73,390 @@ const formatTimestampLabel = (value) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const normalizeSpeciesValue = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+};
+
+const formatSpeciesDisplayName = (value) => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return 'Unknown';
+  }
+
+  return value
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+};
+
+const slugifySpeciesId = (value) => {
+  const normalized = normalizeSpeciesValue(value);
+  if (!normalized) {
+    return '';
+  }
+
+  const slug = normalized
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || 'background';
+};
+
+const extractStoragePaths = (docData = {}) => {
+  return Object.entries(docData)
+    .filter(([key, value]) => key.startsWith('storagePath') && typeof value === 'string' && value.length > 0)
+    .map(([key, value]) => ({ key, path: value }));
+};
+
+const buildReplacementVariants = (oldPath, newPath) => {
+  const plain = { old: oldPath, next: newPath };
+  const encoded = {
+    old: encodeURIComponent(oldPath),
+    next: encodeURIComponent(newPath),
+  };
+  const segmentEncoded = {
+    old: oldPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/'),
+    next: newPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/'),
+  };
+
+  const seen = new Set();
+  return [plain, encoded, segmentEncoded].filter(({ old, next }) => {
+    if (!old || !next || seen.has(old)) {
+      return false;
+    }
+    seen.add(old);
+    return old !== next;
+  });
+};
+
+const replacePathInString = (input, oldPath, newPath) => {
+  if (typeof input !== 'string' || !oldPath || !newPath) {
+    return input;
+  }
+
+  let output = input;
+  buildReplacementVariants(oldPath, newPath).forEach(({ old, next }) => {
+    if (output.includes(old)) {
+      output = output.split(old).join(next);
+    }
+  });
+  return output;
+};
+
+const isFirestoreTimestamp = (value) => {
+  return Boolean(value && typeof value.toDate === 'function' && typeof value.toMillis === 'function');
+};
+
+const applyDocumentReplacements = (input, replacements) => {
+  if (!replacements || replacements.length === 0) {
+    return Array.isArray(input) ? [...input] : { ...input };
+  }
+
+  const applyValue = (value) => {
+    if (typeof value === 'string') {
+      return replacements.reduce((acc, current) => replacePathInString(acc, current.oldPath, current.newPath), value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => applyValue(item));
+    }
+
+    if (value && typeof value === 'object') {
+      if (value instanceof Date || isFirestoreTimestamp(value)) {
+        return value;
+      }
+      return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, applyValue(nested)]));
+    }
+
+    return value;
+  };
+
+  if (Array.isArray(input)) {
+    return input.map((item) => applyValue(item));
+  }
+
+  return Object.fromEntries(Object.entries(input || {}).map(([key, value]) => [key, applyValue(value)]));
+};
+
+const appendReviewNote = (existing, addition) => {
+  const trimmedExisting = typeof existing === 'string' ? existing.trim() : '';
+  if (!addition) {
+    return trimmedExisting;
+  }
+  if (!trimmedExisting) {
+    return addition;
+  }
+  return `${addition}\n${trimmedExisting}`;
+};
+
+const buildCorrectionNote = ({ oldSpecies, newSpecies, userName, additionalNote }) => {
+  const timestamp = new Date().toISOString();
+  const formattedOld = formatSpeciesDisplayName(oldSpecies);
+  const formattedNew = formatSpeciesDisplayName(newSpecies);
+  const changeSummary = normalizeSpeciesValue(newSpecies) === 'background'
+    ? `Marked as background (previously ${formattedOld})`
+    : `Changed species from ${formattedOld} to ${formattedNew}`;
+  const baseNote = `[${timestamp}] ${changeSummary} by ${userName || 'Admin'}.`;
+
+  if (typeof additionalNote === 'string' && additionalNote.trim().length > 0) {
+    return `${baseNote} ${additionalNote.trim()}`;
+  }
+
+  return baseNote;
+};
+
+const computeUpdatedEntityTally = (entityTally = {}, oldSpecies, newSpecies, countValue) => {
+  const normalizedOld = normalizeSpeciesValue(oldSpecies);
+  const normalizedNew = normalizeSpeciesValue(newSpecies);
+  const parsedCount = Number.isFinite(countValue) ? countValue : Number(countValue || 0) || 0;
+
+  const result = {};
+  Object.entries(entityTally || {}).forEach(([key, value]) => {
+    if (normalizeSpeciesValue(key) !== normalizedOld) {
+      result[key] = value;
+    }
+  });
+
+  if (normalizedNew) {
+    result[normalizedNew] = parsedCount;
+  }
+
+  return result;
+};
+
+const computeStoragePathUpdate = (path, oldSegment, newSegment) => {
+  if (typeof path !== 'string' || path.length === 0) {
+    return path;
+  }
+
+  const normalizedOld = normalizeSpeciesValue(oldSegment);
+  const segments = path.split('/');
+  let index = segments.findIndex((segment) => normalizeSpeciesValue(segment) === normalizedOld);
+
+  if (index === -1 && segments.length >= 5) {
+    index = 4;
+  }
+
+  if (index === -1 || !newSegment) {
+    return path;
+  }
+
+  const updatedSegments = [...segments];
+  updatedSegments[index] = newSegment;
+  return updatedSegments.join('/');
+};
+
+const moveStorageFile = async ({ path, newPath }) => {
+  const sourceRef = ref(storage, path);
+  const targetRef = ref(storage, newPath);
+
+  const [blob, metadata] = await Promise.all([
+    getBlob(sourceRef),
+    getMetadata(sourceRef).catch(() => null),
+  ]);
+
+  const uploadMetadata = {};
+  if (metadata) {
+    if (metadata.contentType) {
+      uploadMetadata.contentType = metadata.contentType;
+    }
+    if (metadata.cacheControl) {
+      uploadMetadata.cacheControl = metadata.cacheControl;
+    }
+    if (metadata.contentDisposition) {
+      uploadMetadata.contentDisposition = metadata.contentDisposition;
+    }
+    if (metadata.customMetadata) {
+      uploadMetadata.customMetadata = metadata.customMetadata;
+    }
+  }
+
+  await uploadBytes(targetRef, blob, uploadMetadata);
+  await deleteObject(sourceRef);
+};
+
+const moveSightingAssets = async (storagePaths, oldSegment, newSegment) => {
+  const results = [];
+
+  for (const item of storagePaths) {
+    const { key, path } = item;
+    if (!path) {
+      continue;
+    }
+
+    const targetPath = computeStoragePathUpdate(path, oldSegment, newSegment);
+    if (!targetPath || targetPath === path) {
+      continue;
+    }
+
+    await moveStorageFile({ path, newPath: targetPath });
+    results.push({ key, oldPath: path, newPath: targetPath });
+  }
+
+  return results;
+};
+
+const DEFAULT_EDIT_STATE = {
+  entry: null,
+  mode: 'species',
+  species: '',
+  note: '',
+  error: '',
+  success: '',
+  saving: false,
+};
+
+const executeSightingCorrection = async ({ entry, targetSpecies, additionalNote, profile, user }) => {
+  if (!entry?.adminMetadata) {
+    throw new Error('This sighting cannot be edited right now.');
+  }
+
+  const { parentPath, parentData, speciesPath, speciesData, storagePaths } = entry.adminMetadata;
+
+  if (!parentPath || !speciesPath) {
+    throw new Error('Missing references for this sighting.');
+  }
+
+  const oldSpecies = speciesData?.species || parentData?.primarySpecies || '';
+  const normalizedOldSpecies = normalizeSpeciesValue(oldSpecies);
+  const normalizedTargetSpecies = normalizeSpeciesValue(targetSpecies);
+
+  const parentDocRef = doc(db, ...parentPath.split('/'));
+  const speciesDocRef = doc(db, ...speciesPath.split('/'));
+
+  const assetMoves = await moveSightingAssets(storagePaths || [], normalizedOldSpecies, normalizedTargetSpecies);
+
+  const replacements = assetMoves.map(({ oldPath, newPath }) => ({ oldPath, newPath }));
+  const parentDocWithPaths = applyDocumentReplacements(parentData || {}, replacements);
+  const speciesDocWithPaths = applyDocumentReplacements(speciesData || {}, replacements);
+
+  const updatedStoragePaths = (storagePaths || []).map((item) => {
+    const moved = assetMoves.find((move) => move.key === item.key);
+    return moved ? { ...item, path: moved.newPath } : item;
+  });
+
+  const userName = profile?.fullName || profile?.email || user?.email || 'Admin';
+  const correctionNote = buildCorrectionNote({
+    oldSpecies,
+    newSpecies: normalizedTargetSpecies,
+    userName,
+    additionalNote,
+  });
+
+  const countValue = typeof speciesData?.count === 'number' ? speciesData.count : Number(speciesData?.count || 0) || 0;
+  const updatedEntityTally = computeUpdatedEntityTally(parentDocWithPaths.entityTally, oldSpecies, normalizedTargetSpecies, countValue);
+
+  const updatedParentData = {
+    ...parentDocWithPaths,
+    corrected: true,
+    updatedAt: new Date(),
+    primarySpecies: normalizedTargetSpecies,
+    reviewNotes: appendReviewNote(parentDocWithPaths.reviewNotes, correctionNote),
+    entityTally: updatedEntityTally,
+    entityKinds: Object.keys(updatedEntityTally).length,
+  };
+
+  const updatedSpeciesData = {
+    ...speciesDocWithPaths,
+    species: normalizedTargetSpecies,
+    updatedAt: new Date(),
+  };
+
+  const parentUpdates = {
+    corrected: true,
+    updatedAt: serverTimestamp(),
+    primarySpecies: normalizedTargetSpecies,
+    reviewNotes: updatedParentData.reviewNotes,
+    entityTally: updatedEntityTally,
+    entityKinds: updatedParentData.entityKinds,
+  };
+
+  Object.entries(updatedParentData).forEach(([key, value]) => {
+    if (key === 'id' || key === 'updatedAt') {
+      return;
+    }
+    if (typeof value === 'string' && value !== (parentData || {})[key]) {
+      parentUpdates[key] = value;
+    }
+  });
+
+  const speciesUpdates = {
+    species: normalizedTargetSpecies,
+    updatedAt: serverTimestamp(),
+  };
+
+  Object.entries(updatedSpeciesData).forEach(([key, value]) => {
+    if (key === 'id' || key === 'updatedAt') {
+      return;
+    }
+    if (typeof value === 'string' && value !== (speciesData || {})[key]) {
+      speciesUpdates[key] = value;
+    }
+  });
+
+  const newSpeciesDocId = slugifySpeciesId(normalizedTargetSpecies || 'background');
+  const speciesPathSegments = speciesPath.split('/');
+  const currentSpeciesDocId = speciesPathSegments[speciesPathSegments.length - 1];
+  const collectionSegments = speciesPathSegments.slice(0, -1);
+  const nextSpeciesPath = [...collectionSegments, newSpeciesDocId].join('/');
+
+  const batch = writeBatch(db);
+  batch.update(parentDocRef, parentUpdates);
+
+  if (newSpeciesDocId === currentSpeciesDocId) {
+    batch.update(speciesDocRef, speciesUpdates);
+  } else {
+    const { id: _unused, ...speciesDocPayload } = speciesData || {};
+    const newSpeciesDocRef = doc(db, ...collectionSegments, newSpeciesDocId);
+    batch.set(newSpeciesDocRef, { ...speciesDocPayload, ...speciesUpdates, species: normalizedTargetSpecies }, { merge: true });
+    batch.delete(speciesDocRef);
+  }
+
+  await batch.commit();
+
+  const adjustedSpeciesData = {
+    ...updatedSpeciesData,
+    id: newSpeciesDocId,
+  };
+
+  const adjustedParentData = {
+    ...updatedParentData,
+    id: parentData?.id,
+  };
+
+  const entryCore = buildHighlightEntry({
+    category: 'sighting',
+    speciesDoc: adjustedSpeciesData,
+    parentDoc: adjustedParentData,
+  });
+
+  const newEntryId = `${entryCore.id}::${adjustedSpeciesData.id}`;
+
+  return {
+    parentPath,
+    parentData: adjustedParentData,
+    speciesData: adjustedSpeciesData,
+    speciesPath: nextSpeciesPath,
+    storagePaths: updatedStoragePaths,
+    oldEntryId: entry.id,
+    newEntryId,
+    entryCore,
+  };
+};
 
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -224,11 +613,14 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [editState, setEditState] = useState(() => ({ ...DEFAULT_EDIT_STATE }));
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
   const accessError = useAuthStore((state) => state.accessError);
+  const profile = useAuthStore((state) => state.profile);
+  const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
@@ -315,21 +707,34 @@ export default function Sightings() {
 
       const entries = snapshot.docs
         .map((docSnap) => {
-          const speciesDoc = { id: docSnap.id, ...docSnap.data() };
+          const speciesDocData = { id: docSnap.id, ...docSnap.data() };
           const parentRef = docSnap.ref.parent.parent;
           if (!parentRef) return null;
-          const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc) return null;
+          const parentDocData = parentDataMap.get(parentRef.path);
+          if (!parentDocData) return null;
 
-          const entry = buildHighlightEntry({
+          const parentDoc = { ...parentDocData };
+          const speciesDoc = { ...speciesDocData };
+          const storagePaths = extractStoragePaths(parentDoc);
+
+          const entryCore = buildHighlightEntry({
             category: 'sighting',
             speciesDoc,
             parentDoc,
           });
 
+          const entryId = `${entryCore.id}::${speciesDoc.id}`;
+
           return {
-            ...entry,
-            id: `${entry.id}::${speciesDoc.id}`,
+            ...entryCore,
+            id: entryId,
+            adminMetadata: {
+              parentPath: parentRef.path,
+              parentData: parentDoc,
+              speciesPath: docSnap.ref.path,
+              speciesData: speciesDoc,
+              storagePaths,
+            },
           };
         })
         .filter(Boolean)
@@ -416,6 +821,193 @@ export default function Sightings() {
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [sightings]);
+
+  const handleOpenEdit = useCallback((entry) => {
+    if (!entry?.adminMetadata) {
+      setEditState({
+        ...DEFAULT_EDIT_STATE,
+        error: 'This sighting cannot be edited right now.',
+      });
+      return;
+    }
+
+    const rawSpecies = entry.adminMetadata?.speciesData?.species || '';
+    const normalized = normalizeSpeciesValue(rawSpecies);
+
+    setEditState({
+      entry,
+      mode: normalized === 'background' ? 'background' : 'species',
+      species: rawSpecies,
+      note: '',
+      error: '',
+      success: '',
+      saving: false,
+    });
+
+    trackButton('sighting_open_edit', {
+      species: normalized,
+      location: entry.locationId,
+    });
+  }, []);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditState((prev) => {
+      if (prev.saving) {
+        return prev;
+      }
+      trackButton('sighting_close_edit');
+      return { ...DEFAULT_EDIT_STATE };
+    });
+  }, []);
+
+  const handleSubmitEdit = useCallback(
+    async (event) => {
+      event.preventDefault();
+
+      if (!editState.entry) {
+        setEditState((prev) => ({ ...prev, error: 'Select a sighting to edit first.' }));
+        return;
+      }
+
+      const normalizedSpecies = editState.mode === 'background'
+        ? 'background'
+        : normalizeSpeciesValue(editState.species);
+
+      if (editState.mode === 'species' && !normalizedSpecies) {
+        setEditState((prev) => ({ ...prev, error: 'Please provide a species name.' }));
+        return;
+      }
+
+      setEditState((prev) => ({ ...prev, saving: true, error: '', success: '' }));
+
+      try {
+        const result = await executeSightingCorrection({
+          entry: editState.entry,
+          targetSpecies: normalizedSpecies,
+          additionalNote: editState.note,
+          profile,
+          user,
+        });
+
+        const fallbackEntry = {
+          ...result.entryCore,
+          id: result.newEntryId,
+          adminMetadata: {
+            parentPath: result.parentPath,
+            parentData: result.parentData,
+            speciesPath: result.speciesPath,
+            speciesData: result.speciesData,
+            storagePaths: result.storagePaths,
+          },
+        };
+
+        let modalEntryRef = null;
+
+        setSightings((prev) => {
+          let hasParent = false;
+          const updatedList = prev.map((item) => {
+            if (!item.adminMetadata || item.adminMetadata.parentPath !== result.parentPath) {
+              return item;
+            }
+
+            hasParent = true;
+            const isEdited = item.id === result.oldEntryId;
+            const speciesDataForEntry = isEdited ? result.speciesData : item.adminMetadata.speciesData;
+            const speciesPathForEntry = isEdited ? result.speciesPath : item.adminMetadata.speciesPath;
+            const entryCore = isEdited
+              ? result.entryCore
+              : buildHighlightEntry({
+                  category: 'sighting',
+                  speciesDoc: speciesDataForEntry,
+                  parentDoc: result.parentData,
+                });
+
+            const updatedEntry = {
+              ...entryCore,
+              id: `${entryCore.id}::${speciesDataForEntry.id}`,
+              adminMetadata: {
+                parentPath: result.parentPath,
+                parentData: result.parentData,
+                speciesPath: speciesPathForEntry,
+                speciesData: speciesDataForEntry,
+                storagePaths: result.storagePaths,
+              },
+            };
+
+            if (isEdited) {
+              modalEntryRef = updatedEntry;
+            }
+
+            return updatedEntry;
+          });
+
+          if (!hasParent) {
+            updatedList.push(fallbackEntry);
+            modalEntryRef = fallbackEntry;
+          } else if (!modalEntryRef) {
+            modalEntryRef = fallbackEntry;
+          }
+
+          updatedList.sort((a, b) => {
+            const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+            const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+            return bTime - aTime;
+          });
+
+          return updatedList;
+        });
+
+        if (result.oldEntryId !== result.newEntryId) {
+          setSendStatusMap((prev) => {
+            const existing = prev[result.oldEntryId];
+            if (!existing) {
+              return prev;
+            }
+            const next = { ...prev };
+            delete next[result.oldEntryId];
+            next[result.newEntryId] = existing;
+            return next;
+          });
+        }
+
+        if (modalEntryRef && activeSighting?.id === result.oldEntryId) {
+          setActiveSighting(modalEntryRef);
+        }
+
+        trackEvent('sighting_edit', {
+          action: editState.mode === 'background' ? 'mark_background' : 'change_species',
+          originalSpecies: editState.entry?.adminMetadata?.speciesData?.species || '',
+          nextSpecies: normalizedSpecies,
+          location: result.parentData?.locationId || '',
+        });
+
+        trackButton('sighting_edit_submit', {
+          action: editState.mode,
+          nextSpecies: normalizedSpecies,
+        });
+
+        const nextEntry = modalEntryRef || fallbackEntry;
+
+        setEditState({
+          entry: nextEntry,
+          mode: normalizedSpecies === 'background' ? 'background' : 'species',
+          species: normalizedSpecies,
+          note: '',
+          error: '',
+          success: 'Sighting updated successfully.',
+          saving: false,
+        });
+      } catch (submitError) {
+        console.error('Failed to update sighting', submitError);
+        setEditState((prev) => ({
+          ...prev,
+          saving: false,
+          error: submitError?.message || 'Unable to update sighting.',
+        }));
+      }
+    },
+    [editState, profile, user, setSightings, setSendStatusMap, activeSighting, executeSightingCorrection],
+  );
 
   useEffect(() => {
     if (locationFilter === 'all') {
@@ -567,6 +1159,19 @@ export default function Sightings() {
     }
     return `${selectedSpecies.length} selected`;
   }, [selectedSpecies, availableSpecies]);
+
+  const editingEntry = editState.entry;
+  const editingSpeciesValue = editingEntry?.adminMetadata?.speciesData?.species
+    || (typeof editingEntry?.species === 'string' ? normalizeSpeciesValue(editingEntry.species) : '');
+  const editingSpeciesDisplay = formatSpeciesDisplayName(editingSpeciesValue);
+  const editTargetSpecies = editState.mode === 'background'
+    ? 'background'
+    : normalizeSpeciesValue(editState.species || '');
+  const editTargetFolderDisplay = editState.mode === 'background'
+    ? 'background'
+    : editTargetSpecies
+      ? formatSpeciesDisplayName(editTargetSpecies)
+      : 'selected species';
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1017,9 +1622,21 @@ export default function Sightings() {
                 </div>
                 <div className="sightingCard__body">
                   <div className="sightingCard__header">
-                    <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
-                    {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
-                      <span className="sightingCard__subtitle">{entry.species}</span>
+                    <div className="sightingCard__titleGroup">
+                      <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
+                      {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
+                        <span className="sightingCard__subtitle">{entry.species}</span>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="sightingCard__editButton"
+                        onClick={() => handleOpenEdit(entry)}
+                        aria-label="Edit sighting"
+                      >
+                        <FiEdit2 aria-hidden="true" />
+                      </button>
                     )}
                   </div>
                   <div className="sightingCard__meta">
@@ -1167,6 +1784,164 @@ export default function Sightings() {
                 </time>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {editingEntry && (
+        <div
+          className="sightingEditModal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sightingEditModalTitle"
+          onClick={handleCloseEdit}
+        >
+          <div
+            className="sightingEditModal__content"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sightingEditModal__header">
+              <h2 id="sightingEditModalTitle">Edit sighting</h2>
+              <button
+                type="button"
+                className="sightingEditModal__close"
+                onClick={handleCloseEdit}
+                aria-label="Close edit dialog"
+                disabled={editState.saving}
+              >
+                Close
+              </button>
+            </div>
+            <dl className="sightingEditModal__meta">
+              <div>
+                <dt>Current species</dt>
+                <dd>{editingSpeciesDisplay}</dd>
+              </div>
+              <div>
+                <dt>Location</dt>
+                <dd>{editingEntry?.locationId || 'Unknown'}</dd>
+              </div>
+              {editingEntry?.createdAt && (
+                <div>
+                  <dt>Captured</dt>
+                  <dd>{formatTimestampLabel(editingEntry.createdAt)}</dd>
+                </div>
+              )}
+            </dl>
+            <form className="sightingEditModal__form" onSubmit={handleSubmitEdit}>
+              <fieldset className="sightingEditModal__fieldset">
+                <legend>Classification</legend>
+                <label className="sightingEditModal__option">
+                  <input
+                    type="radio"
+                    name="sighting-edit-mode"
+                    value="species"
+                    checked={editState.mode === 'species'}
+                    onChange={(event) => {
+                      const value = event.target.value === 'background' ? 'background' : 'species';
+                      setEditState((prev) => ({
+                        ...prev,
+                        mode: value,
+                        error: '',
+                        success: '',
+                      }));
+                    }}
+                    disabled={editState.saving}
+                  />
+                  <span>Set species</span>
+                </label>
+                <label className="sightingEditModal__option">
+                  <input
+                    type="radio"
+                    name="sighting-edit-mode"
+                    value="background"
+                    checked={editState.mode === 'background'}
+                    onChange={(event) => {
+                      const value = event.target.value === 'background' ? 'background' : 'species';
+                      setEditState((prev) => ({
+                        ...prev,
+                        mode: value,
+                        error: '',
+                        success: '',
+                      }));
+                    }}
+                    disabled={editState.saving}
+                  />
+                  <span>Mark as background</span>
+                </label>
+              </fieldset>
+              {editState.mode === 'species' && (
+                <div className="sightingEditModal__field">
+                  <label htmlFor="sightingEditSpecies">Species</label>
+                  <input
+                    id="sightingEditSpecies"
+                    type="text"
+                    value={editState.species}
+                    onChange={(event) => setEditState((prev) => ({
+                      ...prev,
+                      species: event.target.value,
+                      error: '',
+                      success: '',
+                    }))}
+                    list="sightingEditSpeciesSuggestions"
+                    placeholder="Enter species name"
+                    disabled={editState.saving}
+                  />
+                  <datalist id="sightingEditSpeciesSuggestions">
+                    {availableSpecies.map((option) => (
+                      <option key={option.value} value={option.label} />
+                    ))}
+                  </datalist>
+                </div>
+              )}
+              <div className="sightingEditModal__field">
+                <label htmlFor="sightingEditNote">Notes (optional)</label>
+                <textarea
+                  id="sightingEditNote"
+                  rows="3"
+                  value={editState.note}
+                  onChange={(event) => setEditState((prev) => ({
+                    ...prev,
+                    note: event.target.value,
+                    error: '',
+                    success: '',
+                  }))}
+                  placeholder="Add context for this correction"
+                  disabled={editState.saving}
+                />
+                <p className="sightingEditModal__hint">These notes will be saved with the sighting.</p>
+              </div>
+              <p className="sightingEditModal__summary">
+                Media files will move to the <strong>{editTargetFolderDisplay}</strong> folder.
+              </p>
+              <p className="sightingEditModal__summary">The sighting will be marked as corrected.</p>
+              {editState.error && (
+                <div className="sightingEditModal__message sightingEditModal__message--error">
+                  {editState.error}
+                </div>
+              )}
+              {editState.success && (
+                <div className="sightingEditModal__message sightingEditModal__message--success">
+                  {editState.success}
+                </div>
+              )}
+              <div className="sightingEditModal__actions">
+                <button
+                  type="button"
+                  className="sightingEditModal__secondary"
+                  onClick={handleCloseEdit}
+                  disabled={editState.saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="sightingEditModal__primary"
+                  disabled={editState.saving}
+                >
+                  {editState.saving ? 'Saving…' : 'Update sighting'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
