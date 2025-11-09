@@ -75,6 +75,41 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const getAdjustedManualTimestamp = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return null;
+  }
+
+  return new Date(value.getTime() - 60 * 1000);
+};
+
+const formatManualCaptureLabel = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return '';
+  }
+
+  try {
+    return value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch (error) {
+    return '';
+  }
+};
+
+const buildManualCaption = ({ mediaType, locationId, timeLabel }) => {
+  const normalizedLocation =
+    typeof locationId === 'string' && locationId.trim().length > 0
+      ? locationId.trim()
+      : 'Unknown location';
+  const mediaLabel = mediaType === 'video' ? 'Video' : 'Photo';
+  const baseCaption = `${mediaLabel} of the ${normalizedLocation}`;
+
+  if (timeLabel) {
+    return `${baseCaption} at ${timeLabel}`;
+  }
+
+  return baseCaption;
+};
+
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false;
@@ -833,6 +868,15 @@ export default function Sightings() {
         return;
       }
 
+      const messageType = entry.mediaType === 'video' ? 'video' : 'image';
+      const adjustedTimestamp = getAdjustedManualTimestamp(entry.createdAt);
+      const captureTimeLabel = formatManualCaptureLabel(adjustedTimestamp);
+      const caption = buildManualCaption({
+        mediaType: messageType,
+        locationId: entry.locationId,
+        timeLabel: captureTimeLabel,
+      });
+
       const payload = {
         locationId: entry.locationId,
         gcp_url: mediaSource,
@@ -841,7 +885,23 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
+        mediaType: messageType,
+        caption,
       };
+
+      if (messageType === 'video') {
+        payload.video = mediaSource;
+      } else {
+        payload.image = mediaSource;
+      }
+
+      if (adjustedTimestamp) {
+        payload.captureTime = adjustedTimestamp.toISOString();
+      }
+
+      if (captureTimeLabel) {
+        payload.captureTimeLabel = captureTimeLabel;
+      }
 
       setSendStatusMap((prev) => ({
         ...prev,
