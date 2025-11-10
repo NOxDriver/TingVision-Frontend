@@ -841,6 +841,7 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
+        species: entry?.species
       };
 
       setSendStatusMap((prev) => ({
