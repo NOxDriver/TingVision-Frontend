@@ -524,6 +524,35 @@
   transform: none;
 }
 
+.sightingCard__alertButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #b45309;
+  background: #f97316;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sightingCard__alertButton:hover,
+.sightingCard__alertButton:focus-visible {
+  transform: translateY(-1px);
+  background: #ea580c;
+  box-shadow: 0 4px 10px rgba(234, 88, 12, 0.2);
+}
+
+.sightingCard__alertButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .sightingCard__actionsRow {
   display: flex;
   align-items: center;

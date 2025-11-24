@@ -75,6 +75,21 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const toTitleCase = (value = '') =>
+  value
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+
+const buildAlertMessage = (entry) => {
+  const rawSpecies = typeof entry?.species === 'string' ? entry.species.replace(/_/g, ' ') : '';
+  const speciesName = toTitleCase(rawSpecies.trim()) || 'Animal';
+  const direction = 'Look straight ahead, in the middle of the river, about 100m away.';
+
+  return `🐃 New Sighting!\nDetected: ${speciesName}\n${direction}`;
+};
+
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false;
@@ -791,119 +806,137 @@ export default function Sightings() {
     [editTarget, editMode, editSpeciesInput, actorName],
   );
 
-  const handleSendToWhatsApp = useCallback(
-    async (entry) => {
-      if (!entry || typeof entry.id !== 'string') {
-        return;
+  const sendWhatsAppMessage = useCallback(async (entry, { mode = 'share', alertMessage = '' } = {}) => {
+    if (!entry || typeof entry.id !== 'string') {
+      return;
+    }
+
+    const actionName = mode === 'alert' ? 'sightings_send_alert' : 'sightings_send_whatsapp';
+    trackButton(actionName);
+
+    if (!SEND_WHATSAPP_ENDPOINT) {
+      setSendStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: {
+          state: 'error',
+          message: 'WhatsApp sending is not configured.',
+        },
+      }));
+      return;
+    }
+
+    if (!entry.locationId) {
+      setSendStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: {
+          state: 'error',
+          message: 'Location information is missing for this sighting.',
+        },
+      }));
+      return;
+    }
+
+    const mediaSource = pickFirstSource(entry.mediaUrl, entry.videoUrl, entry.previewUrl);
+    if (!mediaSource) {
+      setSendStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: {
+          state: 'error',
+          message: 'No media is available to send for this sighting.',
+        },
+      }));
+      return;
+    }
+
+    const finalAlertMessage = mode === 'alert' ? alertMessage || buildAlertMessage(entry) : '';
+
+    const payload = {
+      locationId: entry.locationId,
+      gcp_url: mediaSource,
+      media_url: mediaSource,
+      timestamp:
+        entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
+          ? entry.createdAt.toISOString()
+          : undefined,
+      species: entry?.species,
+    };
+
+    if (finalAlertMessage) {
+      payload.alert = true;
+      payload.alert_text = finalAlertMessage;
+      payload.alertText = finalAlertMessage;
+      payload.message = finalAlertMessage;
+    }
+
+    setSendStatusMap((prev) => ({
+      ...prev,
+      [entry.id]: { state: 'pending' },
+    }));
+
+    try {
+      const response = await fetch(SEND_WHATSAPP_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      const responseBody = contentType.includes('application/json')
+        ? await response.json().catch(() => ({}))
+        : await response.text();
+
+      if (!response.ok) {
+        const errorMessage =
+          typeof responseBody === 'string'
+            ? responseBody
+            : responseBody?.error || 'Failed to send WhatsApp alert';
+        throw new Error(errorMessage);
       }
 
-      trackButton('sightings_send_whatsapp');
-
-      if (!SEND_WHATSAPP_ENDPOINT) {
-        setSendStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: {
-            state: 'error',
-            message: 'WhatsApp sending is not configured.',
-          },
-        }));
-        return;
-      }
-
-      if (!entry.locationId) {
-        setSendStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: {
-            state: 'error',
-            message: 'Location information is missing for this sighting.',
-          },
-        }));
-        return;
-      }
-
-      const mediaSource = pickFirstSource(entry.mediaUrl, entry.videoUrl, entry.previewUrl);
-      if (!mediaSource) {
-        setSendStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: {
-            state: 'error',
-            message: 'No media is available to send for this sighting.',
-          },
-        }));
-        return;
-      }
-
-      const payload = {
-        locationId: entry.locationId,
-        gcp_url: mediaSource,
-        media_url: mediaSource,
-        timestamp:
-          entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
-            ? entry.createdAt.toISOString()
-            : undefined,
-        species: entry?.species
-      };
+      trackEvent(`${actionName}_success`, {
+        location: entry.locationId,
+        mediaType: entry.mediaType,
+        mode,
+      });
 
       setSendStatusMap((prev) => ({
         ...prev,
-        [entry.id]: { state: 'pending' },
+        [entry.id]: {
+          state: 'success',
+          message: mode === 'alert' ? 'Alert sent to WhatsApp' : 'Sent to WhatsApp',
+        },
       }));
+    } catch (err) {
+      console.error('Failed to send WhatsApp alert', err);
+      const message = err instanceof Error && err.message ? err.message : 'Failed to send to WhatsApp';
 
-      try {
-        const response = await fetch(SEND_WHATSAPP_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
+      trackEvent(`${actionName}_error`, {
+        location: entry.locationId,
+        mediaType: entry.mediaType,
+        error: message,
+        mode,
+      });
 
-        const contentType = response.headers.get('content-type') || '';
-        const responseBody = contentType.includes('application/json')
-          ? await response.json().catch(() => ({}))
-          : await response.text();
+      setSendStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: {
+          state: 'error',
+          message: mode === 'alert' ? `Failed to send alert: ${message}` : message,
+        },
+      }));
+    }
+  }, []);
 
-        if (!response.ok) {
-          const errorMessage =
-            typeof responseBody === 'string'
-              ? responseBody
-              : responseBody?.error || 'Failed to send WhatsApp alert';
-          throw new Error(errorMessage);
-        }
+  const handleSendToWhatsApp = useCallback((entry) => {
+    sendWhatsAppMessage(entry, { mode: 'share' });
+  }, [sendWhatsAppMessage]);
 
-        trackEvent('sightings_send_whatsapp_success', {
-          location: entry.locationId,
-          mediaType: entry.mediaType,
-        });
-
-        setSendStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: {
-            state: 'success',
-            message: 'Sent to WhatsApp',
-          },
-        }));
-      } catch (err) {
-        console.error('Failed to send WhatsApp alert', err);
-        const message = err instanceof Error && err.message ? err.message : 'Failed to send to WhatsApp';
-
-        trackEvent('sightings_send_whatsapp_error', {
-          location: entry.locationId,
-          mediaType: entry.mediaType,
-          error: message,
-        });
-
-        setSendStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: {
-            state: 'error',
-            message,
-          },
-        }));
-      }
-    },
-    [],
-  );
+  const handleSendAlertToWhatsApp = useCallback((entry) => {
+    const alertMessage = buildAlertMessage(entry);
+    sendWhatsAppMessage(entry, { mode: 'alert', alertMessage });
+  }, [sendWhatsAppMessage]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1279,6 +1312,14 @@ export default function Sightings() {
                           disabled={isSending}
                         >
                           {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__alertButton"
+                          onClick={() => handleSendAlertToWhatsApp(entry)}
+                          disabled={isSending}
+                        >
+                          {isSending ? 'Sending…' : 'Alert'}
                         </button>
                       </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
