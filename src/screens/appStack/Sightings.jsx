@@ -791,13 +791,22 @@ export default function Sightings() {
     [editTarget, editMode, editSpeciesInput, actorName],
   );
 
-  const handleSendToWhatsApp = useCallback(
-    async (entry) => {
+  const sendWhatsAppMessage = useCallback(
+    async (entry, { mode = 'standard' } = {}) => {
       if (!entry || typeof entry.id !== 'string') {
         return;
       }
 
-      trackButton('sightings_send_whatsapp');
+      const confirmationMessage =
+        mode === 'alert'
+          ? 'Send this sighting as an alert to WhatsApp groups?'
+          : 'Send this sighting to WhatsApp?';
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
+        return;
+      }
+
+      trackButton(mode === 'alert' ? 'sightings_send_alert' : 'sightings_send_whatsapp');
 
       if (!SEND_WHATSAPP_ENDPOINT) {
         setSendStatusMap((prev) => ({
@@ -841,12 +850,13 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
-        species: entry?.species
+        species: entry?.species,
+        ...(mode === 'alert' ? { alertStyle: 'emoji' } : {}),
       };
 
       setSendStatusMap((prev) => ({
         ...prev,
-        [entry.id]: { state: 'pending' },
+        [entry.id]: { state: 'pending', mode },
       }));
 
       try {
@@ -874,13 +884,15 @@ export default function Sightings() {
         trackEvent('sightings_send_whatsapp_success', {
           location: entry.locationId,
           mediaType: entry.mediaType,
+          mode,
         });
 
         setSendStatusMap((prev) => ({
           ...prev,
           [entry.id]: {
             state: 'success',
-            message: 'Sent to WhatsApp',
+            mode,
+            message: mode === 'alert' ? 'Alert sent to WhatsApp' : 'Sent to WhatsApp',
           },
         }));
       } catch (err) {
@@ -891,12 +903,14 @@ export default function Sightings() {
           location: entry.locationId,
           mediaType: entry.mediaType,
           error: message,
+          mode,
         });
 
         setSendStatusMap((prev) => ({
           ...prev,
           [entry.id]: {
             state: 'error',
+            mode,
             message,
           },
         }));
@@ -1275,10 +1289,18 @@ export default function Sightings() {
                         <button
                           type="button"
                           className="sightingCard__actionsButton"
-                          onClick={() => handleSendToWhatsApp(entry)}
+                          onClick={() => sendWhatsAppMessage(entry)}
                           disabled={isSending}
                         >
-                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                          {isSending && sendStatus.mode !== 'alert' ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton"
+                          onClick={() => sendWhatsAppMessage(entry, { mode: 'alert' })}
+                          disabled={isSending}
+                        >
+                          {isSending && sendStatus.mode === 'alert' ? 'Sending…' : 'Send Alert'}
                         </button>
                       </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
