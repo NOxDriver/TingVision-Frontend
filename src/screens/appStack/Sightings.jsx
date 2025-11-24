@@ -792,12 +792,25 @@ export default function Sightings() {
   );
 
   const handleSendToWhatsApp = useCallback(
-    async (entry) => {
+    async (entry, options = {}) => {
+      const { alertStyle } = options;
+      const isAlert = alertStyle === 'emoji';
+
       if (!entry || typeof entry.id !== 'string') {
         return;
       }
 
-      trackButton('sightings_send_whatsapp');
+      const confirmationMessage =
+        options.confirmationMessage ||
+        (isAlert
+          ? 'Send this sighting as an alert to WhatsApp groups?'
+          : 'Send this sighting to WhatsApp?');
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
+        return;
+      }
+
+      trackButton(isAlert ? 'sightings_send_whatsapp_alert' : 'sightings_send_whatsapp');
 
       if (!SEND_WHATSAPP_ENDPOINT) {
         setSendStatusMap((prev) => ({
@@ -841,7 +854,8 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
-        species: entry?.species
+        species: entry?.species,
+        alertStyle,
       };
 
       setSendStatusMap((prev) => ({
@@ -871,26 +885,28 @@ export default function Sightings() {
           throw new Error(errorMessage);
         }
 
-        trackEvent('sightings_send_whatsapp_success', {
+        trackEvent(isAlert ? 'sightings_send_whatsapp_alert_success' : 'sightings_send_whatsapp_success', {
           location: entry.locationId,
           mediaType: entry.mediaType,
+          alertStyle: alertStyle || 'legacy',
         });
 
         setSendStatusMap((prev) => ({
           ...prev,
           [entry.id]: {
             state: 'success',
-            message: 'Sent to WhatsApp',
+            message: isAlert ? 'Alert sent to WhatsApp' : 'Sent to WhatsApp',
           },
         }));
       } catch (err) {
         console.error('Failed to send WhatsApp alert', err);
         const message = err instanceof Error && err.message ? err.message : 'Failed to send to WhatsApp';
 
-        trackEvent('sightings_send_whatsapp_error', {
+        trackEvent(isAlert ? 'sightings_send_whatsapp_alert_error' : 'sightings_send_whatsapp_error', {
           location: entry.locationId,
           mediaType: entry.mediaType,
           error: message,
+          alertStyle: alertStyle || 'legacy',
         });
 
         setSendStatusMap((prev) => ({
@@ -1279,6 +1295,19 @@ export default function Sightings() {
                           disabled={isSending}
                         >
                           {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                          onClick={() =>
+                            handleSendToWhatsApp(entry, {
+                              alertStyle: 'emoji',
+                              confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                            })
+                          }
+                          disabled={isSending}
+                        >
+                          {isSending ? 'Sending…' : 'Alert'}
                         </button>
                       </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
