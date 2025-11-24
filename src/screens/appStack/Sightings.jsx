@@ -792,12 +792,30 @@ export default function Sightings() {
   );
 
   const handleSendToWhatsApp = useCallback(
-    async (entry) => {
+    async (
+      entry,
+      {
+        alertStyle = '',
+        successMessage = 'Sent to WhatsApp',
+        trackName = 'sightings_send_whatsapp',
+        confirmMessage,
+      } = {},
+    ) => {
       if (!entry || typeof entry.id !== 'string') {
         return;
       }
 
-      trackButton('sightings_send_whatsapp');
+      const confirmationText =
+        confirmMessage ||
+        (alertStyle
+          ? 'Send an alert to the WhatsApp groups for this sighting?'
+          : 'Send this sighting to WhatsApp?');
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmationText)) {
+        return;
+      }
+
+      trackButton(trackName);
 
       if (!SEND_WHATSAPP_ENDPOINT) {
         setSendStatusMap((prev) => ({
@@ -841,8 +859,13 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
-        species: entry?.species
+        species: entry?.species,
+        primarySpecies: entry?.species,
       };
+
+      if (alertStyle) {
+        payload.alert_style = alertStyle;
+      }
 
       setSendStatusMap((prev) => ({
         ...prev,
@@ -874,13 +897,14 @@ export default function Sightings() {
         trackEvent('sightings_send_whatsapp_success', {
           location: entry.locationId,
           mediaType: entry.mediaType,
+          alertStyle: alertStyle || 'legacy',
         });
 
         setSendStatusMap((prev) => ({
           ...prev,
           [entry.id]: {
             state: 'success',
-            message: 'Sent to WhatsApp',
+            message: successMessage,
           },
         }));
       } catch (err) {
@@ -890,6 +914,7 @@ export default function Sightings() {
         trackEvent('sightings_send_whatsapp_error', {
           location: entry.locationId,
           mediaType: entry.mediaType,
+          alertStyle: alertStyle || 'legacy',
           error: message,
         });
 
@@ -903,6 +928,17 @@ export default function Sightings() {
       }
     },
     [],
+  );
+
+  const handleSendAlertToWhatsApp = useCallback(
+    (entry) =>
+      handleSendToWhatsApp(entry, {
+        alertStyle: 'emoji',
+        successMessage: 'Alert sent to WhatsApp',
+        trackName: 'sightings_send_whatsapp_alert',
+        confirmMessage: 'Send an alert to the WhatsApp groups for this sighting?',
+      }),
+    [handleSendToWhatsApp],
   );
 
   useEffect(() => {
@@ -1271,6 +1307,14 @@ export default function Sightings() {
                           title="Edit sighting"
                         >
                           <FiEdit2 />
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton"
+                          onClick={() => handleSendAlertToWhatsApp(entry)}
+                          disabled={isSending}
+                        >
+                          {isSending ? 'Sending…' : 'Alert'}
                         </button>
                         <button
                           type="button"
