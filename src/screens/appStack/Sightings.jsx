@@ -221,6 +221,7 @@ export default function Sightings() {
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [speciesFilterMode, setSpeciesFilterMode] = useState('include');
   const [isSpeciesMenuOpen, setIsSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
@@ -516,14 +517,18 @@ export default function Sightings() {
         const normalizedSpecies = typeof entry.species === 'string'
           ? entry.species.trim().toLowerCase()
           : '';
-        if (!selectedSpecies.includes(normalizedSpecies)) {
+        if (speciesFilterMode === 'include') {
+          if (!selectedSpecies.includes(normalizedSpecies)) {
+            return false;
+          }
+        } else if (selectedSpecies.includes(normalizedSpecies)) {
           return false;
         }
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies],
+    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies, speciesFilterMode],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -574,6 +579,7 @@ export default function Sightings() {
         action: hasValue ? 'remove' : 'add',
         value,
         species: nextSelection,
+        mode: speciesFilterMode,
       });
       return nextSelection;
     });
@@ -584,8 +590,18 @@ export default function Sightings() {
       if (prev.length === 0) {
         return prev;
       }
-      trackEvent('sightings_species_filter', { action: 'clear', species: [] });
+      trackEvent('sightings_species_filter', { action: 'clear', species: [], mode: speciesFilterMode });
       return [];
+    });
+  };
+
+  const handleSpeciesModeChange = (event) => {
+    const nextMode = event.target.value;
+    setSpeciesFilterMode(nextMode);
+    trackEvent('sightings_species_filter', {
+      action: 'mode',
+      mode: nextMode,
+      species: selectedSpecies,
     });
   };
 
@@ -594,13 +610,19 @@ export default function Sightings() {
       return 'All species';
     }
     const labelMap = new Map(availableSpecies.map((item) => [item.value, item.label]));
-    if (selectedSpecies.length <= 2) {
-      return selectedSpecies
-        .map((value) => labelMap.get(value) || value)
-        .join(', ');
+    const formattedSelection = selectedSpecies
+      .map((value) => labelMap.get(value) || value);
+    if (speciesFilterMode === 'exclude') {
+      if (formattedSelection.length <= 2) {
+        return `All except ${formattedSelection.join(', ')}`;
+      }
+      return `All except ${formattedSelection.length} species`;
     }
-    return `${selectedSpecies.length} selected`;
-  }, [selectedSpecies, availableSpecies]);
+    if (formattedSelection.length <= 2) {
+      return formattedSelection.join(', ');
+    }
+    return `${formattedSelection.length} selected`;
+  }, [selectedSpecies, availableSpecies, speciesFilterMode]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1107,6 +1129,13 @@ export default function Sightings() {
                       >
                         Clear selection
                       </button>
+                      <label className="multiSelect__mode">
+                        <span>Filter mode:</span>
+                        <select value={speciesFilterMode} onChange={handleSpeciesModeChange}>
+                          <option value="include">Only selected</option>
+                          <option value="exclude">All except selected</option>
+                        </select>
+                      </label>
                     </div>
                     <ul className="multiSelect__list">
                       {availableSpecies.length === 0 && (
