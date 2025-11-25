@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" role="img" aria-labelledby="title desc">
+  <title id="title">Ting Vision logo</title>
+  <desc id="desc">Orange giraffe silhouette forming the T in Ting Vision.</desc>
+  <g fill="#f57c20" stroke="none">
+    <rect x="18" y="10" width="14" height="40" rx="5" />
+    <rect x="44" y="10" width="14" height="40" rx="5" />
+    <path d="M10 42c0-6.5 5.2-11.7 11.7-11.7h32.6C60.8 30.3 66 35.5 66 42v16l9 8-9 8v32.5C66 118.6 55.6 129 42.5 129h-5C24.4 129 14 118.6 14 105.5V74L4.5 66 14 58V42Z" />
+    <circle cx="26" cy="70" r="5.5" fill="#0c0c0c" />
+    <circle cx="48" cy="70" r="5.5" fill="#0c0c0c" />
+    <path d="M20 92c6 9 15.5 14 26 14s20-5 26-14" fill="none" stroke="#f57c20" stroke-width="10" stroke-linecap="round" />
+  </g>
+  <text x="96" y="102" fill="#f57c20" font-family="'Inter','Segoe UI',sans-serif" font-size="82" font-weight="700" letter-spacing="0.5">
+    ing Vision
+  </text>
+</svg>
