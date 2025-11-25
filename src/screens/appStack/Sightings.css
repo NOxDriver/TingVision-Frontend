@@ -205,7 +205,9 @@
   padding: 8px 10px;
   border-bottom: 1px solid rgba(203, 146, 74, 0.35);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
 }
 
 .multiSelect__clear {
@@ -226,6 +228,22 @@
 .multiSelect__clear:not(:disabled):hover,
 .multiSelect__clear:not(:disabled):focus-visible {
   background: rgba(255, 140, 26, 0.16);
+}
+
+.multiSelect__mode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.multiSelect__mode select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(203, 146, 74, 0.4);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  padding: 4px 8px;
 }
 
 .multiSelect__list {
