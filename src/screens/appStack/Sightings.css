@@ -208,6 +208,38 @@
   justify-content: flex-end;
 }
 
+.multiSelect__modeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(203, 146, 74, 0.35);
+  background: rgba(255, 140, 26, 0.04);
+}
+
+.multiSelect__modeOption {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--color-text-primary);
+  line-height: 1.35;
+}
+
+.multiSelect__modeOption input[type="radio"] {
+  accent-color: var(--color-accent);
+  margin-top: 3px;
+}
+
+.multiSelect__modeTitle {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.multiSelect__modeHint {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
 .multiSelect__clear {
   background: transparent;
   border: none;

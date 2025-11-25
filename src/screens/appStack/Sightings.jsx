@@ -221,6 +221,7 @@ export default function Sightings() {
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [speciesFilterMode, setSpeciesFilterMode] = useState('include');
   const [isSpeciesMenuOpen, setIsSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
@@ -487,10 +488,14 @@ export default function Sightings() {
       if (filtered.length === prev.length) {
         return prev;
       }
-      trackEvent('sightings_species_filter', { species: filtered, reason: 'pruned' });
+      trackEvent('sightings_species_filter', {
+        species: filtered,
+        reason: 'pruned',
+        mode: speciesFilterMode,
+      });
       return filtered;
     });
-  }, [availableSpecies]);
+  }, [availableSpecies, speciesFilterMode]);
 
   const filteredSightings = useMemo(
     () => sightings.filter((entry) => {
@@ -512,18 +517,32 @@ export default function Sightings() {
         return false;
       }
 
-      if (selectedSpecies.length > 0) {
-        const normalizedSpecies = typeof entry.species === 'string'
-          ? entry.species.trim().toLowerCase()
-          : '';
+      const normalizedSpecies = typeof entry.species === 'string'
+        ? entry.species.trim().toLowerCase()
+        : '';
+
+      if (selectedSpecies.length > 0 && speciesFilterMode === 'include') {
         if (!selectedSpecies.includes(normalizedSpecies)) {
+          return false;
+        }
+      }
+
+      if (selectedSpecies.length > 0 && speciesFilterMode === 'exclude') {
+        if (selectedSpecies.includes(normalizedSpecies)) {
           return false;
         }
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies],
+    [
+      sightings,
+      confidenceThreshold,
+      locationFilter,
+      mediaTypeFilter,
+      selectedSpecies,
+      speciesFilterMode,
+    ],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -574,9 +593,16 @@ export default function Sightings() {
         action: hasValue ? 'remove' : 'add',
         value,
         species: nextSelection,
+        mode: speciesFilterMode,
       });
       return nextSelection;
     });
+  };
+
+  const handleSpeciesModeChange = (event) => {
+    const nextMode = event.target.value;
+    setSpeciesFilterMode(nextMode);
+    trackEvent('sightings_species_filter_mode', { mode: nextMode });
   };
 
   const handleSpeciesClear = () => {
@@ -584,7 +610,11 @@ export default function Sightings() {
       if (prev.length === 0) {
         return prev;
       }
-      trackEvent('sightings_species_filter', { action: 'clear', species: [] });
+      trackEvent('sightings_species_filter', {
+        action: 'clear',
+        species: [],
+        mode: speciesFilterMode,
+      });
       return [];
     });
   };
@@ -594,13 +624,19 @@ export default function Sightings() {
       return 'All species';
     }
     const labelMap = new Map(availableSpecies.map((item) => [item.value, item.label]));
+    const labels = selectedSpecies
+      .map((value) => labelMap.get(value) || value);
+    if (speciesFilterMode === 'exclude') {
+      if (selectedSpecies.length <= 2) {
+        return `All except ${labels.join(', ')}`;
+      }
+      return `All except ${selectedSpecies.length} species`;
+    }
     if (selectedSpecies.length <= 2) {
-      return selectedSpecies
-        .map((value) => labelMap.get(value) || value)
-        .join(', ');
+      return labels.join(', ');
     }
     return `${selectedSpecies.length} selected`;
-  }, [selectedSpecies, availableSpecies]);
+  }, [selectedSpecies, availableSpecies, speciesFilterMode]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1107,6 +1143,34 @@ export default function Sightings() {
                       >
                         Clear selection
                       </button>
+                    </div>
+                    <div className="multiSelect__modeGroup" role="group" aria-label="Species filter mode">
+                      <label className="multiSelect__modeOption">
+                        <input
+                          type="radio"
+                          name="speciesMode"
+                          value="include"
+                          checked={speciesFilterMode === 'include'}
+                          onChange={handleSpeciesModeChange}
+                        />
+                        <div>
+                          <div className="multiSelect__modeTitle">Show only selected species</div>
+                          <div className="multiSelect__modeHint">Hide any species not in your list.</div>
+                        </div>
+                      </label>
+                      <label className="multiSelect__modeOption">
+                        <input
+                          type="radio"
+                          name="speciesMode"
+                          value="exclude"
+                          checked={speciesFilterMode === 'exclude'}
+                          onChange={handleSpeciesModeChange}
+                        />
+                        <div>
+                          <div className="multiSelect__modeTitle">Show all except selected species</div>
+                          <div className="multiSelect__modeHint">Exclude species you pick here.</div>
+                        </div>
+                      </label>
                     </div>
                     <ul className="multiSelect__list">
                       {availableSpecies.length === 0 && (
