@@ -221,6 +221,7 @@ export default function Sightings() {
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [speciesFilterMode, setSpeciesFilterMode] = useState('include');
   const [isSpeciesMenuOpen, setIsSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
@@ -516,14 +517,23 @@ export default function Sightings() {
         const normalizedSpecies = typeof entry.species === 'string'
           ? entry.species.trim().toLowerCase()
           : '';
-        if (!selectedSpecies.includes(normalizedSpecies)) {
+        const isSelected = selectedSpecies.includes(normalizedSpecies);
+        const isAllowed = speciesFilterMode === 'exclude' ? !isSelected : isSelected;
+        if (!isAllowed) {
           return false;
         }
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies],
+    [
+      sightings,
+      confidenceThreshold,
+      locationFilter,
+      mediaTypeFilter,
+      selectedSpecies,
+      speciesFilterMode,
+    ],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -589,18 +599,37 @@ export default function Sightings() {
     });
   };
 
+  const handleSpeciesModeChange = (mode) => {
+    setSpeciesFilterMode((prev) => {
+      if (prev === mode) {
+        return prev;
+      }
+      trackEvent('sightings_species_filter_mode', { mode });
+      return mode;
+    });
+  };
+
   const selectedSpeciesSummary = useMemo(() => {
     if (selectedSpecies.length === 0) {
       return 'All species';
     }
     const labelMap = new Map(availableSpecies.map((item) => [item.value, item.label]));
+    const formattedSelection = selectedSpecies
+      .map((value) => labelMap.get(value) || value)
+      .join(', ');
+
+    if (speciesFilterMode === 'exclude') {
+      if (selectedSpecies.length <= 2) {
+        return `All except ${formattedSelection}`;
+      }
+      return `All except ${selectedSpecies.length} species`;
+    }
+
     if (selectedSpecies.length <= 2) {
-      return selectedSpecies
-        .map((value) => labelMap.get(value) || value)
-        .join(', ');
+      return formattedSelection;
     }
     return `${selectedSpecies.length} selected`;
-  }, [selectedSpecies, availableSpecies]);
+  }, [selectedSpecies, availableSpecies, speciesFilterMode]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1096,6 +1125,28 @@ export default function Sightings() {
                 {isSpeciesMenuOpen && (
                   <div className="multiSelect__menu" role="listbox" aria-labelledby="speciesFilterLabel">
                     <div className="multiSelect__actions">
+                      <div className="multiSelect__mode" role="group" aria-label="Species filter mode">
+                        <label>
+                          <input
+                            type="radio"
+                            name="speciesFilterMode"
+                            value="include"
+                            checked={speciesFilterMode === 'include'}
+                            onChange={() => handleSpeciesModeChange('include')}
+                          />
+                          <span>Include</span>
+                        </label>
+                        <label>
+                          <input
+                            type="radio"
+                            name="speciesFilterMode"
+                            value="exclude"
+                            checked={speciesFilterMode === 'exclude'}
+                            onChange={() => handleSpeciesModeChange('exclude')}
+                          />
+                          <span>Exclude</span>
+                        </label>
+                      </div>
                       <button
                         type="button"
                         className="multiSelect__clear"
