@@ -205,7 +205,9 @@
   padding: 8px 10px;
   border-bottom: 1px solid rgba(203, 146, 74, 0.35);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
 .multiSelect__clear {
@@ -226,6 +228,19 @@
 .multiSelect__clear:not(:disabled):hover,
 .multiSelect__clear:not(:disabled):focus-visible {
   background: rgba(255, 140, 26, 0.16);
+}
+
+.multiSelect__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.multiSelect__toggle input {
+  accent-color: var(--color-accent);
 }
 
 .multiSelect__list {

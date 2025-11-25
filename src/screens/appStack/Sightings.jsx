@@ -221,6 +221,7 @@ export default function Sightings() {
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
+  const [speciesFilterMode, setSpeciesFilterMode] = useState('include');
   const [isSpeciesMenuOpen, setIsSpeciesMenuOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
@@ -516,14 +517,25 @@ export default function Sightings() {
         const normalizedSpecies = typeof entry.species === 'string'
           ? entry.species.trim().toLowerCase()
           : '';
-        if (!selectedSpecies.includes(normalizedSpecies)) {
+        const isSelected = selectedSpecies.includes(normalizedSpecies);
+        if (speciesFilterMode === 'include' && !isSelected) {
+          return false;
+        }
+        if (speciesFilterMode === 'exclude' && isSelected) {
           return false;
         }
       }
 
       return true;
     }),
-    [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies],
+    [
+      sightings,
+      confidenceThreshold,
+      locationFilter,
+      mediaTypeFilter,
+      selectedSpecies,
+      speciesFilterMode,
+    ],
   );
 
   const hasAnySightings = sightings.length > 0;
@@ -589,18 +601,38 @@ export default function Sightings() {
     });
   };
 
+  const handleSpeciesModeToggle = () => {
+    setSpeciesFilterMode((prev) => {
+      const nextMode = prev === 'include' ? 'exclude' : 'include';
+      trackEvent('sightings_species_filter_mode', {
+        mode: nextMode,
+        species: selectedSpecies,
+      });
+      return nextMode;
+    });
+  };
+
   const selectedSpeciesSummary = useMemo(() => {
     if (selectedSpecies.length === 0) {
       return 'All species';
     }
     const labelMap = new Map(availableSpecies.map((item) => [item.value, item.label]));
+    const getLabelList = () => selectedSpecies
+      .map((value) => labelMap.get(value) || value)
+      .join(', ');
+
+    if (speciesFilterMode === 'exclude') {
+      if (selectedSpecies.length <= 2) {
+        return `All except ${getLabelList()}`;
+      }
+      return `All except ${selectedSpecies.length}`;
+    }
+
     if (selectedSpecies.length <= 2) {
-      return selectedSpecies
-        .map((value) => labelMap.get(value) || value)
-        .join(', ');
+      return getLabelList();
     }
     return `${selectedSpecies.length} selected`;
-  }, [selectedSpecies, availableSpecies]);
+  }, [selectedSpecies, availableSpecies, speciesFilterMode]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1107,6 +1139,14 @@ export default function Sightings() {
                       >
                         Clear selection
                       </button>
+                      <label className="multiSelect__toggle">
+                        <input
+                          type="checkbox"
+                          checked={speciesFilterMode === 'exclude'}
+                          onChange={handleSpeciesModeToggle}
+                        />
+                        <span>Show all except selected species</span>
+                      </label>
                     </div>
                     <ul className="multiSelect__list">
                       {availableSpecies.length === 0 && (
