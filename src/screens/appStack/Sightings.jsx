@@ -868,6 +868,23 @@ export default function Sightings() {
         return;
       }
 
+      let speciesToSend = entry?.species;
+
+      if (typeof window !== 'undefined') {
+        const wantsCorrection = window.confirm('Do you want to change the animal before sending?');
+        if (wantsCorrection) {
+          const manualSpecies = window.prompt(
+            'Enter the animal name to include in the WhatsApp message',
+            speciesToSend || '',
+          );
+
+          if (typeof manualSpecies === 'string') {
+            const normalizedSpecies = manualSpecies.trim();
+            speciesToSend = normalizedSpecies || speciesToSend;
+          }
+        }
+      }
+
       const payload = {
         locationId: entry.locationId,
         gcp_url: mediaSource,
@@ -876,7 +893,7 @@ export default function Sightings() {
           entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
             ? entry.createdAt.toISOString()
             : undefined,
-        species: entry?.species,
+        species: speciesToSend,
         alertStyle,
       };
 
