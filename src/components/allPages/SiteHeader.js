@@ -3,6 +3,7 @@ import "./SiteHeader.css";
 import useAuthStore from "../../stores/authStore";
 import { useNavigate } from 'react-router-dom';
 import { FiHome, FiVideo, FiLogIn, FiUserPlus, FiLogOut } from "react-icons/fi";
+import logo from "../../assets/ting-vision-logo.svg";
 
 const SiteHeader = ({ mode = 'light' }) => {
     const user = useAuthStore(state => state.user);
@@ -13,7 +14,7 @@ const SiteHeader = ({ mode = 'light' }) => {
         <header className={`site-header ${mode}`}>
             <div className="header-container">
                 <div className="header-brand" onClick={() => navigate('/')}>
-                    <h1 className="logo-text">Ting Vision</h1>
+                    <img src={logo} alt="Ting Vision" className="logo-image" />
                 </div>
 
                 <nav className="header-nav">
