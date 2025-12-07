@@ -822,18 +822,6 @@ export default function Sightings() {
         return;
       }
 
-      const confirmationMessage =
-        options.confirmationMessage ||
-        (isAlert
-          ? 'Send this sighting as an alert to WhatsApp groups?'
-          : 'Send this sighting to WhatsApp?');
-
-      if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
-        return;
-      }
-
-      trackButton(isAlert ? 'sightings_send_whatsapp_alert' : 'sightings_send_whatsapp');
-
       if (!SEND_WHATSAPP_ENDPOINT) {
         setSendStatusMap((prev) => ({
           ...prev,
@@ -884,6 +872,18 @@ export default function Sightings() {
           }
         }
       }
+
+      const confirmationMessage =
+        options.confirmationMessage ||
+        (isAlert
+          ? 'Send this sighting as an alert to WhatsApp groups?'
+          : 'Send this sighting to WhatsApp?');
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
+        return;
+      }
+
+      trackButton(isAlert ? 'sightings_send_whatsapp_alert' : 'sightings_send_whatsapp');
 
       const payload = {
         locationId: entry.locationId,
