@@ -1017,7 +1017,11 @@ export default function Sightings() {
             })),
         );
 
-        const updates = { deletedAt: serverTimestamp(), deletedBy: actorName || 'Admin' };
+        const updates = {
+          deletedAt: serverTimestamp(),
+          deletedBy: actorName || 'Admin',
+          updatedAt: serverTimestamp(),
+        };
         const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
 
         if (entry.meta?.speciesDocPath) {
