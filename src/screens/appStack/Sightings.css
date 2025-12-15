@@ -529,6 +529,35 @@
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
+.sightingCard__deleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 99, 99, 0.7);
+  background: rgba(255, 99, 99, 0.18);
+  color: #ffd6d6;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sightingCard__deleteButton:hover,
+.sightingCard__deleteButton:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 99, 99, 0.28);
+  box-shadow: 0 4px 10px rgba(255, 99, 99, 0.2);
+}
+
+.sightingCard__deleteButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .sightingCard__actionsButton:hover,
 .sightingCard__actionsButton:focus-visible {
   transform: translateY(-1px);
