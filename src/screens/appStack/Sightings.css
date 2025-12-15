@@ -536,6 +536,17 @@
   box-shadow: 0 4px 10px rgba(18, 140, 126, 0.25);
 }
 
+.sightingCard__actionsButton--danger {
+  background: #b91c1c;
+  border-color: #991b1b;
+}
+
+.sightingCard__actionsButton--danger:hover,
+.sightingCard__actionsButton--danger:focus-visible {
+  background: #991b1b;
+  box-shadow: 0 4px 10px rgba(185, 28, 28, 0.25);
+}
+
 .sightingCard__actionsButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;

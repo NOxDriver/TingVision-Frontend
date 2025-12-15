@@ -21,12 +21,13 @@ import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
-import { FiEdit2 } from 'react-icons/fi';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import {
   applySightingCorrection,
   describeSpeciesChange,
   buildCorrectionNote,
 } from '../../utils/sightings/corrections';
+import { deleteSighting } from '../../utils/sightings/deletions';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
@@ -231,6 +232,7 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [deleteStatusMap, setDeleteStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -266,6 +268,8 @@ export default function Sightings() {
 
     return typeof user.uid === 'string' && user.uid.length > 0 ? user.uid : 'Admin';
   }, [user]);
+
+  const isDeletedDoc = (docData) => Boolean(docData?.deletedAt || docData?.deleteAt);
 
   const loadSightings = useCallback(async (options = {}) => {
     const { append = false, cursor = null } = options;
@@ -348,7 +352,7 @@ export default function Sightings() {
           const parentRef = docSnap.ref.parent.parent;
           if (!parentRef) return null;
           const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc) return null;
+          if (!parentDoc || isDeletedDoc(parentDoc) || isDeletedDoc(speciesDoc)) return null;
 
           const entry = buildHighlightEntry({
             category: 'sighting',
@@ -960,6 +964,51 @@ export default function Sightings() {
     [],
   );
 
+  const handleDeleteSighting = useCallback(
+    async (entry) => {
+      if (!entry || typeof entry.id !== 'string') {
+        return;
+      }
+
+      const confirmed = typeof window === 'undefined'
+        ? true
+        : window.confirm(
+          'Delete this sighting? This will remove the media from storage and mark the record as deleted.',
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setDeleteStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: { state: 'pending', message: '' },
+      }));
+
+      try {
+        await deleteSighting({ entry, actor: actorName });
+
+        setSightings((prev) => prev.filter((item) => item.id !== entry.id));
+        setDeleteStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'success', message: 'Sighting deleted.' },
+        }));
+        trackEvent('sightings_delete', {
+          location: entry.locationId,
+          mediaType: entry.mediaType,
+          species: entry.species,
+        });
+      } catch (err) {
+        console.error('Failed to delete sighting', err);
+        setDeleteStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
+        }));
+      }
+    },
+    [actorName],
+  );
+
   useEffect(() => {
     if (!activeSighting) {
       return;
@@ -1250,7 +1299,9 @@ export default function Sightings() {
         <div className="sightingsPage__list">
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
+            const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
+            const isDeleting = deleteStatus.state === 'pending';
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1356,6 +1407,17 @@ export default function Sightings() {
                           {isSending ? 'Sending…' : 'Alert'}
                         </button>
                       </div>
+                      <div className="sightingCard__actionsRow">
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                          onClick={() => handleDeleteSighting(entry)}
+                          disabled={isDeleting}
+                        >
+                          <FiTrash2 />
+                          {isDeleting ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
                           {sendStatus.message}
@@ -1364,6 +1426,16 @@ export default function Sightings() {
                       {sendStatus.state === 'error' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
                           {sendStatus.message}
+                        </span>
+                      )}
+                      {deleteStatus.state === 'success' && deleteStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                          {deleteStatus.message}
+                        </span>
+                      )}
+                      {deleteStatus.state === 'error' && deleteStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                          {deleteStatus.message}
                         </span>
                       )}
                     </div>
