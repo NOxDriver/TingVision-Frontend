@@ -122,6 +122,16 @@ const mergeNotes = (existing, nextNote) => {
 const shouldUpdateField = (docData, field) =>
   !docData || Object.prototype.hasOwnProperty.call(docData, field);
 
+const buildDeletionNote = ({ actor, locationId, timestamp = new Date() }) => {
+  const actorName = typeof actor === 'string' && actor.trim().length > 0 ? actor.trim() : 'Admin';
+  const locationFragment = typeof locationId === 'string' && locationId.trim().length > 0
+    ? ` at ${locationId.trim()}`
+    : '';
+  const normalizedTimestamp = timestamp instanceof Date ? timestamp : new Date(timestamp);
+
+  return `${normalizedTimestamp.toISOString()} – ${actorName} deleted sighting${locationFragment}.`;
+};
+
 export const describeSpeciesChange = ({ mode, species }) => {
   if (mode === 'background') {
     return {
@@ -366,3 +376,47 @@ export const applySightingCorrection = async ({
 };
 
 export default applySightingCorrection;
+
+export const deleteSighting = async ({ entry, actor }) => {
+  if (!entry || !entry.meta || !entry.meta.parentPath) {
+    throw new Error('Sighting metadata is missing required references.');
+  }
+
+  const parentDocData = entry.meta.parentDoc || {};
+  const speciesDocData = entry.meta.speciesDoc || null;
+  const locationId = entry.locationId || parentDocData.locationId || '';
+  const storageInstance = defaultStorage || getStorage();
+  const deletionNote = buildDeletionNote({ actor, locationId });
+
+  const storageDeletions = Object.entries(parentDocData)
+    .filter(([key, value]) => key.startsWith(STORAGE_PATH_PREFIX) && typeof value === 'string' && value.length > 0)
+    .map(([, path]) => deleteObject(ref(storageInstance, path)).catch(() => {}));
+
+  if (storageDeletions.length > 0) {
+    await Promise.all(storageDeletions);
+  }
+
+  const parentRef = toDocRef(entry.meta.parentPath);
+  const parentUpdates = {
+    deletedAt: serverTimestamp(),
+    deletedBy: actor || null,
+    notes: mergeNotes(parentDocData.notes, deletionNote),
+    updatedAt: serverTimestamp(),
+  };
+
+  const updateTasks = [updateDoc(parentRef, parentUpdates)];
+
+  if (entry.meta.speciesDocPath) {
+    const speciesUpdates = {
+      deletedAt: serverTimestamp(),
+      deletedBy: actor || null,
+      notes: mergeNotes(speciesDocData?.notes, deletionNote),
+      updatedAt: serverTimestamp(),
+    };
+    updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), speciesUpdates));
+  }
+
+  await Promise.all(updateTasks);
+
+  return { note: deletionNote };
+};
