@@ -529,11 +529,22 @@
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
+.sightingCard__actionsButton--danger {
+  border-color: #b84a4a;
+  background: #f36565;
+}
+
 .sightingCard__actionsButton:hover,
 .sightingCard__actionsButton:focus-visible {
   transform: translateY(-1px);
   background: #1ebe5d;
   box-shadow: 0 4px 10px rgba(18, 140, 126, 0.25);
+}
+
+.sightingCard__actionsButton--danger:hover,
+.sightingCard__actionsButton--danger:focus-visible {
+  background: #e14c4c;
+  box-shadow: 0 4px 10px rgba(184, 74, 74, 0.25);
 }
 
 .sightingCard__actionsButton:disabled {
