@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
+  doc,
   getDoc,
   getDocs,
   limit,
   orderBy,
   query,
+  serverTimestamp,
   startAfter,
+  updateDoc,
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { deleteObject, getStorage, ref } from 'firebase/storage';
+import { db, storage as defaultStorage } from '../../firebase';
 import './Sightings.css';
 import {
   buildHighlightEntry,
@@ -74,6 +78,14 @@ const formatTimestampLabel = (value) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const toDocRef = (path) => {
+  const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
+  if (segments.length < 2 || segments.length % 2 !== 0) {
+    throw new Error('Sighting metadata is missing required references.');
+  }
+  return doc(db, ...segments);
+};
 
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -231,6 +243,7 @@ export default function Sightings() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
+  const [deleteStatusMap, setDeleteStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -339,16 +352,19 @@ export default function Sightings() {
       const parentDataMap = new Map();
       parentSnaps.forEach((snap) => {
         if (!snap.exists()) return;
-        parentDataMap.set(snap.ref.path, { id: snap.id, ...snap.data() });
+        const data = snap.data();
+        if (data?.deletedAt) return;
+        parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
       });
 
       const entries = snapshot.docs
         .map((docSnap) => {
           const speciesDoc = { id: docSnap.id, ...docSnap.data() };
+          if (speciesDoc.deletedAt) return null;
           const parentRef = docSnap.ref.parent.parent;
           if (!parentRef) return null;
           const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc) return null;
+          if (!parentDoc || parentDoc.deletedAt) return null;
 
           const entry = buildHighlightEntry({
             category: 'sighting',
@@ -960,6 +976,73 @@ export default function Sightings() {
     [],
   );
 
+  const handleDeleteSighting = useCallback(
+    async (entry) => {
+      if (!entry || !entry.id) {
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm(
+          'Delete this sighting? This will remove its media files and hide it from the feed.',
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setDeleteStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: { state: 'pending', message: 'Deleting…' },
+      }));
+
+      try {
+        const storageInstance = defaultStorage || getStorage();
+        const parentDocData = entry.meta?.parentDoc || {};
+
+        const storagePaths = Object.entries(parentDocData)
+          .filter(
+            ([key, value]) =>
+              typeof key === 'string'
+              && key.startsWith('storagePath')
+              && typeof value === 'string'
+              && value.length > 0,
+          )
+          .map(([, value]) => value);
+
+        await Promise.all(
+          storagePaths.map((path) =>
+            deleteObject(ref(storageInstance, path)).catch((err) => {
+              console.warn('Failed to delete storage object', path, err);
+            })),
+        );
+
+        const updates = { deletedAt: serverTimestamp(), deletedBy: actorName || 'Admin' };
+        const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
+
+        if (entry.meta?.speciesDocPath) {
+          updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+        }
+
+        await Promise.all(updateTasks);
+
+        setSightings((prev) => prev.filter((item) => item.id !== entry.id));
+        setActiveSighting((prev) => (prev?.id === entry.id ? null : prev));
+        setDeleteStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'success', message: 'Sighting deleted.' },
+        }));
+      } catch (err) {
+        console.error('Failed to delete sighting', err);
+        setDeleteStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
+        }));
+      }
+    },
+    [actorName],
+  );
+
   useEffect(() => {
     if (!activeSighting) {
       return;
@@ -1251,6 +1334,8 @@ export default function Sightings() {
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
+            const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
+            const isDeleting = deleteStatus.state === 'pending';
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1328,7 +1413,7 @@ export default function Sightings() {
                           type="button"
                           className="sightingCard__editButton"
                           onClick={() => handleOpenEditModal(entry)}
-                          disabled={editSaving}
+                          disabled={editSaving || isDeleting}
                           aria-label={`Edit sighting for ${entry.species}`}
                           title="Edit sighting"
                         >
@@ -1338,7 +1423,7 @@ export default function Sightings() {
                           type="button"
                           className="sightingCard__actionsButton"
                           onClick={() => handleSendToWhatsApp(entry)}
-                          disabled={isSending}
+                          disabled={isSending || isDeleting}
                         >
                           {isSending ? 'Sending…' : 'Send to WhatsApp'}
                         </button>
@@ -1351,9 +1436,17 @@ export default function Sightings() {
                               confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
                             })
                           }
-                          disabled={isSending}
+                          disabled={isSending || isDeleting}
                         >
                           {isSending ? 'Sending…' : 'Alert'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                          onClick={() => handleDeleteSighting(entry)}
+                          disabled={isDeleting || isSending}
+                        >
+                          {isDeleting ? 'Deleting…' : 'Delete'}
                         </button>
                       </div>
                       {sendStatus.state === 'success' && sendStatus.message && (
@@ -1364,6 +1457,16 @@ export default function Sightings() {
                       {sendStatus.state === 'error' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
                           {sendStatus.message}
+                        </span>
+                      )}
+                      {deleteStatus.state === 'success' && deleteStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                          {deleteStatus.message}
+                        </span>
+                      )}
+                      {deleteStatus.state === 'error' && deleteStatus.message && (
+                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                          {deleteStatus.message}
                         </span>
                       )}
                     </div>
