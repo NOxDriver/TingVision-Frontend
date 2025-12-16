@@ -259,7 +259,6 @@ export default function Sightings() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
-  const listTopRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -442,10 +441,6 @@ export default function Sightings() {
   }, [loadSightings]);
 
   useEffect(() => {
-    if (listTopRef.current) {
-      listTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
 
@@ -1498,7 +1493,7 @@ export default function Sightings() {
           <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
         )}
 
-        <div className="sightingsPage__list" ref={listTopRef}>
+        <div className="sightingsPage__list">
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
