@@ -230,6 +230,7 @@ export default function Sightings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
+  const listTopRef = useRef(null);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
@@ -439,6 +440,15 @@ export default function Sightings() {
       isMountedRef.current = false;
     };
   }, [loadSightings]);
+
+  useEffect(() => {
+    const scrollTarget = listTopRef.current;
+    if (scrollTarget && typeof scrollTarget.scrollIntoView === 'function') {
+      scrollTarget.scrollIntoView({ behavior: 'auto', block: 'start' });
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [currentPage]);
 
   const availableLocations = useMemo(() => {
     const ids = sightings
@@ -1489,6 +1499,7 @@ export default function Sightings() {
           <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
         )}
 
+        <div ref={listTopRef} aria-hidden="true" />
         <div className="sightingsPage__list">
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
