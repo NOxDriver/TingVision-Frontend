@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 // AuthStack
 import Login from "./screens/authStack/Login";
 import Register from "./screens/authStack/Register";
@@ -40,8 +40,18 @@ function App() {
     trackPageView(nextPath);
   }, [location]);
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
+  useLayoutEffect(() => {
+    const scrollElement = document.scrollingElement || document.documentElement;
+
+    const scrollToTop = () => {
+      if (scrollElement) {
+        scrollElement.scrollTo({ top: 0, behavior: "auto" });
+      }
+      window.scrollTo({ top: 0, behavior: "auto" });
+    };
+
+    const frame = window.requestAnimationFrame(scrollToTop);
+    return () => window.cancelAnimationFrame(frame);
   }, [location.pathname, location.search]);
 
   return (
