@@ -1606,6 +1606,20 @@ export default function Sightings() {
                           {isDeleting ? 'Deleting…' : 'Delete'}
                         </button>
                       </div>
+                      {selectedSightingsCount > 1 && (
+                        <div className="sightingCard__bulkActions">
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
+                            onClick={handleBulkDeleteSelected}
+                            disabled={hasPendingSelectedDeletes}
+                          >
+                            {hasPendingSelectedDeletes
+                              ? 'Deleting selected…'
+                              : `Delete selected (${selectedSightingsCount})`}
+                          </button>
+                        </div>
+                      )}
                       {sendStatus.state === 'success' && sendStatus.message && (
                         <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
                           {sendStatus.message}
