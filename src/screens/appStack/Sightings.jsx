@@ -242,6 +242,7 @@ export default function Sightings() {
   const [paginationCursor, setPaginationCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedSightings, setSelectedSightings] = useState(() => new Set());
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
@@ -509,6 +510,20 @@ export default function Sightings() {
     });
   }, [availableSpecies]);
 
+  useEffect(() => {
+    setSelectedSightings((prev) => {
+      if (prev.size === 0) {
+        return prev;
+      }
+      const validIds = new Set(sightings.map((entry) => entry.id));
+      const filtered = new Set([...prev].filter((id) => validIds.has(id)));
+      if (filtered.size === prev.size) {
+        return prev;
+      }
+      return filtered;
+    });
+  }, [sightings]);
+
   const filteredSightings = useMemo(
     () => sightings.filter((entry) => {
       const hasConfidence = typeof entry.maxConf === 'number' && !Number.isNaN(entry.maxConf);
@@ -549,6 +564,19 @@ export default function Sightings() {
 
   const hasAnySightings = sightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
+  const selectedSightingsList = useMemo(
+    () => sightings.filter((entry) => selectedSightings.has(entry.id)),
+    [sightings, selectedSightings],
+  );
+  const selectedSightingsCount = selectedSightingsList.length;
+  const isAllFilteredSelected = useMemo(
+    () => filteredSightings.length > 0
+      && filteredSightings.every((entry) => selectedSightings.has(entry.id)),
+    [filteredSightings, selectedSightings],
+  );
+  const hasPendingSelectedDeletes = selectedSightingsList.some(
+    (entry) => deleteStatusMap[entry.id]?.state === 'pending',
+  );
 
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -976,76 +1004,149 @@ export default function Sightings() {
     [],
   );
 
-  const handleDeleteSighting = useCallback(
-    async (entry) => {
-      if (!entry || !entry.id) {
+  const handleDeleteSightings = useCallback(
+    async (entries) => {
+      const targets = entries.filter((entry) => entry && entry.id);
+      if (targets.length === 0) {
         return;
       }
 
       if (typeof window !== 'undefined') {
-        const confirmed = window.confirm(
-          'Delete this sighting? This will remove its media files and hide it from the feed.',
-        );
+        const confirmationMessage = targets.length === 1
+          ? 'Delete this sighting? This will remove its media files and hide it from the feed.'
+          : `Delete ${targets.length} sightings? This will remove their media files and hide them from the feed.`;
+        const confirmed = window.confirm(confirmationMessage);
         if (!confirmed) {
           return;
         }
       }
 
-      setDeleteStatusMap((prev) => ({
-        ...prev,
-        [entry.id]: { state: 'pending', message: 'Deleting…' },
-      }));
+      setDeleteStatusMap((prev) => {
+        const next = { ...prev };
+        targets.forEach((entry) => {
+          next[entry.id] = { state: 'pending', message: 'Deleting…' };
+        });
+        return next;
+      });
 
       try {
-        const storageInstance = defaultStorage || getStorage();
-        const parentDocData = entry.meta?.parentDoc || {};
+        const results = await Promise.all(
+          targets.map(async (entry) => {
+            try {
+              const storageInstance = defaultStorage || getStorage();
+              const parentDocData = entry.meta?.parentDoc || {};
 
-        const storagePaths = Object.entries(parentDocData)
-          .filter(
-            ([key, value]) =>
-              typeof key === 'string'
-              && key.startsWith('storagePath')
-              && typeof value === 'string'
-              && value.length > 0,
-          )
-          .map(([, value]) => value);
+              const storagePaths = Object.entries(parentDocData)
+                .filter(
+                  ([key, value]) =>
+                    typeof key === 'string'
+                    && key.startsWith('storagePath')
+                    && typeof value === 'string'
+                    && value.length > 0,
+                )
+                .map(([, value]) => value);
 
-        await Promise.all(
-          storagePaths.map((path) =>
-            deleteObject(ref(storageInstance, path)).catch((err) => {
-              console.warn('Failed to delete storage object', path, err);
-            })),
+              await Promise.all(
+                storagePaths.map((path) =>
+                  deleteObject(ref(storageInstance, path)).catch((err) => {
+                    console.warn('Failed to delete storage object', path, err);
+                  })),
+              );
+
+              const updates = {
+                deletedAt: serverTimestamp(),
+                deletedBy: actorName || 'Admin',
+                updatedAt: serverTimestamp(),
+              };
+              const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
+
+              if (entry.meta?.speciesDocPath) {
+                updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+              }
+
+              await Promise.all(updateTasks);
+
+              return { id: entry.id, status: 'success', message: 'Sighting deleted.' };
+            } catch (err) {
+              console.error('Failed to delete sighting', err);
+              return {
+                id: entry.id,
+                status: 'error',
+                message: err?.message || 'Unable to delete sighting.',
+              };
+            }
+          }),
         );
 
-        const updates = {
-          deletedAt: serverTimestamp(),
-          deletedBy: actorName || 'Admin',
-          updatedAt: serverTimestamp(),
-        };
-        const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
+        const deletedIds = results.filter(({ status }) => status === 'success').map(({ id }) => id);
 
-        if (entry.meta?.speciesDocPath) {
-          updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+        if (deletedIds.length > 0) {
+          setSightings((prev) => prev.filter((item) => !deletedIds.includes(item.id)));
+          setActiveSighting((prev) => (prev && deletedIds.includes(prev.id) ? null : prev));
+          setSelectedSightings((prev) => {
+            if (prev.size === 0) {
+              return prev;
+            }
+            const next = new Set(prev);
+            deletedIds.forEach((id) => next.delete(id));
+            return next;
+          });
         }
 
-        await Promise.all(updateTasks);
-
-        setSightings((prev) => prev.filter((item) => item.id !== entry.id));
-        setActiveSighting((prev) => (prev?.id === entry.id ? null : prev));
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'success', message: 'Sighting deleted.' },
-        }));
+        setDeleteStatusMap((prev) => {
+          const next = { ...prev };
+          results.forEach(({ id, status, message }) => {
+            next[id] = { state: status, message };
+          });
+          return next;
+        });
       } catch (err) {
-        console.error('Failed to delete sighting', err);
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
-        }));
+        console.error('Failed to delete sightings', err);
       }
     },
     [actorName],
   );
+
+  const handleToggleSightingSelection = useCallback((sightingId) => {
+    if (!sightingId) {
+      return;
+    }
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      if (next.has(sightingId)) {
+        next.delete(sightingId);
+      } else {
+        next.add(sightingId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllFiltered = useCallback(() => {
+    setSelectedSightings((prev) => {
+      const filteredIds = filteredSightings.map((entry) => entry.id);
+      const next = new Set(prev);
+      const shouldDeselect = filteredIds.length > 0 && filteredIds.every((id) => next.has(id));
+      if (shouldDeselect) {
+        filteredIds.forEach((id) => next.delete(id));
+      } else {
+        filteredIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [filteredSightings]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedSightings(new Set());
+  }, []);
+
+  const handleBulkDeleteSelected = useCallback(() => {
+    if (selectedSightings.size === 0) {
+      return;
+    }
+    const selectedEntries = sightings.filter((entry) => selectedSightings.has(entry.id));
+    handleDeleteSightings(selectedEntries);
+  }, [handleDeleteSightings, selectedSightings, sightings]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1306,6 +1407,44 @@ export default function Sightings() {
           </div>
         </header>
 
+        {isAdmin && hasAnySightings && (
+          <div className="sightingsPage__selectionBar" role="status" aria-live="polite">
+            <div className="sightingsPage__selectionStatus">
+              {selectedSightingsCount > 0
+                ? `${selectedSightingsCount} sighting${selectedSightingsCount === 1 ? '' : 's'} selected`
+                : 'Select sightings to delete multiple at once.'}
+            </div>
+            <div className="sightingsPage__selectionActions">
+              <button
+                type="button"
+                className="sightingsPage__selectionButton"
+                onClick={handleSelectAllFiltered}
+                disabled={filteredSightings.length === 0}
+              >
+                {isAllFilteredSelected ? 'Deselect all on page' : 'Select all on page'}
+              </button>
+              <button
+                type="button"
+                className="sightingsPage__selectionButton"
+                onClick={handleClearSelection}
+                disabled={selectedSightingsCount === 0}
+              >
+                Clear selection
+              </button>
+              <button
+                type="button"
+                className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingsPage__selectionDelete"
+                onClick={handleBulkDeleteSelected}
+                disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
+              >
+                {hasPendingSelectedDeletes
+                  ? 'Deleting…'
+                  : `Delete selected (${selectedSightingsCount})`}
+              </button>
+            </div>
+          </div>
+        )}
+
         {editFeedback.text && (
           <div
             className={`sightingsPage__alert sightingsPage__alert--${editFeedback.type === 'error' ? 'error' : 'success'}`}
@@ -1340,6 +1479,7 @@ export default function Sightings() {
             const isSending = sendStatus.state === 'pending';
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
+            const isSelected = selectedSightings.has(entry.id);
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1385,6 +1525,19 @@ export default function Sightings() {
                   </button>
                 </div>
                 <div className="sightingCard__body">
+                  {isAdmin && (
+                    <div className="sightingCard__selector">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSightingSelection(entry.id)}
+                          disabled={isDeleting}
+                        />
+                        <span>Select</span>
+                      </label>
+                    </div>
+                  )}
                   <div className="sightingCard__header">
                     <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
                     {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
@@ -1447,7 +1600,7 @@ export default function Sightings() {
                         <button
                           type="button"
                           className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                          onClick={() => handleDeleteSighting(entry)}
+                          onClick={() => handleDeleteSightings([entry])}
                           disabled={isDeleting || isSending}
                         >
                           {isDeleting ? 'Deleting…' : 'Delete'}

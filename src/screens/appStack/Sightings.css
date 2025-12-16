@@ -137,6 +137,55 @@
   background: rgba(255, 140, 26, 0.32);
 }
 
+.sightingsPage__selectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(203, 146, 74, 0.35);
+  background: rgba(24, 32, 16, 0.4);
+  border-radius: 12px;
+}
+
+.sightingsPage__selectionStatus {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.sightingsPage__selectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sightingsPage__selectionButton {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 146, 74, 0.55);
+  background: rgba(24, 32, 16, 0.65);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.sightingsPage__selectionButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sightingsPage__selectionButton:not(:disabled):hover,
+.sightingsPage__selectionButton:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 140, 26, 0.18);
+}
+
+.sightingsPage__selectionDelete {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
 .sightingsPage__field {
   display: flex;
   flex-direction: column;
@@ -309,6 +358,27 @@
 .sightingCard:hover {
   transform: translateY(-2px);
   box-shadow: 0 25px 55px rgba(11, 15, 8, 0.55);
+}
+
+.sightingCard__selector {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.sightingCard__selector label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+
+.sightingCard__selector input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
 }
 
 .sightingCard--high {
