@@ -31,6 +31,7 @@ import {
   describeSpeciesChange,
   buildCorrectionNote,
 } from '../../utils/sightings/corrections';
+import { AutoSizer, CellMeasurer, CellMeasurerCache, List } from 'react-virtualized';
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
@@ -225,6 +226,194 @@ const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
   );
 };
 
+const SightingRow = React.memo(
+  ({
+    entry,
+    isAdmin,
+    isSelected,
+    sendStatus,
+    deleteStatus,
+    selectedSightingsCount,
+    hasPendingSelectedDeletes,
+    shouldDisableAutoplay,
+    getConfidenceClass,
+    handleOpenSighting,
+    handleToggleSightingSelection,
+    handleOpenEditModal,
+    handleSendToWhatsApp,
+    handleDeleteSightings,
+    handleBulkDeleteSelected,
+    editSaving,
+  }) => {
+    const isSending = sendStatus.state === 'pending';
+    const isDeleting = deleteStatus.state === 'pending';
+
+    const renderPreviewContent = () => {
+      const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
+      const debugMediaSrc = entry.debugUrl || null;
+      const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+      const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
+      const cardImageSrc = pickFirstSource(
+        entry.previewUrl,
+        entry.mediaType !== 'video' ? entry.mediaUrl : null,
+        debugImageSrc,
+      );
+
+      if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
+        return <ManagedVideoPreview videoSrc={cardVideoSrc} posterSrc={cardImageSrc} />;
+      }
+
+      if (cardImageSrc) {
+        return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
+      }
+
+      if (entry.mediaType === 'video' && cardVideoSrc && shouldDisableAutoplay) {
+        return <div className="sightingCard__placeholder">Tap to open video</div>;
+      }
+
+      return <div className="sightingCard__placeholder">No preview available</div>;
+    };
+
+    return (
+      <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`}>
+        <div className="sightingCard__media">
+          <button
+            type="button"
+            className="sightingCard__mediaButton"
+            onClick={() => handleOpenSighting(entry)}
+            aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
+          >
+            {renderPreviewContent()}
+            <span className="sightingCard__badge">
+              {entry.mediaType === 'video' ? 'Video' : 'Image'}
+            </span>
+          </button>
+        </div>
+        <div className="sightingCard__body">
+          {isAdmin && (
+            <div className="sightingCard__selector">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => handleToggleSightingSelection(entry.id)}
+                  disabled={isDeleting}
+                />
+                <span>Select</span>
+              </label>
+            </div>
+          )}
+          <div className="sightingCard__header">
+            <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
+            {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
+              <span className="sightingCard__subtitle">{entry.species}</span>
+            )}
+          </div>
+          <div className="sightingCard__meta">
+            {typeof entry.maxConf === 'number' && (
+              <span>Confidence: {formatPercent(entry.maxConf)}</span>
+            )}
+          </div>
+          <div className="sightingCard__footer">
+            <div className="sightingCard__footerGroup">
+              <span className="sightingCard__footerLabel">Location</span>
+              <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
+            </div>
+            {entry.createdAt && (
+              <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
+                <span className="sightingCard__footerLabel">Captured</span>
+                <time dateTime={entry.createdAt.toISOString()}>
+                  {formatTimestampLabel(entry.createdAt)}
+                </time>
+              </div>
+            )}
+          </div>
+          {isAdmin && (
+            <div className="sightingCard__actions">
+              <div className="sightingCard__actionsRow">
+                <button
+                  type="button"
+                  className="sightingCard__editButton"
+                  onClick={() => handleOpenEditModal(entry)}
+                  disabled={editSaving || isDeleting}
+                  aria-label={`Edit sighting for ${entry.species}`}
+                  title="Edit sighting"
+                >
+                  <FiEdit2 />
+                </button>
+                <button
+                  type="button"
+                  className="sightingCard__actionsButton"
+                  onClick={() => handleSendToWhatsApp(entry)}
+                  disabled={isSending || isDeleting}
+                >
+                  {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                </button>
+                <button
+                  type="button"
+                  className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                  onClick={() =>
+                    handleSendToWhatsApp(entry, {
+                      alertStyle: 'emoji',
+                      confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                    })
+                  }
+                  disabled={isSending || isDeleting}
+                >
+                  {isSending ? 'Sending…' : 'Alert'}
+                </button>
+                <button
+                  type="button"
+                  className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                  onClick={() => handleDeleteSightings([entry])}
+                  disabled={isDeleting || isSending}
+                >
+                  {isDeleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+              {selectedSightingsCount > 1 && (
+                <div className="sightingCard__bulkActions">
+                  <button
+                    type="button"
+                    className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
+                    onClick={handleBulkDeleteSelected}
+                    disabled={hasPendingSelectedDeletes}
+                  >
+                    {hasPendingSelectedDeletes
+                      ? 'Deleting selected…'
+                      : `Delete selected (${selectedSightingsCount})`}
+                  </button>
+                </div>
+              )}
+              {sendStatus.state === 'success' && sendStatus.message && (
+                <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                  {sendStatus.message}
+                </span>
+              )}
+              {sendStatus.state === 'error' && sendStatus.message && (
+                <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                  {sendStatus.message}
+                </span>
+              )}
+              {deleteStatus.state === 'success' && deleteStatus.message && (
+                <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                  {deleteStatus.message}
+                </span>
+              )}
+              {deleteStatus.state === 'error' && deleteStatus.message && (
+                <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                  {deleteStatus.message}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  },
+);
+
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -251,6 +440,9 @@ export default function Sightings() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
+  const [loadMoreMarker, setLoadMoreMarker] = useState(null);
+  const cellMeasurerCache = useRef(new CellMeasurerCache({ defaultHeight: 620, fixedWidth: true }));
+  const listRef = useRef(null);
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -577,8 +769,16 @@ export default function Sightings() {
   const hasPendingSelectedDeletes = selectedSightingsList.some(
     (entry) => deleteStatusMap[entry.id]?.state === 'pending',
   );
+  const virtualizedRowCount = hasSightings ? filteredSightings.length + (hasMore ? 1 : 0) : 0;
 
-  const getConfidenceClass = (value) => {
+  useEffect(() => {
+    cellMeasurerCache.current.clearAll();
+    if (listRef.current) {
+      listRef.current.recomputeRowHeights();
+    }
+  }, [filteredSightings, sendStatusMap, deleteStatusMap, selectedSightings]);
+
+  const getConfidenceClass = useCallback((value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
       return 'sightingCard--unknown';
     }
@@ -589,9 +789,9 @@ export default function Sightings() {
       return 'sightingCard--medium';
     }
     return 'sightingCard--low';
-  };
+  }, []);
 
-  const handleOpenSighting = (entry) => {
+  const handleOpenSighting = useCallback((entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
     trackButton('sighting_open', {
@@ -599,7 +799,7 @@ export default function Sightings() {
       mediaType: entry?.mediaType,
       location: entry?.locationId,
     });
-  };
+  }, []);
 
   const handleCloseSighting = () => {
     setActiveSighting(null);
@@ -1149,6 +1349,36 @@ export default function Sightings() {
   }, [handleDeleteSightings, selectedSightings, sightings]);
 
   useEffect(() => {
+    if (!hasMore) {
+      setLoadMoreMarker(null);
+    }
+  }, [hasMore]);
+
+  useEffect(() => {
+    const sentinel = loadMoreMarker;
+    if (!sentinel || !hasMore || !paginationCursor) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isVisible = entries.some((entry) => entry.isIntersecting);
+        if (isVisible && !loading && !loadingMore) {
+          trackButton('sightings_load_more');
+          loadSightings({ append: true, cursor: paginationCursor });
+        }
+      },
+      { root: null, rootMargin: '320px 0px 320px 0px', threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, loadMoreMarker, paginationCursor, loadSightings, loading, loadingMore]);
+
+  useEffect(() => {
     if (!activeSighting) {
       return;
     }
@@ -1175,6 +1405,97 @@ export default function Sightings() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeSighting]);
+
+  const rowRenderer = useCallback(
+    ({ index, key, parent, style }) => {
+      const isLoadMoreRow = index >= filteredSightings.length;
+
+      if (isLoadMoreRow) {
+        return (
+          <CellMeasurer
+            cache={cellMeasurerCache.current}
+            columnIndex={0}
+            key={key}
+            parent={parent}
+            rowIndex={index}
+          >
+            <div style={style} className="sightingsPage__virtualItem">
+              <div
+                ref={setLoadMoreMarker}
+                className="sightingsPage__loadMoreSentinel"
+                aria-hidden="true"
+              >
+                {loadingMore
+                  ? 'Loading more sightings…'
+                  : hasMore
+                    ? 'Scroll to load more sightings'
+                    : 'No more sightings to load'}
+              </div>
+            </div>
+          </CellMeasurer>
+        );
+      }
+
+      const entry = filteredSightings[index];
+      if (!entry) {
+        return null;
+      }
+      const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
+      const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
+      const isSelected = selectedSightings.has(entry.id);
+
+      return (
+        <CellMeasurer
+          cache={cellMeasurerCache.current}
+          columnIndex={0}
+          key={key}
+          parent={parent}
+          rowIndex={index}
+        >
+          <div style={style} className="sightingsPage__virtualItem">
+            <SightingRow
+              entry={entry}
+              isAdmin={isAdmin}
+              isSelected={isSelected}
+              sendStatus={sendStatus}
+              deleteStatus={deleteStatus}
+              selectedSightingsCount={selectedSightingsCount}
+              hasPendingSelectedDeletes={hasPendingSelectedDeletes}
+              shouldDisableAutoplay={shouldDisableAutoplay}
+              getConfidenceClass={getConfidenceClass}
+              handleOpenSighting={handleOpenSighting}
+              handleToggleSightingSelection={handleToggleSightingSelection}
+              handleOpenEditModal={handleOpenEditModal}
+              handleSendToWhatsApp={handleSendToWhatsApp}
+              handleDeleteSightings={handleDeleteSightings}
+              handleBulkDeleteSelected={handleBulkDeleteSelected}
+              editSaving={editSaving}
+            />
+          </div>
+        </CellMeasurer>
+      );
+    },
+    [
+      filteredSightings,
+      sendStatusMap,
+      deleteStatusMap,
+      selectedSightings,
+      isAdmin,
+      selectedSightingsCount,
+      hasPendingSelectedDeletes,
+      shouldDisableAutoplay,
+      getConfidenceClass,
+      handleOpenSighting,
+      handleToggleSightingSelection,
+      handleOpenEditModal,
+      handleSendToWhatsApp,
+      handleDeleteSightings,
+      handleBulkDeleteSelected,
+      loadingMore,
+      hasMore,
+      editSaving,
+    ],
+  );
 
   const renderModalContent = () => {
     if (!activeSighting) {
@@ -1473,194 +1794,24 @@ export default function Sightings() {
           <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
         )}
 
-        <div className="sightingsPage__list">
-          {filteredSightings.map((entry) => {
-            const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
-            const isSending = sendStatus.state === 'pending';
-            const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
-            const isDeleting = deleteStatus.state === 'pending';
-            const isSelected = selectedSightings.has(entry.id);
-            return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
-                <div className="sightingCard__media">
-                  <button
-                    type="button"
-                    className="sightingCard__mediaButton"
-                    onClick={() => handleOpenSighting(entry)}
-                    aria-label={`Open ${entry.mediaType} preview for ${entry.species}`}
-                  >
-                    {(() => {
-                      const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                      const debugMediaSrc = entry.debugUrl || null;
-                      const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-                      const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
-                      const cardImageSrc = pickFirstSource(
-                        entry.previewUrl,
-                        entry.mediaType !== 'video' ? entry.mediaUrl : null,
-                        debugImageSrc,
-                      );
-
-                      if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
-                        return (
-                          <ManagedVideoPreview videoSrc={cardVideoSrc} posterSrc={cardImageSrc} />
-                        );
-                      }
-
-                      if (cardImageSrc) {
-                        return <img src={cardImageSrc} alt={`${entry.species} sighting`} />;
-                      }
-
-                      if (entry.mediaType === 'video' && cardVideoSrc && shouldDisableAutoplay) {
-                        return (
-                          <div className="sightingCard__placeholder">Tap to open video</div>
-                        );
-                      }
-
-                      return <div className="sightingCard__placeholder">No preview available</div>;
-                    })()}
-                    <span className="sightingCard__badge">
-                      {entry.mediaType === 'video' ? 'Video' : 'Image'}
-                    </span>
-                  </button>
-                </div>
-                <div className="sightingCard__body">
-                  {isAdmin && (
-                    <div className="sightingCard__selector">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSightingSelection(entry.id)}
-                          disabled={isDeleting}
-                        />
-                        <span>Select</span>
-                      </label>
-                    </div>
-                  )}
-                  <div className="sightingCard__header">
-                    <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
-                    {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
-                      <span className="sightingCard__subtitle">{entry.species}</span>
-                    )}
-                  </div>
-                  <div className="sightingCard__meta">
-                    {typeof entry.maxConf === 'number' && (
-                      <span>Confidence: {formatPercent(entry.maxConf)}</span>
-                    )}
-                  </div>
-                  <div className="sightingCard__footer">
-                    <div className="sightingCard__footerGroup">
-                      <span className="sightingCard__footerLabel">Location</span>
-                      <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
-                    </div>
-                    {entry.createdAt && (
-                      <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
-                        <span className="sightingCard__footerLabel">Captured</span>
-                        <time dateTime={entry.createdAt.toISOString()}>
-                          {formatTimestampLabel(entry.createdAt)}
-                        </time>
-                      </div>
-                    )}
-                  </div>
-                  {isAdmin && (
-                    <div className="sightingCard__actions">
-                      <div className="sightingCard__actionsRow">
-                        <button
-                          type="button"
-                          className="sightingCard__editButton"
-                          onClick={() => handleOpenEditModal(entry)}
-                          disabled={editSaving || isDeleting}
-                          aria-label={`Edit sighting for ${entry.species}`}
-                          title="Edit sighting"
-                        >
-                          <FiEdit2 />
-                        </button>
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton"
-                          onClick={() => handleSendToWhatsApp(entry)}
-                          disabled={isSending || isDeleting}
-                        >
-                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                        </button>
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton sightingCard__actionsButton--alert"
-                          onClick={() =>
-                            handleSendToWhatsApp(entry, {
-                              alertStyle: 'emoji',
-                              confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                            })
-                          }
-                          disabled={isSending || isDeleting}
-                        >
-                          {isSending ? 'Sending…' : 'Alert'}
-                        </button>
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                          onClick={() => handleDeleteSightings([entry])}
-                          disabled={isDeleting || isSending}
-                        >
-                          {isDeleting ? 'Deleting…' : 'Delete'}
-                        </button>
-                      </div>
-                      {selectedSightingsCount > 1 && (
-                        <div className="sightingCard__bulkActions">
-                          <button
-                            type="button"
-                            className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
-                            onClick={handleBulkDeleteSelected}
-                            disabled={hasPendingSelectedDeletes}
-                          >
-                            {hasPendingSelectedDeletes
-                              ? 'Deleting selected…'
-                              : `Delete selected (${selectedSightingsCount})`}
-                          </button>
-                        </div>
-                      )}
-                      {sendStatus.state === 'success' && sendStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
-                          {sendStatus.message}
-                        </span>
-                      )}
-                      {sendStatus.state === 'error' && sendStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
-                          {sendStatus.message}
-                        </span>
-                      )}
-                      {deleteStatus.state === 'success' && deleteStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
-                          {deleteStatus.message}
-                        </span>
-                      )}
-                      {deleteStatus.state === 'error' && deleteStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
-                          {deleteStatus.message}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-
-        {hasSightings && hasMore && (
-          <div className="sightingsPage__pagination">
-            <button
-              type="button"
-              className="sightingsPage__loadMore"
-              onClick={() => {
-                trackButton('sightings_load_more');
-                loadSightings({ append: true, cursor: paginationCursor });
-              }}
-              disabled={loading || loadingMore}
-            >
-              {loadingMore ? 'Loading more…' : 'Load more sightings'}
-            </button>
+        {hasSightings && (
+          <div className="sightingsPage__list">
+            <div className="sightingsPage__virtualWrapper">
+              <AutoSizer>
+                {({ height, width }) => (
+                  <List
+                    ref={listRef}
+                    width={width}
+                    height={height}
+                    rowCount={virtualizedRowCount}
+                    rowHeight={cellMeasurerCache.current.rowHeight}
+                    deferredMeasurementCache={cellMeasurerCache.current}
+                    rowRenderer={rowRenderer}
+                    overscanRowCount={4}
+                  />
+                )}
+              </AutoSizer>
+            </div>
           </div>
         )}
       </div>

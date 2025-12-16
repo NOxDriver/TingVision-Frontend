@@ -339,9 +339,35 @@
 }
 
 .sightingsPage__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(280px, 32vw, 380px), 1fr));
-  gap: 20px;
+  position: relative;
+  height: min(1200px, calc(100vh - 220px));
+  min-height: 520px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 10px;
+  background: linear-gradient(165deg, rgba(21, 31, 17, 0.7), rgba(10, 14, 8, 0.9));
+  overflow: hidden;
+}
+
+.sightingsPage__virtualWrapper {
+  height: 100%;
+}
+
+.sightingsPage__virtualItem {
+  padding: 10px 6px;
+}
+
+.sightingsPage__virtualItem > .sightingCard {
+  height: 100%;
+}
+
+.sightingsPage__loadMoreSentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 12px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
 }
 
 .sightingCard {
