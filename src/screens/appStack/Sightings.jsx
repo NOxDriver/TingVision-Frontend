@@ -440,6 +440,10 @@ export default function Sightings() {
     };
   }, [loadSightings]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentPage]);
+
   const availableLocations = useMemo(() => {
     const ids = sightings
       .map((entry) => (typeof entry.locationId === 'string' ? entry.locationId.trim() : ''))
