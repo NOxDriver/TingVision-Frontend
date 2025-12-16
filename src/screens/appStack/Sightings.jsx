@@ -250,6 +250,7 @@ export default function Sightings() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
+  const [selectedSightings, setSelectedSightings] = useState(() => new Set());
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -469,6 +470,28 @@ export default function Sightings() {
   }, [sightings]);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setSelectedSightings(new Set());
+      return;
+    }
+
+    setSelectedSightings((prev) => {
+      const next = new Set();
+      sightings.forEach((entry) => {
+        if (prev.has(entry.id)) {
+          next.add(entry.id);
+        }
+      });
+
+      if (next.size === prev.size && Array.from(next).every((id) => prev.has(id))) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [isAdmin, sightings]);
+
+  useEffect(() => {
     if (locationFilter === 'all') {
       return;
     }
@@ -549,6 +572,14 @@ export default function Sightings() {
 
   const hasAnySightings = sightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
+  const selectedEntries = useMemo(
+    () => sightings.filter((entry) => selectedSightings.has(entry.id)),
+    [sightings, selectedSightings],
+  );
+  const isBulkDeleting = useMemo(
+    () => selectedEntries.some((entry) => deleteStatusMap[entry.id]?.state === 'pending'),
+    [selectedEntries, deleteStatusMap],
+  );
 
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -584,6 +615,38 @@ export default function Sightings() {
     setConfidenceThreshold(nextValue);
     trackEvent('sightings_confidence_filter', { threshold: nextValue });
   };
+
+  const toggleSightingSelection = useCallback((entryId) => {
+    if (!isAdmin || !entryId) {
+      return;
+    }
+
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  }, [isAdmin]);
+
+  const handleSelectVisible = useCallback(() => {
+    if (!isAdmin) {
+      return;
+    }
+
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      filteredSightings.forEach((entry) => next.add(entry.id));
+      return next;
+    });
+  }, [filteredSightings, isAdmin]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedSightings(new Set());
+  }, []);
 
   const handleSpeciesToggle = (value) => {
     setSelectedSpecies((prev) => {
@@ -976,76 +1039,122 @@ export default function Sightings() {
     [],
   );
 
-  const handleDeleteSighting = useCallback(
-    async (entry) => {
-      if (!entry || !entry.id) {
+  const performDeleteSightings = useCallback(
+    async (entries) => {
+      const validEntries = Array.isArray(entries)
+        ? entries.filter((entry) => entry && entry.id)
+        : [];
+      const seen = new Set();
+      const uniqueEntries = validEntries.filter((entry) => {
+        if (seen.has(entry.id)) {
+          return false;
+        }
+        seen.add(entry.id);
+        return true;
+      });
+
+      if (uniqueEntries.length === 0) {
         return;
       }
 
+      const confirmationMessage = uniqueEntries.length === 1
+        ? 'Delete this sighting? This will remove its media files and hide it from the feed.'
+        : `Delete ${uniqueEntries.length} selected sightings? This will remove their media files and hide them from the feed.`;
+
       if (typeof window !== 'undefined') {
-        const confirmed = window.confirm(
-          'Delete this sighting? This will remove its media files and hide it from the feed.',
-        );
+        const confirmed = window.confirm(confirmationMessage);
         if (!confirmed) {
           return;
         }
       }
 
-      setDeleteStatusMap((prev) => ({
-        ...prev,
-        [entry.id]: { state: 'pending', message: 'Deleting…' },
-      }));
+      setDeleteStatusMap((prev) => {
+        const next = { ...prev };
+        uniqueEntries.forEach((entry) => {
+          next[entry.id] = { state: 'pending', message: 'Deleting…' };
+        });
+        return next;
+      });
 
-      try {
-        const storageInstance = defaultStorage || getStorage();
-        const parentDocData = entry.meta?.parentDoc || {};
+      const storageInstance = defaultStorage || getStorage();
 
-        const storagePaths = Object.entries(parentDocData)
-          .filter(
-            ([key, value]) =>
-              typeof key === 'string'
-              && key.startsWith('storagePath')
-              && typeof value === 'string'
-              && value.length > 0,
-          )
-          .map(([, value]) => value);
+      for (const entry of uniqueEntries) {
+        try {
+          const parentPath = entry.meta?.parentPath;
+          const speciesDocPath = entry.meta?.speciesDocPath;
+          if (!parentPath) {
+            throw new Error('Sighting metadata is missing required references.');
+          }
 
-        await Promise.all(
-          storagePaths.map((path) =>
-            deleteObject(ref(storageInstance, path)).catch((err) => {
-              console.warn('Failed to delete storage object', path, err);
-            })),
-        );
+          const parentDocData = entry.meta?.parentDoc || {};
 
-        const updates = {
-          deletedAt: serverTimestamp(),
-          deletedBy: actorName || 'Admin',
-          updatedAt: serverTimestamp(),
-        };
-        const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
+          const storagePaths = Object.entries(parentDocData)
+            .filter(
+              ([key, value]) =>
+                typeof key === 'string'
+                && key.startsWith('storagePath')
+                && typeof value === 'string'
+                && value.length > 0,
+            )
+            .map(([, value]) => value);
 
-        if (entry.meta?.speciesDocPath) {
-          updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+          await Promise.all(
+            storagePaths.map((path) =>
+              deleteObject(ref(storageInstance, path)).catch((err) => {
+                console.warn('Failed to delete storage object', path, err);
+              })),
+          );
+
+          const updates = {
+            deletedAt: serverTimestamp(),
+            deletedBy: actorName || 'Admin',
+            updatedAt: serverTimestamp(),
+          };
+
+          const updateTasks = [updateDoc(toDocRef(parentPath), updates)];
+
+          if (speciesDocPath) {
+            updateTasks.push(updateDoc(toDocRef(speciesDocPath), updates));
+          }
+
+          await Promise.all(updateTasks);
+
+          setSightings((prev) => prev.filter((item) => item.id !== entry.id));
+          setActiveSighting((prev) => (prev?.id === entry.id ? null : prev));
+          setDeleteStatusMap((prev) => ({
+            ...prev,
+            [entry.id]: { state: 'success', message: 'Sighting deleted.' },
+          }));
+          setSelectedSightings((prev) => {
+            if (!prev.has(entry.id)) {
+              return prev;
+            }
+            const next = new Set(prev);
+            next.delete(entry.id);
+            return next;
+          });
+        } catch (err) {
+          console.error('Failed to delete sighting', err);
+          setDeleteStatusMap((prev) => ({
+            ...prev,
+            [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
+          }));
         }
-
-        await Promise.all(updateTasks);
-
-        setSightings((prev) => prev.filter((item) => item.id !== entry.id));
-        setActiveSighting((prev) => (prev?.id === entry.id ? null : prev));
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'success', message: 'Sighting deleted.' },
-        }));
-      } catch (err) {
-        console.error('Failed to delete sighting', err);
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
-        }));
       }
     },
     [actorName],
   );
+
+  const handleDeleteSighting = useCallback(
+    (entry) => {
+      performDeleteSightings([entry]);
+    },
+    [performDeleteSightings],
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    performDeleteSightings(selectedEntries);
+  }, [performDeleteSightings, selectedEntries]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1306,6 +1415,39 @@ export default function Sightings() {
           </div>
         </header>
 
+        {isAdmin && (
+          <div className="sightingsPage__bulkActions" role="region" aria-label="Bulk sighting actions">
+            <div className="sightingsPage__bulkMeta">
+              <span className="sightingsPage__bulkCount">{selectedSightings.size}</span>
+              <span className="sightingsPage__bulkLabel">selected</span>
+              <button
+                type="button"
+                className="sightingsPage__bulkButton"
+                onClick={handleSelectVisible}
+                disabled={!hasSightings}
+              >
+                Select visible
+              </button>
+              <button
+                type="button"
+                className="sightingsPage__bulkButton sightingsPage__bulkButton--ghost"
+                onClick={handleClearSelection}
+                disabled={selectedSightings.size === 0}
+              >
+                Clear selection
+              </button>
+            </div>
+            <button
+              type="button"
+              className="sightingsPage__bulkDelete"
+              onClick={handleDeleteSelected}
+              disabled={selectedSightings.size === 0 || isBulkDeleting}
+            >
+              {isBulkDeleting ? 'Deleting selected…' : `Delete ${selectedSightings.size || ''} selected`}
+            </button>
+          </div>
+        )}
+
         {editFeedback.text && (
           <div
             className={`sightingsPage__alert sightingsPage__alert--${editFeedback.type === 'error' ? 'error' : 'success'}`}
@@ -1340,6 +1482,7 @@ export default function Sightings() {
             const isSending = sendStatus.state === 'pending';
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
+            const isSelected = selectedSightings.has(entry.id);
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1413,6 +1556,16 @@ export default function Sightings() {
                   {isAdmin && (
                     <div className="sightingCard__actions">
                       <div className="sightingCard__actionsRow">
+                        <label className="sightingCard__select">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSightingSelection(entry.id)}
+                            disabled={isDeleting || isSending}
+                            aria-label={isSelected ? 'Deselect sighting' : 'Select sighting'}
+                          />
+                          <span>{isSelected ? 'Selected' : 'Select'}</span>
+                        </label>
                         <button
                           type="button"
                           className="sightingCard__editButton"
