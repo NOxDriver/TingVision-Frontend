@@ -239,9 +239,10 @@ export default function Sightings() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
-  const [paginationCursor, setPaginationCursor] = useState(null);
+  const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [paginationLoading, setPaginationLoading] = useState(false);
   const [selectedSightings, setSelectedSightings] = useState(() => new Set());
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
@@ -282,7 +283,7 @@ export default function Sightings() {
   }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
-    const { append = false, cursor = null } = options;
+    const { pageIndex = 0 } = options;
 
     if (!accessReady) {
       return;
@@ -291,32 +292,36 @@ export default function Sightings() {
     if (!isAdmin && allowedLocationSet.size === 0) {
       setSightings([]);
       setError('');
-      setPaginationCursor(null);
+      paginationCursorsRef.current = [];
       setHasMore(false);
       setLoading(false);
-      setLoadingMore(false);
+      setPaginationLoading(false);
+      setCurrentPage(0);
       return;
     }
 
-    if (append && !cursor) {
+    const isFirstPage = pageIndex === 0;
+    const startCursor = isFirstPage ? null : paginationCursorsRef.current[pageIndex - 1] || null;
+
+    if (pageIndex > 0 && !startCursor) {
       setHasMore(false);
       return;
     }
 
-    const setBusy = append ? setLoadingMore : setLoading;
+    const setBusy = isFirstPage ? setLoading : setPaginationLoading;
     setBusy(true);
 
-    if (!append) {
+    if (isFirstPage) {
       setError('');
-      setPaginationCursor(null);
       setHasMore(false);
+      paginationCursorsRef.current = [];
     }
 
     try {
       const constraints = [orderBy('createdAt', 'desc')];
 
-      if (append && cursor) {
-        constraints.push(startAfter(cursor));
+      if (startCursor) {
+        constraints.push(startAfter(startCursor));
       }
 
       constraints.push(limit(SIGHTINGS_PAGE_SIZE));
@@ -328,10 +333,10 @@ export default function Sightings() {
         return;
       }
 
-      if (snapshot.empty && !append) {
+      if (snapshot.empty && isFirstPage) {
         setSightings([]);
-        setPaginationCursor(null);
         setHasMore(false);
+        setCurrentPage(0);
         return;
       }
 
@@ -391,38 +396,32 @@ export default function Sightings() {
           return bTime - aTime;
         });
 
+      if (snapshot.empty && pageIndex > 0) {
+        setHasMore(false);
+        return;
+      }
+
       const filteredEntries = isAdmin
         ? entries
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
 
-      setSightings((prev) => {
-        if (!append) {
-          return filteredEntries;
-        }
-
-        const mergedMap = new Map(prev.map((item) => [item.id, item]));
-        filteredEntries.forEach((item) => {
-          mergedMap.set(item.id, item);
-        });
-
-        return Array.from(mergedMap.values()).sort((a, b) => {
-          const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-          const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-          return bTime - aTime;
-        });
-      });
+      setSightings(filteredEntries);
 
       const nextCursor = snapshot.docs[snapshot.docs.length - 1] || null;
-      setPaginationCursor(nextCursor);
+      paginationCursorsRef.current = [
+        ...paginationCursorsRef.current.slice(0, pageIndex),
+        nextCursor,
+      ];
+      setCurrentPage(pageIndex);
       setHasMore(snapshot.docs.length === SIGHTINGS_PAGE_SIZE);
     } catch (err) {
       console.error('Failed to fetch sightings', err);
       if (isMountedRef.current) {
-        if (!append) {
+        if (isFirstPage) {
           setError('Unable to load sightings');
           setSightings([]);
         } else {
-          setError('Unable to load more sightings');
+          setError('Unable to load sightings page');
         }
       }
     } finally {
@@ -688,6 +687,23 @@ export default function Sightings() {
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
+  const hasPreviousPage = currentPage > 0;
+
+  const handleNextPage = useCallback(() => {
+    if (loading || paginationLoading || !hasMore) {
+      return;
+    }
+    trackButton('sightings_page_next');
+    loadSightings({ pageIndex: currentPage + 1 });
+  }, [currentPage, hasMore, loadSightings, loading, paginationLoading]);
+
+  const handlePreviousPage = useCallback(() => {
+    if (loading || paginationLoading || !hasPreviousPage) {
+      return;
+    }
+    trackButton('sightings_page_previous');
+    loadSightings({ pageIndex: currentPage - 1 });
+  }, [currentPage, hasPreviousPage, loadSightings, loading, paginationLoading]);
 
   const editChange = useMemo(() => {
     if (!editTarget) {
@@ -1398,9 +1414,9 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
-                loadSightings();
+                loadSightings({ pageIndex: currentPage });
               }}
-              disabled={loading || loadingMore}
+              disabled={loading || paginationLoading}
             >
               Refresh
             </button>
@@ -1648,18 +1664,26 @@ export default function Sightings() {
           })}
         </div>
 
-        {hasSightings && hasMore && (
-          <div className="sightingsPage__pagination">
+        {(hasAnySightings || hasPreviousPage) && (
+          <div className="sightingsPage__pagination" role="navigation" aria-label="Sightings pagination">
             <button
               type="button"
-              className="sightingsPage__loadMore"
-              onClick={() => {
-                trackButton('sightings_load_more');
-                loadSightings({ append: true, cursor: paginationCursor });
-              }}
-              disabled={loading || loadingMore}
+              className="sightingsPage__pageButton"
+              onClick={handlePreviousPage}
+              disabled={!hasPreviousPage || loading || paginationLoading}
             >
-              {loadingMore ? 'Loading more…' : 'Load more sightings'}
+              Previous
+            </button>
+            <span className="sightingsPage__pageStatus">
+              Page {currentPage + 1}{paginationLoading ? ' · Loading…' : ''}
+            </span>
+            <button
+              type="button"
+              className="sightingsPage__pageButton"
+              onClick={handleNextPage}
+              disabled={!hasMore || loading || paginationLoading}
+            >
+              Next
             </button>
           </div>
         )}

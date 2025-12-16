@@ -549,10 +549,12 @@
   margin-top: 12px;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 12px;
 }
 
-.sightingsPage__loadMore {
-  padding: 12px 24px;
+.sightingsPage__pageButton {
+  padding: 10px 20px;
   border-radius: 999px;
   border: 1px solid rgba(255, 140, 26, 0.6);
   background: rgba(255, 140, 26, 0.26);
@@ -563,15 +565,20 @@
   transition: transform 0.2s ease, background 0.2s ease;
 }
 
-.sightingsPage__loadMore:disabled {
+.sightingsPage__pageButton:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
 
-.sightingsPage__loadMore:not(:disabled):hover,
-.sightingsPage__loadMore:not(:disabled):focus-visible {
+.sightingsPage__pageButton:not(:disabled):hover,
+.sightingsPage__pageButton:not(:disabled):focus-visible {
   transform: translateY(-1px);
   background: rgba(255, 140, 26, 0.35);
+}
+
+.sightingsPage__pageStatus {
+  font-weight: 600;
+  color: var(--color-text-secondary);
 }
 
 .sightingCard__actions {
