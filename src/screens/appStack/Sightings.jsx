@@ -264,6 +264,8 @@ export default function Sightings() {
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+  const listTopRef = useRef(null);
+  const hasAutoScrolledRef = useRef(false);
 
   usePageTitle('Sightings');
 
@@ -439,6 +441,19 @@ export default function Sightings() {
       isMountedRef.current = false;
     };
   }, [loadSightings]);
+
+  useEffect(() => {
+    if (!hasAutoScrolledRef.current) {
+      hasAutoScrolledRef.current = true;
+      return;
+    }
+
+    if (!listTopRef.current) {
+      return;
+    }
+
+    listTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [currentPage]);
 
   const availableLocations = useMemo(() => {
     const ids = sightings
@@ -1489,7 +1504,7 @@ export default function Sightings() {
           <div className="sightingsPage__empty">No sightings match the selected confidence filter.</div>
         )}
 
-        <div className="sightingsPage__list">
+        <div className="sightingsPage__list" ref={listTopRef}>
           {filteredSightings.map((entry) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
