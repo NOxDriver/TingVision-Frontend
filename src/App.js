@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 // AuthStack
 import Login from "./screens/authStack/Login";
 import Register from "./screens/authStack/Register";
@@ -40,8 +40,18 @@ function App() {
     trackPageView(nextPath);
   }, [location]);
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
+  useLayoutEffect(() => {
+    const scrollTarget = document.scrollingElement || document.documentElement || document.body;
+
+    // Scroll both the window and the primary scroll container to cover browsers
+    // that attach scroll state to different elements.
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      scrollTarget?.scrollTo({ top: 0, behavior: "auto" });
+    };
+
+    // Delay until after React commits the new route so the scroll position is applied reliably.
+    requestAnimationFrame(scrollToTop);
   }, [location.pathname, location.search]);
 
   return (
