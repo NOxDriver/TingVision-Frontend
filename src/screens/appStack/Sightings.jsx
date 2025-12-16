@@ -244,6 +244,8 @@ export default function Sightings() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
+  const [selectedSightings, setSelectedSightings] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -432,6 +434,25 @@ export default function Sightings() {
   }, [accessReady, isAdmin, allowedLocationSet]);
 
   useEffect(() => {
+    setSelectedSightings((prev) => {
+      const allowed = new Set(sightings.map((entry) => entry.id));
+      const next = new Set();
+
+      prev.forEach((id) => {
+        if (allowed.has(id)) {
+          next.add(id);
+        }
+      });
+
+      if (next.size === prev.size) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [sightings]);
+
+  useEffect(() => {
     isMountedRef.current = true;
     loadSightings();
 
@@ -547,8 +568,36 @@ export default function Sightings() {
     [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies, speciesFilterMode],
   );
 
+  const handleToggleSelection = useCallback((sightingId) => {
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      if (next.has(sightingId)) {
+        next.delete(sightingId);
+      } else {
+        next.add(sightingId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    setSelectedSightings((prev) => {
+      const isAllSelected = filteredSightings.length > 0
+        && filteredSightings.every((entry) => prev.has(entry.id));
+      if (isAllSelected) {
+        return new Set();
+      }
+
+      const next = new Set(prev);
+      filteredSightings.forEach((entry) => next.add(entry.id));
+      return next;
+    });
+  }, [filteredSightings]);
+
   const hasAnySightings = sightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
+  const areAllVisibleSelected = hasSightings
+    && filteredSightings.every((entry) => selectedSightings.has(entry.id));
 
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -976,76 +1025,125 @@ export default function Sightings() {
     [],
   );
 
-  const handleDeleteSighting = useCallback(
-    async (entry) => {
-      if (!entry || !entry.id) {
+  const deleteSightingFromBackend = useCallback(async (entry) => {
+    const storageInstance = defaultStorage || getStorage();
+    const parentDocData = entry.meta?.parentDoc || {};
+
+    const storagePaths = Object.entries(parentDocData)
+      .filter(
+        ([key, value]) =>
+          typeof key === 'string'
+          && key.startsWith('storagePath')
+          && typeof value === 'string'
+          && value.length > 0,
+      )
+      .map(([, value]) => value);
+
+    await Promise.all(
+      storagePaths.map((path) =>
+        deleteObject(ref(storageInstance, path)).catch((err) => {
+          console.warn('Failed to delete storage object', path, err);
+        })),
+    );
+
+    const updates = {
+      deletedAt: serverTimestamp(),
+      deletedBy: actorName || 'Admin',
+      updatedAt: serverTimestamp(),
+    };
+    const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
+
+    if (entry.meta?.speciesDocPath) {
+      updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+    }
+
+    await Promise.all(updateTasks);
+  }, [actorName]);
+
+  const handleDeleteSightings = useCallback(async (entries) => {
+    const validEntries = (entries || []).filter((item) => item && item.id);
+    if (validEntries.length === 0) {
+      return;
+    }
+
+    const confirmationMessage = validEntries.length === 1
+      ? 'Delete this sighting? This will remove its media files and hide it from the feed.'
+      : `Delete ${validEntries.length} sightings? This will remove their media files and hide them from the feed.`;
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(confirmationMessage);
+      if (!confirmed) {
         return;
       }
+    }
 
-      if (typeof window !== 'undefined') {
-        const confirmed = window.confirm(
-          'Delete this sighting? This will remove its media files and hide it from the feed.',
-        );
-        if (!confirmed) {
-          return;
-        }
-      }
+    if (validEntries.length > 1) {
+      setBulkDeleting(true);
+    }
 
-      setDeleteStatusMap((prev) => ({
-        ...prev,
-        [entry.id]: { state: 'pending', message: 'Deleting…' },
-      }));
+    setDeleteStatusMap((prev) => {
+      const next = { ...prev };
+      validEntries.forEach((entry) => {
+        next[entry.id] = { state: 'pending', message: 'Deleting…' };
+      });
+      return next;
+    });
 
+    const succeeded = [];
+    const failures = [];
+
+    for (const entry of validEntries) {
       try {
-        const storageInstance = defaultStorage || getStorage();
-        const parentDocData = entry.meta?.parentDoc || {};
-
-        const storagePaths = Object.entries(parentDocData)
-          .filter(
-            ([key, value]) =>
-              typeof key === 'string'
-              && key.startsWith('storagePath')
-              && typeof value === 'string'
-              && value.length > 0,
-          )
-          .map(([, value]) => value);
-
-        await Promise.all(
-          storagePaths.map((path) =>
-            deleteObject(ref(storageInstance, path)).catch((err) => {
-              console.warn('Failed to delete storage object', path, err);
-            })),
-        );
-
-        const updates = {
-          deletedAt: serverTimestamp(),
-          deletedBy: actorName || 'Admin',
-          updatedAt: serverTimestamp(),
-        };
-        const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
-
-        if (entry.meta?.speciesDocPath) {
-          updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
-        }
-
-        await Promise.all(updateTasks);
-
-        setSightings((prev) => prev.filter((item) => item.id !== entry.id));
-        setActiveSighting((prev) => (prev?.id === entry.id ? null : prev));
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'success', message: 'Sighting deleted.' },
-        }));
+        await deleteSightingFromBackend(entry);
+        succeeded.push(entry.id);
       } catch (err) {
         console.error('Failed to delete sighting', err);
-        setDeleteStatusMap((prev) => ({
-          ...prev,
-          [entry.id]: { state: 'error', message: err?.message || 'Unable to delete sighting.' },
-        }));
+        failures.push({ entry, error: err });
       }
-    },
-    [actorName],
-  );
+    }
+
+    if (succeeded.length > 0) {
+      setSightings((prev) => prev.filter((item) => !succeeded.includes(item.id)));
+      setActiveSighting((prev) => (prev && succeeded.includes(prev.id) ? null : prev));
+      setSelectedSightings((prev) => {
+        const next = new Set(prev);
+        succeeded.forEach((id) => next.delete(id));
+        return next;
+      });
+      setDeleteStatusMap((prev) => {
+        const next = { ...prev };
+        succeeded.forEach((id) => {
+          next[id] = { state: 'success', message: 'Sighting deleted.' };
+        });
+        return next;
+      });
+    }
+
+    if (failures.length > 0) {
+      setDeleteStatusMap((prev) => {
+        const next = { ...prev };
+        failures.forEach(({ entry, error }) => {
+          next[entry.id] = { state: 'error', message: error?.message || 'Unable to delete sighting.' };
+        });
+        return next;
+      });
+    }
+
+    if (validEntries.length > 1) {
+      setBulkDeleting(false);
+    }
+  }, [deleteSightingFromBackend]);
+
+  const handleDeleteSighting = useCallback((entry) => handleDeleteSightings([entry]), [handleDeleteSightings]);
+
+  const handleBulkDeleteSelected = useCallback(() => {
+    if (selectedSightings.size === 0) {
+      return;
+    }
+
+    const entries = sightings.filter((item) => selectedSightings.has(item.id));
+    return handleDeleteSightings(entries);
+  }, [handleDeleteSightings, selectedSightings, sightings]);
 
   useEffect(() => {
     if (!activeSighting) {
@@ -1306,6 +1404,31 @@ export default function Sightings() {
           </div>
         </header>
 
+        {isAdmin && hasAnySightings && (
+          <div className="sightingsPage__bulkActions">
+            <div className="sightingsPage__bulkInfo">
+              <label className="sightingsPage__bulkSelectAll">
+                <input
+                  type="checkbox"
+                  checked={areAllVisibleSelected}
+                  onChange={handleToggleSelectAll}
+                  aria-label="Select all visible sightings"
+                />
+                <span>{areAllVisibleSelected ? 'Deselect all' : 'Select all'}</span>
+              </label>
+              <span className="sightingsPage__bulkCount">{selectedSightings.size} selected</span>
+            </div>
+            <button
+              type="button"
+              className="sightingsPage__bulkDelete"
+              onClick={handleBulkDeleteSelected}
+              disabled={selectedSightings.size === 0 || bulkDeleting}
+            >
+              {bulkDeleting ? 'Deleting selected…' : `Delete selected (${selectedSightings.size || 0})`}
+            </button>
+          </div>
+        )}
+
         {editFeedback.text && (
           <div
             className={`sightingsPage__alert sightingsPage__alert--${editFeedback.type === 'error' ? 'error' : 'success'}`}
@@ -1386,9 +1509,22 @@ export default function Sightings() {
                 </div>
                 <div className="sightingCard__body">
                   <div className="sightingCard__header">
-                    <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
-                    {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
-                      <span className="sightingCard__subtitle">{entry.species}</span>
+                    <div className="sightingCard__title">
+                      <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
+                      {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
+                        <span className="sightingCard__subtitle">{entry.species}</span>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <label className="sightingCard__select">
+                        <input
+                          type="checkbox"
+                          checked={selectedSightings.has(entry.id)}
+                          onChange={() => handleToggleSelection(entry.id)}
+                          aria-label={`Select sighting for ${entry.species}`}
+                        />
+                        <span>Select</span>
+                      </label>
                     )}
                   </div>
                   <div className="sightingCard__meta">
