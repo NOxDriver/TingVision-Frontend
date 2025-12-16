@@ -40,6 +40,10 @@ function App() {
     trackPageView(nextPath);
   }, [location]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [location.pathname, location.search]);
+
   return (
     <div className="app app--dark">
       <SiteHeader mode={'dark'} />
