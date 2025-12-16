@@ -161,6 +161,83 @@
   font-size: 0.95rem;
 }
 
+.sightingsPage__bulkToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+.sightingsPage__bulkSummary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sightingsPage__bulkToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.sightingsPage__bulkCount {
+  color: #4a5568;
+}
+
+.sightingsPage__bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sightingsPage__bulkClear,
+.sightingsPage__bulkDelete {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.sightingsPage__bulkClear {
+  background: #edf2f7;
+  color: #2d3748;
+  border-color: #e2e8f0;
+}
+
+.sightingsPage__bulkDelete {
+  background: #c53030;
+  color: #fff;
+  border-color: #c53030;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.sightingsPage__bulkClear:not(:disabled):hover,
+.sightingsPage__bulkClear:not(:disabled):focus-visible,
+.sightingsPage__bulkDelete:not(:disabled):hover,
+.sightingsPage__bulkDelete:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.sightingsPage__bulkClear:disabled,
+.sightingsPage__bulkDelete:disabled {
+  background: #e2e8f0;
+  color: #a0aec0;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .sightingsPage__field--multiselect {
   position: relative;
 }
@@ -510,6 +587,27 @@
   align-items: flex-end;
   gap: 6px;
   padding: 12px 20px 20px;
+}
+
+.sightingCard__selection {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sightingCard__selection label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.sightingCard__selectionNote {
+  color: #2b6cb0;
+  font-size: 0.85rem;
 }
 
 
