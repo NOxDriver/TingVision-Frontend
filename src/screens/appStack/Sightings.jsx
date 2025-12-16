@@ -259,6 +259,8 @@ export default function Sightings() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
+  const firstSightingRef = useRef(null);
+  const lastScrolledPageRef = useRef(0);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -576,6 +578,29 @@ export default function Sightings() {
   const hasPendingSelectedDeletes = selectedSightingsList.some(
     (entry) => deleteStatusMap[entry.id]?.state === 'pending',
   );
+
+  useEffect(() => {
+    if (loading || paginationLoading) {
+      return;
+    }
+
+    if (filteredSightings.length === 0) {
+      return;
+    }
+
+    if (lastScrolledPageRef.current === currentPage) {
+      return;
+    }
+
+    const target = firstSightingRef.current;
+    if (target?.scrollIntoView) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    lastScrolledPageRef.current = currentPage;
+  }, [currentPage, filteredSightings.length, loading, paginationLoading]);
 
   const getConfidenceClass = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -1490,14 +1515,19 @@ export default function Sightings() {
         )}
 
         <div className="sightingsPage__list">
-          {filteredSightings.map((entry) => {
+          {filteredSightings.map((entry, index) => {
             const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
             const isSending = sendStatus.state === 'pending';
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const firstSightingProps = index === 0 ? { ref: firstSightingRef } : {};
             return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+              <article
+                className={`sightingCard ${getConfidenceClass(entry.maxConf)}`}
+                key={entry.id}
+                {...firstSightingProps}
+              >
                 <div className="sightingCard__media">
                   <button
                     type="button"
