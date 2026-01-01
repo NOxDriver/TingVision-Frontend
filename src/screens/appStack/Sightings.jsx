@@ -594,6 +594,32 @@ export default function Sightings() {
     return 'sightingCard--low';
   };
 
+  const formatTriggerMetric = (value, decimals) => {
+    const numericValue = typeof value === 'string' ? Number(value) : value;
+    if (typeof numericValue !== 'number' || Number.isNaN(numericValue)) {
+      return null;
+    }
+    const places = typeof decimals === 'number'
+      ? decimals
+      : (Number.isInteger(numericValue) ? 0 : 1);
+    return numericValue.toFixed(places);
+  };
+
+  const renderTriggerMetrics = (metrics) => metrics
+    .map(({ label, value, decimals }) => {
+      const formatted = formatTriggerMetric(value, decimals);
+      if (formatted === null) {
+        return null;
+      }
+      return (
+        <div className="sightingCard__triggerMetric" key={label}>
+          <span className="sightingCard__triggerMetricLabel">{label}</span>
+          <span className="sightingCard__triggerMetricValue">{formatted}</span>
+        </div>
+      );
+    })
+    .filter(Boolean);
+
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
@@ -1500,6 +1526,31 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const trigger = entry.trigger && typeof entry.trigger === 'object' && !Array.isArray(entry.trigger)
+              ? entry.trigger
+              : null;
+            const triggerThresholds = trigger
+              && typeof trigger.thresholds === 'object'
+              && !Array.isArray(trigger.thresholds)
+              ? trigger.thresholds
+              : null;
+            const triggerMetrics = trigger
+              ? renderTriggerMetrics([
+                { label: 'Net dist', value: trigger.net_dist, decimals: 1 },
+                { label: 'Hits', value: trigger.hits },
+                { label: 'Consecutive', value: trigger.cons_hits },
+                { label: 'Persistent', value: trigger.persist_hits },
+                { label: 'Area EMA', value: trigger.area_ema, decimals: 1 },
+                { label: 'Speed EMA', value: trigger.speed_ema, decimals: 1 },
+              ])
+              : [];
+            const triggerThresholdMetrics = triggerThresholds
+              ? renderTriggerMetrics([
+                { label: 'Min net dist', value: triggerThresholds.min_net_dist, decimals: 1 },
+                { label: 'Confirm hits', value: triggerThresholds.confirm_hits },
+                { label: 'Min persistent hits', value: triggerThresholds.min_persist_hits },
+              ])
+              : [];
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1569,6 +1620,31 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
+                  {trigger && (
+                    <div className="sightingCard__trigger">
+                      <div className="sightingCard__triggerHeader">
+                        <span className="sightingCard__footerLabel">Trigger</span>
+                        {trigger.tier && (
+                          <span className="sightingCard__triggerTier" title="Trigger tier">
+                            {String(trigger.tier)}
+                          </span>
+                        )}
+                      </div>
+                      {triggerMetrics.length > 0 && (
+                        <div className="sightingCard__triggerGrid">
+                          {triggerMetrics}
+                        </div>
+                      )}
+                      {triggerThresholdMetrics.length > 0 && (
+                        <div className="sightingCard__thresholds">
+                          <span className="sightingCard__triggerThresholdsTitle">Thresholds</span>
+                          <div className="sightingCard__triggerGrid sightingCard__triggerGrid--compact">
+                            {triggerThresholdMetrics}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="sightingCard__footer">
                     <div className="sightingCard__footerGroup">
                       <span className="sightingCard__footerLabel">Location</span>
