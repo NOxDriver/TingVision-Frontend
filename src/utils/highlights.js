@@ -145,6 +145,11 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     mediaUrl,
+    trigger: typeof parentDoc?.trigger === 'object' && parentDoc.trigger !== null
+      ? parentDoc.trigger
+      : typeof parentDoc?.trigger_info === 'object' && parentDoc.trigger_info !== null
+        ? parentDoc.trigger_info
+        : null,
     extra: extra || {},
   };
 }
