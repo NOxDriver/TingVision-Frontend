@@ -103,6 +103,7 @@ export function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
+  const trigger = parentDoc?.trigger || null;
   const formatSpeciesName = (value) => {
     if (typeof value !== 'string' || value.length === 0) {
       return 'Unknown';
@@ -146,6 +147,7 @@ export function buildHighlightEntry({
     videoUrl,
     mediaUrl,
     extra: extra || {},
+    trigger,
   };
 }
 
