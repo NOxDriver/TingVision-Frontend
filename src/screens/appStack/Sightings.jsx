@@ -77,6 +77,13 @@ const formatTimestampLabel = (value) => {
   return `${dateLabel} @ ${timeLabel}`;
 };
 
+const formatTriggerValue = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return null;
+  }
+  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
+};
+
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
 const toDocRef = (path) => {
@@ -688,6 +695,87 @@ export default function Sightings() {
     const nextValue = event.target.value;
     setMediaTypeFilter(nextValue);
     trackEvent('sightings_media_filter', { mediaType: nextValue });
+  };
+
+  const renderTriggerMetrics = (items, keyPrefix) => {
+    const visibleItems = items
+      .map(({ key, label, value }) => {
+        const formatted = formatTriggerValue(value);
+        if (formatted === null) {
+          return null;
+        }
+        return (
+          <div className="sightingCard__triggerMetric" key={`${keyPrefix}-${key}`}>
+            <span className="sightingCard__triggerMetricLabel">{label}</span>
+            <span className="sightingCard__triggerMetricValue">{formatted}</span>
+          </div>
+        );
+      })
+      .filter(Boolean);
+
+    if (visibleItems.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="sightingCard__triggerGrid">
+        {visibleItems}
+      </div>
+    );
+  };
+
+  const renderTriggerSection = (trigger) => {
+    if (!trigger || typeof trigger !== 'object') {
+      return null;
+    }
+
+    const thresholds = trigger.thresholds && typeof trigger.thresholds === 'object'
+      ? trigger.thresholds
+      : null;
+
+    const primaryMetrics = renderTriggerMetrics(
+      [
+        { key: 'net_dist', label: 'Net dist', value: trigger.net_dist },
+        { key: 'hits', label: 'Hits', value: trigger.hits },
+        { key: 'cons_hits', label: 'Cons. hits', value: trigger.cons_hits },
+        { key: 'persist_hits', label: 'Persist. hits', value: trigger.persist_hits },
+        { key: 'area_ema', label: 'Area EMA', value: trigger.area_ema },
+        { key: 'speed_ema', label: 'Speed EMA', value: trigger.speed_ema },
+      ],
+      'primary',
+    );
+
+    const thresholdMetrics = thresholds
+      ? renderTriggerMetrics(
+        [
+          { key: 'min_net_dist', label: 'Min dist', value: thresholds.min_net_dist },
+          { key: 'confirm_hits', label: 'Confirm hits', value: thresholds.confirm_hits },
+          { key: 'min_persist_hits', label: 'Min persist hits', value: thresholds.min_persist_hits },
+        ],
+        'threshold',
+      )
+      : null;
+
+    const hasTierLabel = typeof trigger.tier === 'string' && trigger.tier.trim().length > 0;
+    if (!primaryMetrics && !thresholdMetrics && !hasTierLabel) {
+      return null;
+    }
+
+    return (
+      <div className="sightingCard__trigger" aria-label="Trigger details">
+        <div className="sightingCard__triggerHeader">
+          <span className="sightingCard__triggerLabel">Trigger</span>
+          {hasTierLabel && <span className="sightingCard__triggerTier">{trigger.tier}</span>}
+        </div>
+        {primaryMetrics}
+        {thresholdMetrics && (
+          <div className="sightingCard__triggerThresholds">
+            <span className="sightingCard__triggerSubheading">Thresholds</span>
+            {thresholdMetrics}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const confidencePercentage = Math.round(confidenceThreshold * 100);
@@ -1569,6 +1657,7 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
+                  {renderTriggerSection(entry.trigger)}
                   <div className="sightingCard__footer">
                     <div className="sightingCard__footerGroup">
                       <span className="sightingCard__footerLabel">Location</span>

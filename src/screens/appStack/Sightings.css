@@ -497,6 +497,79 @@
   color: var(--color-text-secondary);
 }
 
+.sightingCard__trigger {
+  border: 1px solid rgba(203, 146, 74, 0.35);
+  background: rgba(11, 15, 8, 0.4);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sightingCard__triggerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sightingCard__triggerLabel {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__triggerTier {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.sightingCard__triggerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 12px;
+}
+
+.sightingCard__triggerMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sightingCard__triggerMetricLabel {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.sightingCard__triggerMetricValue {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sightingCard__triggerThresholds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sightingCard__triggerSubheading {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
 .sightingCard__footer {
   display: flex;
   justify-content: flex-start;
