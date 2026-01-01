@@ -594,6 +594,43 @@ export default function Sightings() {
     return 'sightingCard--low';
   };
 
+  const formatTriggerNumber = (value, decimals = 0) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null;
+    }
+    return value.toFixed(decimals);
+  };
+
+  const renderTriggerMetric = (label, value, target, options = {}) => {
+    const decimals = typeof options.decimals === 'number' ? options.decimals : 0;
+    const formattedValue = formatTriggerNumber(value, decimals);
+    if (!formattedValue) {
+      return null;
+    }
+
+    const formattedTarget = formatTriggerNumber(target, decimals);
+
+    return (
+      <div className="sightingCard__triggerMetric" key={`${label}-${formattedValue}`}>
+        <span className="sightingCard__triggerMetricLabel">{label}</span>
+        <div className="sightingCard__triggerMetricValue">
+          <span>{formattedValue}</span>
+          {formattedTarget && (
+            <span className="sightingCard__triggerMetricTarget">Target: {formattedTarget}</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const formatTriggerTier = (tier) => {
+    if (typeof tier !== 'string' || tier.trim().length === 0) {
+      return null;
+    }
+    const trimmed = tier.trim();
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  };
+
   const handleOpenSighting = (entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
@@ -1569,6 +1606,39 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
+                  {entry.trigger && (
+                    <div className="sightingCard__trigger" aria-label="Trigger details">
+                      <div className="sightingCard__triggerHeader">
+                        <span className="sightingCard__footerLabel">Trigger</span>
+                        {formatTriggerTier(entry.trigger.tier) && (
+                          <span className="sightingCard__triggerTier">
+                            {formatTriggerTier(entry.trigger.tier)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="sightingCard__triggerGrid">
+                        {renderTriggerMetric(
+                          'Net dist',
+                          entry.trigger.net_dist,
+                          entry.trigger.thresholds?.min_net_dist,
+                          { decimals: 1 },
+                        )}
+                        {renderTriggerMetric(
+                          'Hits',
+                          entry.trigger.hits,
+                          entry.trigger.thresholds?.confirm_hits,
+                        )}
+                        {renderTriggerMetric('Consecutive hits', entry.trigger.cons_hits)}
+                        {renderTriggerMetric(
+                          'Persistent hits',
+                          entry.trigger.persist_hits,
+                          entry.trigger.thresholds?.min_persist_hits,
+                        )}
+                        {renderTriggerMetric('Area EMA', entry.trigger.area_ema, null, { decimals: 1 })}
+                        {renderTriggerMetric('Speed EMA', entry.trigger.speed_ema, null, { decimals: 1 })}
+                      </div>
+                    </div>
+                  )}
                   <div className="sightingCard__footer">
                     <div className="sightingCard__footerGroup">
                       <span className="sightingCard__footerLabel">Location</span>
