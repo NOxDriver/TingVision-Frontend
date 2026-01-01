@@ -109,7 +109,7 @@ const normalizeTrigger = (rawTrigger) => {
 
   const trigger = {
     tier: normalizedTier || null,
-    net_dist: normalizeNumericValue(rawTrigger.net_dist),
+    net_dist: normalizeNumericValue(rawTrigger.net_displacement),
     hits: normalizeNumericValue(rawTrigger.hits),
     cons_hits: normalizeNumericValue(rawTrigger.cons_hits),
     persist_hits: normalizeNumericValue(rawTrigger.persist_hits),
