@@ -103,6 +103,10 @@ export function buildHighlightEntry({
   parentDoc,
   extra,
 }) {
+  const trigger = parentDoc?.trigger;
+  const normalizedTrigger = trigger && typeof trigger === 'object' && !Array.isArray(trigger)
+    ? trigger
+    : null;
   const formatSpeciesName = (value) => {
     if (typeof value !== 'string' || value.length === 0) {
       return 'Unknown';
@@ -145,6 +149,7 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     mediaUrl,
+    trigger: normalizedTrigger,
     extra: extra || {},
   };
 }
