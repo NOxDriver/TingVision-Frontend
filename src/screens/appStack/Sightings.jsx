@@ -79,6 +79,75 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const normalizeNumericValue = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const normalizeTrigger = (rawTrigger) => {
+  if (!rawTrigger || typeof rawTrigger !== 'object') {
+    return null;
+  }
+
+  const normalizedTier = typeof rawTrigger.tier === 'string' ? rawTrigger.tier.trim() : '';
+  const thresholdData =
+    rawTrigger.thresholds && typeof rawTrigger.thresholds === 'object'
+      ? {
+          min_net_dist: normalizeNumericValue(rawTrigger.thresholds.min_net_dist),
+          confirm_hits: normalizeNumericValue(rawTrigger.thresholds.confirm_hits),
+          min_persist_hits: normalizeNumericValue(rawTrigger.thresholds.min_persist_hits),
+        }
+      : null;
+
+  const trigger = {
+    tier: normalizedTier || null,
+    net_dist: normalizeNumericValue(rawTrigger.net_dist),
+    hits: normalizeNumericValue(rawTrigger.hits),
+    cons_hits: normalizeNumericValue(rawTrigger.cons_hits),
+    persist_hits: normalizeNumericValue(rawTrigger.persist_hits),
+    area_ema: normalizeNumericValue(rawTrigger.area_ema),
+    speed_ema: normalizeNumericValue(rawTrigger.speed_ema),
+    thresholds: thresholdData,
+  };
+
+  const hasThresholds = thresholdData
+    ? Object.values(thresholdData).some((value) => value !== null)
+    : false;
+  const hasPrimaryFields = ['tier', 'net_dist', 'hits', 'cons_hits', 'persist_hits', 'area_ema', 'speed_ema']
+    .map((key) => trigger[key])
+    .some((value) => value !== null && value !== undefined);
+
+  if (!hasThresholds && !hasPrimaryFields) {
+    return null;
+  }
+
+  return {
+    ...trigger,
+    thresholds: hasThresholds ? thresholdData : null,
+  };
+};
+
+const formatTriggerValue = (value, options = {}) => {
+  const normalized = normalizeNumericValue(value);
+  if (normalized === null) {
+    return '—';
+  }
+  return normalized.toLocaleString(undefined, options);
+};
+
+const formatTriggerDecimal = (value) =>
+  formatTriggerValue(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
+
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
   if (segments.length < 2 || segments.length % 2 !== 0) {
@@ -371,6 +440,7 @@ export default function Sightings() {
           if (!parentRef) return null;
           const parentDoc = parentDataMap.get(parentRef.path);
           if (!parentDoc || parentDoc.deletedAt) return null;
+          const trigger = normalizeTrigger(parentDoc?.trigger || speciesDoc?.trigger);
 
           const entry = buildHighlightEntry({
             category: 'sighting',
@@ -381,6 +451,7 @@ export default function Sightings() {
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
+            trigger,
             meta: {
               parentPath: parentRef.path,
               speciesDocPath: docSnap.ref.path,
@@ -1569,6 +1640,79 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
+                  {entry.trigger && (
+                    <div className="sightingCard__trigger">
+                      <div className="sightingCard__triggerHeader">
+                        <span className="sightingCard__triggerLabel">Trigger</span>
+                        <span className="sightingCard__triggerTier">
+                          {entry.trigger.tier || 'Unknown'}
+                        </span>
+                      </div>
+                      <div className="sightingCard__triggerGrid">
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Net distance</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerDecimal(entry.trigger.net_dist)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Hits</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerInteger(entry.trigger.hits)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Consecutive hits</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerInteger(entry.trigger.cons_hits)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Persistent hits</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerInteger(entry.trigger.persist_hits)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Area EMA</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerDecimal(entry.trigger.area_ema)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__triggerStat">
+                          <span className="sightingCard__triggerStatLabel">Speed EMA</span>
+                          <span className="sightingCard__triggerStatValue">
+                            {formatTriggerDecimal(entry.trigger.speed_ema)}
+                          </span>
+                        </div>
+                      </div>
+                      {entry.trigger.thresholds && (
+                        <div className="sightingCard__triggerThresholds">
+                          <span className="sightingCard__triggerLabel">Thresholds</span>
+                          <div className="sightingCard__triggerGrid sightingCard__triggerGrid--compact">
+                            <div className="sightingCard__triggerStat">
+                              <span className="sightingCard__triggerStatLabel">Min net dist</span>
+                              <span className="sightingCard__triggerStatValue">
+                                {formatTriggerDecimal(entry.trigger.thresholds.min_net_dist)}
+                              </span>
+                            </div>
+                            <div className="sightingCard__triggerStat">
+                              <span className="sightingCard__triggerStatLabel">Confirm hits</span>
+                              <span className="sightingCard__triggerStatValue">
+                                {formatTriggerInteger(entry.trigger.thresholds.confirm_hits)}
+                              </span>
+                            </div>
+                            <div className="sightingCard__triggerStat">
+                              <span className="sightingCard__triggerStatLabel">Min persist hits</span>
+                              <span className="sightingCard__triggerStatValue">
+                                {formatTriggerInteger(entry.trigger.thresholds.min_persist_hits)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="sightingCard__footer">
                     <div className="sightingCard__footerGroup">
                       <span className="sightingCard__footerLabel">Location</span>
