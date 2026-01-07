@@ -19,6 +19,7 @@ import {
   formatCountWithSpecies,
   formatPercent,
   formatTime,
+  normalizeDate,
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
@@ -147,6 +148,88 @@ const formatTriggerDecimal = (value) =>
   formatTriggerValue(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
+
+const formatDebugDateTime = (value) => {
+  const normalized = normalizeDate(value);
+  if (!normalized) {
+    return { text: '—', isMultiline: false };
+  }
+  const dateLabel = formatDate(normalized);
+  const timeLabel = formatTime(normalized);
+  const combined = `${dateLabel} ${timeLabel}`.trim();
+  return {
+    text: combined || normalized.toISOString(),
+    isMultiline: false,
+  };
+};
+
+const formatDebugValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return { text: '—', isMultiline: false };
+  }
+
+  if (typeof value === 'boolean') {
+    return { text: value ? 'true' : 'false', isMultiline: false };
+  }
+
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return { text: value.toLocaleString(), isMultiline: false };
+  }
+
+  if (typeof value === 'string') {
+    return { text: value, isMultiline: false };
+  }
+
+  try {
+    return { text: JSON.stringify(value, null, 2), isMultiline: true };
+  } catch (error) {
+    return { text: '—', isMultiline: false };
+  }
+};
+
+const buildDebugFields = (parentDoc, speciesDoc) => {
+  const getValue = (key) =>
+    parentDoc?.[key] !== undefined ? parentDoc?.[key] : speciesDoc?.[key];
+
+  const fields = [
+    { label: 'BBox area', value: getValue('bboxArea') },
+    { label: 'Center distance', value: getValue('centerDist') },
+    { label: 'Confidence', value: getValue('conf') },
+    { label: 'Corrected', value: getValue('corrected') },
+    { label: 'Created at', value: getValue('createdAt'), type: 'date' },
+    { label: 'Debug URL', value: getValue('debugUrl') },
+    { label: 'Deleted at', value: getValue('deletedAt'), type: 'date' },
+    { label: 'Deleted by', value: getValue('deletedBy') },
+    { label: 'Entity kinds', value: getValue('entityKinds') },
+    { label: 'Entity tally', value: getValue('entityTally') },
+    { label: 'Motion', value: getValue('motion') },
+    { label: 'Frame height', value: getValue('frameH') },
+    { label: 'Frame width', value: getValue('frameW') },
+    { label: 'Location ID', value: getValue('locationId') },
+    { label: 'Media type', value: getValue('mediaType') },
+    { label: 'Media URL', value: getValue('mediaUrl') },
+    { label: 'Preview URL', value: getValue('previewUrl') },
+    { label: 'Primary species', value: getValue('primarySpecies') },
+    { label: 'Review notes', value: getValue('reviewNotes') },
+    { label: 'Reviewed', value: getValue('reviewed') },
+    { label: 'Sighting ID', value: getValue('sightingId') },
+    { label: 'Storage path debug', value: getValue('storagePathDebug') },
+    { label: 'Storage path media', value: getValue('storagePathMedia') },
+    { label: 'Storage path preview', value: getValue('storagePathPreview') },
+    { label: 'Trigger (raw)', value: getValue('trigger') },
+    { label: 'Updated at', value: getValue('updatedAt'), type: 'date' },
+  ];
+
+  return fields
+    .map(({ label, value, type }) => {
+      const formatted = type === 'date' ? formatDebugDateTime(value) : formatDebugValue(value);
+      return {
+        label,
+        ...formatted,
+      };
+    })
+    .filter(({ text }) => text !== '—');
+};
 
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
@@ -308,6 +391,7 @@ export default function Sightings() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
+  const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -1483,6 +1567,14 @@ export default function Sightings() {
                   <option value="image">Image</option>
                 </select>
               </div>
+              <label className="sightingsPage__debugToggle">
+                <input
+                  type="checkbox"
+                  checked={isDebugViewEnabled}
+                  onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+                />
+                <span>Debug view</span>
+              </label>
             </div>
             <button
               type="button"
@@ -1571,6 +1663,12 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const debugMediaSrc = entry.debugUrl || null;
+            const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+            const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+            const debugFields = isDebugViewEnabled
+              ? buildDebugFields(entry.meta?.parentDoc, entry.meta?.speciesDoc)
+              : [];
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1582,9 +1680,6 @@ export default function Sightings() {
                   >
                     {(() => {
                       const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                      const debugMediaSrc = entry.debugUrl || null;
-                      const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-                      const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
                       const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
                       const cardImageSrc = pickFirstSource(
                         entry.previewUrl,
@@ -1640,7 +1735,7 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
-                  {entry.trigger && (
+                  {isDebugViewEnabled && entry.trigger && (
                     <div className="sightingCard__trigger">
                       <div className="sightingCard__triggerHeader">
                         <span className="sightingCard__triggerLabel">Trigger</span>
@@ -1710,6 +1805,36 @@ export default function Sightings() {
                             </div>
                           </div>
                         </div>
+                      )}
+                    </div>
+                  )}
+                  {isDebugViewEnabled && (debugImageSrc || debugFields.length > 0) && (
+                    <div className="sightingCard__debug">
+                      <div className="sightingCard__debugHeader">
+                        <span className="sightingCard__debugLabel">Debug</span>
+                      </div>
+                      {debugImageSrc && (
+                        <div className="sightingCard__debugMedia">
+                          <img src={debugImageSrc} alt={`${entry.species} debug bounding box`} />
+                        </div>
+                      )}
+                      {debugFields.length > 0 ? (
+                        <div className="sightingCard__debugGrid">
+                          {debugFields.map(({ label, text, isMultiline }) => (
+                            <div className="sightingCard__debugItem" key={label}>
+                              <span className="sightingCard__debugItemLabel">{label}</span>
+                              {isMultiline ? (
+                                <pre className="sightingCard__debugItemValue sightingCard__debugItemValue--pre">
+                                  {text}
+                                </pre>
+                              ) : (
+                                <span className="sightingCard__debugItemValue">{text}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="sightingCard__debugEmpty">No debug details available.</span>
                       )}
                     </div>
                   )}

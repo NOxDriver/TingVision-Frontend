@@ -567,6 +567,75 @@
   gap: 8px;
 }
 
+.sightingCard__debug {
+  border: 1px solid rgba(79, 126, 210, 0.35);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(12, 18, 10, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sightingCard__debugHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sightingCard__debugLabel {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__debugMedia img {
+  width: 100%;
+  border-radius: 10px;
+  display: block;
+}
+
+.sightingCard__debugGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.sightingCard__debugItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sightingCard__debugItemLabel {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__debugItemValue {
+  font-size: 0.92rem;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.sightingCard__debugItemValue--pre {
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(11, 15, 8, 0.6);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sightingCard__debugEmpty {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
 .sightingCard__footer {
   display: flex;
   justify-content: flex-start;
@@ -638,6 +707,19 @@
 .sightingsPage__pageButton:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.sightingsPage__debugToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  padding-top: 22px;
+}
+
+.sightingsPage__debugToggle input {
+  accent-color: rgba(255, 140, 26, 0.8);
 }
 
 .sightingsPage__pageButton:not(:disabled):hover,
