@@ -342,6 +342,7 @@ export default function Sightings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
+  const sightingsRef = useRef([]);
   const [activeSighting, setActiveSighting] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedSpecies, setSelectedSpecies] = useState([]);
@@ -365,6 +366,7 @@ export default function Sightings() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
+  const [newSightingIds, setNewSightingIds] = useState(() => new Set());
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -396,7 +398,7 @@ export default function Sightings() {
   }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
-    const { pageIndex = 0 } = options;
+    const { pageIndex = 0, highlightNew = false } = options;
 
     if (!accessReady) {
       return;
@@ -430,6 +432,10 @@ export default function Sightings() {
       paginationCursorsRef.current = [];
     }
 
+    if (!highlightNew) {
+      setNewSightingIds(new Set());
+    }
+
     try {
       const constraints = [orderBy('createdAt', 'desc')];
 
@@ -448,6 +454,9 @@ export default function Sightings() {
 
       if (snapshot.empty && isFirstPage) {
         setSightings([]);
+        if (highlightNew) {
+          setNewSightingIds(new Set());
+        }
         setHasMore(false);
         setCurrentPage(0);
         return;
@@ -521,6 +530,13 @@ export default function Sightings() {
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
 
       setSightings(filteredEntries);
+      if (highlightNew) {
+        const previousIds = new Set(sightingsRef.current.map((entry) => entry.id));
+        const nextIds = filteredEntries
+          .filter((entry) => !previousIds.has(entry.id))
+          .map((entry) => entry.id);
+        setNewSightingIds(new Set(nextIds));
+      }
 
       const nextCursor = snapshot.docs[snapshot.docs.length - 1] || null;
       paginationCursorsRef.current = [
@@ -545,6 +561,10 @@ export default function Sightings() {
       }
     }
   }, [accessReady, isAdmin, allowedLocationSet]);
+
+  useEffect(() => {
+    sightingsRef.current = sightings;
+  }, [sightings]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1544,7 +1564,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
-                loadSightings({ pageIndex: currentPage });
+                loadSightings({ pageIndex: currentPage, highlightNew: true });
               }}
               disabled={loading || paginationLoading}
             >
@@ -1626,6 +1646,7 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const isNew = newSightingIds.has(entry.id);
             const debugMediaSrc = entry.debugUrl || null;
             const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
@@ -1669,7 +1690,10 @@ export default function Sightings() {
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
             return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+              <article
+                className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
+                key={entry.id}
+              >
                 <div className="sightingCard__media">
                   <button
                     type="button"
