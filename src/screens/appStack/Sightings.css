@@ -193,6 +193,26 @@
   min-width: 160px;
 }
 
+.sightingsPage__field--checkbox {
+  min-width: unset;
+}
+
+.sightingsPage__checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sightingsPage__checkboxLabel input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
 .sightingsPage__field label {
   font-size: 0.85rem;
   color: var(--color-text-secondary);
@@ -565,6 +585,70 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.sightingCard__debug {
+  border: 1px dashed rgba(203, 146, 74, 0.45);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(11, 15, 8, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sightingCard__debugHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sightingCard__debugLabel {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__debugGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.sightingCard__debugStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sightingCard__debugStat--block {
+  grid-column: 1 / -1;
+}
+
+.sightingCard__debugStatLabel {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sightingCard__debugStatValue {
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  word-break: break-word;
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: inherit;
+}
+
+.sightingCard__debugMedia img {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.35);
+  object-fit: contain;
+  background: rgba(11, 15, 8, 0.65);
 }
 
 .sightingCard__footer {
