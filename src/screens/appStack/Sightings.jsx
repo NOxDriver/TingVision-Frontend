@@ -19,6 +19,7 @@ import {
   formatCountWithSpecies,
   formatPercent,
   formatTime,
+  normalizeDate,
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
@@ -147,6 +148,37 @@ const formatTriggerDecimal = (value) =>
   formatTriggerValue(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
+
+const formatDebugValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+
+  if (typeof value?.toDate === 'function') {
+    const asDate = normalizeDate(value);
+    if (asDate) {
+      return `${formatDate(asDate)} ${formatTime(asDate)}`.trim();
+    }
+  }
+
+  if (value instanceof Date) {
+    return `${formatDate(value)} ${formatTime(value)}`.trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : '—';
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  return String(value);
+};
 
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
@@ -307,6 +339,7 @@ export default function Sightings() {
   const [locationFilter, setLocationFilter] = useState('all');
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
+  const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
@@ -1387,6 +1420,16 @@ export default function Sightings() {
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
             <div className="sightingsPage__filterGroup">
+              <div className="sightingsPage__field sightingsPage__field--checkbox">
+                <label className="sightingsPage__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={isDebugViewEnabled}
+                    onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+                  />
+                  <span>Debug view</span>
+                </label>
+              </div>
               <div className="sightingsPage__filter">
                 <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
                 <input
@@ -1571,6 +1614,46 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const rawParentDoc = entry.meta?.parentDoc || {};
+            const rawSpeciesDoc = entry.meta?.speciesDoc || {};
+            const debugTrigger = rawParentDoc?.trigger || rawSpeciesDoc?.trigger || null;
+            const debugImageSources = Array.from(
+              new Set([
+                rawParentDoc?.debugPreviewUrl,
+                rawParentDoc?.debugUrl,
+                rawParentDoc?.debugMediaUrl,
+                entry.debugUrl,
+              ].filter((src) => typeof src === 'string' && src.length > 0))
+            ).filter((src) => !isLikelyVideoUrl(src));
+            const hasDebugDetails = Boolean(
+              rawSpeciesDoc?.bboxArea
+              || rawSpeciesDoc?.centerDist
+              || rawSpeciesDoc?.conf
+              || rawSpeciesDoc?.corrected
+              || rawSpeciesDoc?.reviewed
+              || rawSpeciesDoc?.reviewNotes
+              || rawParentDoc?.primarySpecies
+              || rawParentDoc?.entityKinds
+              || rawParentDoc?.entityTally
+              || rawParentDoc?.motion
+              || rawParentDoc?.frameW
+              || rawParentDoc?.frameH
+              || rawParentDoc?.mediaType
+              || rawParentDoc?.mediaUrl
+              || rawParentDoc?.previewUrl
+              || rawParentDoc?.debugUrl
+              || rawParentDoc?.storagePathMedia
+              || rawParentDoc?.storagePathPreview
+              || rawParentDoc?.storagePathDebug
+              || rawParentDoc?.sightingId
+              || rawParentDoc?.locationId
+              || rawParentDoc?.createdAt
+              || rawParentDoc?.updatedAt
+              || rawParentDoc?.deletedAt
+              || rawParentDoc?.deletedBy
+              || debugTrigger
+              || debugImageSources.length > 0
+            );
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1708,6 +1791,183 @@ export default function Sightings() {
                                 {formatTriggerInteger(entry.trigger.thresholds.min_persist_hits)}
                               </span>
                             </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isDebugViewEnabled && hasDebugDetails && (
+                    <div className="sightingCard__debug">
+                      <div className="sightingCard__debugHeader">
+                        <span className="sightingCard__debugLabel">Debug</span>
+                      </div>
+                      <div className="sightingCard__debugGrid">
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">bboxArea</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.bboxArea)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">centerDist</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.centerDist)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">conf</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.conf)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">corrected</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.corrected)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">reviewed</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.reviewed)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">reviewNotes</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawSpeciesDoc?.reviewNotes)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">primarySpecies</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.primarySpecies)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">entityKinds</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.entityKinds)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">entityTally</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.entityTally)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">motion</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.motion)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">frameW</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.frameW)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">frameH</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.frameH)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">mediaType</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.mediaType)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">mediaUrl</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.mediaUrl)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">previewUrl</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.previewUrl)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">debugUrl</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.debugUrl)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">storagePathMedia</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.storagePathMedia)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">storagePathPreview</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.storagePathPreview)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">storagePathDebug</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.storagePathDebug)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">sightingId</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.sightingId)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">locationId</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.locationId)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">createdAt</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.createdAt)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">updatedAt</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.updatedAt)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">deletedAt</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.deletedAt)}
+                          </span>
+                        </div>
+                        <div className="sightingCard__debugStat">
+                          <span className="sightingCard__debugStatLabel">deletedBy</span>
+                          <span className="sightingCard__debugStatValue">
+                            {formatDebugValue(rawParentDoc?.deletedBy)}
+                          </span>
+                        </div>
+                      </div>
+                      {debugTrigger && (
+                        <div className="sightingCard__debugTrigger">
+                          <span className="sightingCard__debugLabel">Trigger details</span>
+                          <pre className="sightingCard__debugPre">
+                            {formatDebugValue(debugTrigger)}
+                          </pre>
+                        </div>
+                      )}
+                      {debugImageSources.length > 0 && (
+                        <div className="sightingCard__debugMedia">
+                          <span className="sightingCard__debugLabel">Bounding images</span>
+                          <div className="sightingCard__debugMediaGrid">
+                            {debugImageSources.map((src) => (
+                              <img key={src} src={src} alt="Bounding box debug" loading="lazy" />
+                            ))}
                           </div>
                         </div>
                       )}
