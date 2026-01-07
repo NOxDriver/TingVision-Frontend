@@ -365,6 +365,7 @@ export default function Sightings() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
+  const [newSightingIds, setNewSightingIds] = useState(() => new Set());
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -372,6 +373,7 @@ export default function Sightings() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
+  const sightingsRef = useRef(sightings);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -379,6 +381,10 @@ export default function Sightings() {
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   usePageTitle('Sightings');
+
+  useEffect(() => {
+    sightingsRef.current = sightings;
+  }, [sightings]);
 
   const actorName = useMemo(() => {
     if (!user) {
@@ -396,7 +402,7 @@ export default function Sightings() {
   }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
-    const { pageIndex = 0 } = options;
+    const { pageIndex = 0, isRefresh = false } = options;
 
     if (!accessReady) {
       return;
@@ -428,6 +434,9 @@ export default function Sightings() {
       setError('');
       setHasMore(false);
       paginationCursorsRef.current = [];
+      if (!isRefresh) {
+        setNewSightingIds(new Set());
+      }
     }
 
     try {
@@ -519,6 +528,18 @@ export default function Sightings() {
       const filteredEntries = isAdmin
         ? entries
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
+
+      if (isRefresh) {
+        const previousIds = new Set(sightingsRef.current.map((entry) => entry.id));
+        const nextNewIds = new Set(
+          filteredEntries
+            .filter((entry) => !previousIds.has(entry.id))
+            .map((entry) => entry.id),
+        );
+        setNewSightingIds(nextNewIds);
+      } else {
+        setNewSightingIds(new Set());
+      }
 
       setSightings(filteredEntries);
 
@@ -1544,7 +1565,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
-                loadSightings({ pageIndex: currentPage });
+                loadSightings({ pageIndex: currentPage, isRefresh: true });
               }}
               disabled={loading || paginationLoading}
             >
@@ -1669,7 +1690,12 @@ export default function Sightings() {
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
             return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+              <article
+                className={`sightingCard ${getConfidenceClass(entry.maxConf)}${
+                  newSightingIds.has(entry.id) ? ' sightingCard--new' : ''
+                }`}
+                key={entry.id}
+              >
                 <div className="sightingCard__media">
                   <button
                     type="button"
@@ -1707,6 +1733,9 @@ export default function Sightings() {
                     <span className="sightingCard__badge">
                       {entry.mediaType === 'video' ? 'Video' : 'Image'}
                     </span>
+                    {newSightingIds.has(entry.id) && (
+                      <span className="sightingCard__badge sightingCard__badge--new">New</span>
+                    )}
                   </button>
                 </div>
                 <div className="sightingCard__body">

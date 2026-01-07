@@ -423,6 +423,11 @@
   background: rgba(21, 31, 17, 0.92);
 }
 
+.sightingCard--new {
+  border-color: rgba(255, 235, 154, 0.9);
+  box-shadow: 0 24px 55px rgba(255, 221, 128, 0.35);
+}
+
 .sightingCard__media {
   position: relative;
   background: #050603;
@@ -482,6 +487,14 @@
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.sightingCard__badge--new {
+  left: 10px;
+  right: auto;
+  background: rgba(255, 235, 154, 0.95);
+  color: #1b1b12;
+  font-weight: 700;
 }
 
 .sightingCard__body {
