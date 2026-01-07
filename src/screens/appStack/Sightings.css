@@ -40,6 +40,27 @@
   flex-wrap: wrap;
 }
 
+.sightingsPage__debugToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  background: rgba(24, 32, 16, 0.65);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.sightingsPage__debugToggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
 .sightingsPage__status {
   font-size: 0.95rem;
   color: var(--color-text-secondary);
@@ -562,6 +583,79 @@
 }
 
 .sightingCard__triggerThresholds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sightingCard__debug {
+  border: 1px solid rgba(255, 140, 26, 0.3);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(10, 14, 8, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sightingCard__debugHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sightingCard__debugLabel {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__debugMedia img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 140, 26, 0.35);
+  display: block;
+}
+
+.sightingCard__debugGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.sightingCard__debugStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sightingCard__debugStatLabel {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__debugStatValue {
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.sightingCard__debugStatValue--code,
+.sightingCard__debugCode {
+  margin: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(6, 10, 4, 0.9);
+  border: 1px solid rgba(255, 140, 26, 0.2);
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.sightingCard__debugBlock {
   display: flex;
   flex-direction: column;
   gap: 8px;

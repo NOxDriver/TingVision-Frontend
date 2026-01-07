@@ -19,6 +19,7 @@ import {
   formatCountWithSpecies,
   formatPercent,
   formatTime,
+  normalizeDate,
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
@@ -147,6 +148,46 @@ const formatTriggerDecimal = (value) =>
   formatTriggerValue(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
+
+const formatDebugTimestamp = (value) => {
+  const normalized = normalizeDate(value);
+  if (!normalized) {
+    return null;
+  }
+  const dateLabel = formatDate(normalized);
+  const timeLabel = formatTime(normalized);
+  if (!dateLabel && !timeLabel) {
+    return null;
+  }
+  return `${dateLabel} ${timeLabel}`.trim();
+};
+
+const buildDebugValue = (value) => {
+  if (value === null) {
+    return { type: 'text', value: 'null' };
+  }
+
+  if (value === undefined || value === '') {
+    return { type: 'text', value: '—' };
+  }
+
+  if (typeof value === 'boolean') {
+    return { type: 'text', value: value ? 'true' : 'false' };
+  }
+
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) {
+      return { type: 'text', value: '—' };
+    }
+    return { type: 'text', value: value.toLocaleString() };
+  }
+
+  if (typeof value === 'string') {
+    return { type: 'text', value };
+  }
+
+  return { type: 'code', value: JSON.stringify(value, null, 2) };
+};
 
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
@@ -308,6 +349,7 @@ export default function Sightings() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
+  const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -1386,6 +1428,14 @@ export default function Sightings() {
             {!loading && accessError && (
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
+            <label className="sightingsPage__debugToggle">
+              <input
+                type="checkbox"
+                checked={isDebugViewEnabled}
+                onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+              />
+              <span>Debug view</span>
+            </label>
             <div className="sightingsPage__filterGroup">
               <div className="sightingsPage__filter">
                 <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
@@ -1571,6 +1621,37 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const debugMediaSrc = entry.debugUrl || null;
+            const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+            const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+            const debugSource = entry.meta?.parentDoc || {};
+            const rawTrigger = debugSource?.trigger || entry.meta?.speciesDoc?.trigger || null;
+            const debugFields = [
+              { label: 'bboxArea', value: debugSource?.bboxArea },
+              { label: 'centerDist', value: debugSource?.centerDist },
+              { label: 'conf', value: debugSource?.conf },
+              { label: 'corrected', value: debugSource?.corrected },
+              { label: 'createdAt', value: formatDebugTimestamp(debugSource?.createdAt) },
+              { label: 'debugUrl', value: debugSource?.debugUrl || entry.debugUrl },
+              { label: 'deletedAt', value: formatDebugTimestamp(debugSource?.deletedAt) },
+              { label: 'deletedBy', value: debugSource?.deletedBy },
+              { label: 'entityKinds', value: debugSource?.entityKinds },
+              { label: 'entityTally', value: debugSource?.entityTally },
+              { label: 'motion', value: debugSource?.motion },
+              { label: 'frameH', value: debugSource?.frameH },
+              { label: 'frameW', value: debugSource?.frameW },
+              { label: 'locationId', value: debugSource?.locationId || entry.locationId },
+              { label: 'mediaType', value: debugSource?.mediaType || entry.mediaType },
+              { label: 'mediaUrl', value: debugSource?.mediaUrl || entry.mediaUrl },
+              { label: 'previewUrl', value: debugSource?.previewUrl || entry.previewUrl },
+              { label: 'primarySpecies', value: debugSource?.primarySpecies },
+              { label: 'reviewNotes', value: debugSource?.reviewNotes },
+              { label: 'reviewed', value: debugSource?.reviewed },
+              { label: 'sightingId', value: debugSource?.sightingId || entry.parentId },
+              { label: 'storagePathDebug', value: debugSource?.storagePathDebug },
+              { label: 'storagePathMedia', value: debugSource?.storagePathMedia },
+              { label: 'storagePathPreview', value: debugSource?.storagePathPreview },
+            ];
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1709,6 +1790,43 @@ export default function Sightings() {
                               </span>
                             </div>
                           </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isDebugViewEnabled && (
+                    <div className="sightingCard__debug">
+                      <div className="sightingCard__debugHeader">
+                        <span className="sightingCard__debugLabel">Debug trigger</span>
+                      </div>
+                      {debugImageSrc && (
+                        <div className="sightingCard__debugMedia">
+                          <img src={debugImageSrc} alt={`${entry.species} debug bounds`} />
+                        </div>
+                      )}
+                      <div className="sightingCard__debugGrid">
+                        {debugFields.map(({ label, value }) => {
+                          const formatted = buildDebugValue(value);
+                          return (
+                            <div className="sightingCard__debugStat" key={label}>
+                              <span className="sightingCard__debugStatLabel">{label}</span>
+                              {formatted.type === 'code' ? (
+                                <pre className="sightingCard__debugStatValue sightingCard__debugStatValue--code">
+                                  {formatted.value}
+                                </pre>
+                              ) : (
+                                <span className="sightingCard__debugStatValue">{formatted.value}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {rawTrigger && (
+                        <div className="sightingCard__debugBlock">
+                          <span className="sightingCard__debugLabel">Trigger details</span>
+                          <pre className="sightingCard__debugCode">
+                            {JSON.stringify(rawTrigger, null, 2)}
+                          </pre>
                         </div>
                       )}
                     </div>
