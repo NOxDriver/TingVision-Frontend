@@ -423,6 +423,24 @@
   background: rgba(21, 31, 17, 0.92);
 }
 
+.sightingCard--new {
+  border-color: rgba(88, 179, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(88, 179, 255, 0.35), 0 24px 60px rgba(88, 179, 255, 0.25);
+  animation: newSightingPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes newSightingPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(88, 179, 255, 0.4), 0 24px 60px rgba(88, 179, 255, 0.2);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(88, 179, 255, 0), 0 24px 60px rgba(88, 179, 255, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(88, 179, 255, 0.1), 0 24px 60px rgba(88, 179, 255, 0.2);
+  }
+}
+
 .sightingCard__media {
   position: relative;
   background: #050603;

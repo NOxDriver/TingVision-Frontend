@@ -365,6 +365,7 @@ export default function Sightings() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editFeedback, setEditFeedback] = useState({ type: '', text: '' });
+  const [newSightings, setNewSightings] = useState(() => new Set());
   const shouldDisableAutoplay = useShouldDisableAutoplay();
   const role = useAuthStore((state) => state.role);
   const locationIds = useAuthStore((state) => state.locationIds);
@@ -396,7 +397,8 @@ export default function Sightings() {
   }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
-    const { pageIndex = 0 } = options;
+    const { pageIndex = 0, highlightNew = false } = options;
+    const previousIds = highlightNew ? new Set(sightings.map((entry) => entry.id)) : null;
 
     if (!accessReady) {
       return;
@@ -423,6 +425,9 @@ export default function Sightings() {
 
     const setBusy = isFirstPage ? setLoading : setPaginationLoading;
     setBusy(true);
+    if (!highlightNew) {
+      setNewSightings(new Set());
+    }
 
     if (isFirstPage) {
       setError('');
@@ -521,6 +526,12 @@ export default function Sightings() {
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
 
       setSightings(filteredEntries);
+      if (highlightNew) {
+        const freshIds = filteredEntries
+          .map((entry) => entry.id)
+          .filter((id) => !previousIds.has(id));
+        setNewSightings(new Set(freshIds));
+      }
 
       const nextCursor = snapshot.docs[snapshot.docs.length - 1] || null;
       paginationCursorsRef.current = [
@@ -544,7 +555,19 @@ export default function Sightings() {
         setBusy(false);
       }
     }
-  }, [accessReady, isAdmin, allowedLocationSet]);
+  }, [accessReady, allowedLocationSet, isAdmin, sightings]);
+
+  useEffect(() => {
+    if (newSightings.size === 0) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setNewSightings(new Set());
+    }, 4500);
+
+    return () => window.clearTimeout(timeout);
+  }, [newSightings]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1544,7 +1567,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
-                loadSightings({ pageIndex: currentPage });
+                loadSightings({ pageIndex: currentPage, highlightNew: true });
               }}
               disabled={loading || paginationLoading}
             >
@@ -1669,7 +1692,10 @@ export default function Sightings() {
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
             return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+              <article
+                className={`sightingCard ${getConfidenceClass(entry.maxConf)}${newSightings.has(entry.id) ? ' sightingCard--new' : ''}`}
+                key={entry.id}
+              >
                 <div className="sightingCard__media">
                   <button
                     type="button"
