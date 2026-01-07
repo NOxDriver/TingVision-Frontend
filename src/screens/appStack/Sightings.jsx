@@ -19,6 +19,7 @@ import {
   formatCountWithSpecies,
   formatPercent,
   formatTime,
+  normalizeDate,
 } from '../../utils/highlights';
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
@@ -147,6 +148,48 @@ const formatTriggerDecimal = (value) =>
   formatTriggerValue(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
+
+const formatDebugValue = (value) => {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+
+  const normalizedDate = normalizeDate(value);
+  if (normalizedDate instanceof Date && !Number.isNaN(normalizedDate.getTime())) {
+    return normalizedDate.toISOString();
+  }
+
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? '—' : value.toLocaleString();
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (error) {
+    return String(value);
+  }
+};
+
+const isDebugBlockValue = (value) => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  const normalizedDate = normalizeDate(value);
+  if (normalizedDate instanceof Date && !Number.isNaN(normalizedDate.getTime())) {
+    return false;
+  }
+
+  return typeof value === 'object';
+};
 
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
@@ -308,6 +351,7 @@ export default function Sightings() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState('all');
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
+  const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -1387,6 +1431,17 @@ export default function Sightings() {
               <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
             )}
             <div className="sightingsPage__filterGroup">
+              <div className="sightingsPage__field sightingsPage__field--checkbox">
+                <label className="sightingsPage__checkboxLabel" htmlFor="debugViewToggle">
+                  <input
+                    id="debugViewToggle"
+                    type="checkbox"
+                    checked={isDebugViewEnabled}
+                    onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+                  />
+                  <span>Debug view</span>
+                </label>
+              </div>
               <div className="sightingsPage__filter">
                 <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
                 <input
@@ -1571,6 +1626,48 @@ export default function Sightings() {
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
+            const debugMediaSrc = entry.debugUrl || null;
+            const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
+            const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+            const parentDoc = entry.meta?.parentDoc || null;
+            const speciesDoc = entry.meta?.speciesDoc || null;
+            const pickDebugField = (key) => {
+              if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
+                return speciesDoc[key];
+              }
+              if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
+                return parentDoc[key];
+              }
+              return null;
+            };
+            const debugFields = [
+              { key: 'bboxArea', value: pickDebugField('bboxArea') },
+              { key: 'centerDist', value: pickDebugField('centerDist') },
+              { key: 'conf', value: pickDebugField('conf') },
+              { key: 'corrected', value: pickDebugField('corrected') },
+              { key: 'createdAt', value: pickDebugField('createdAt') || entry.createdAt },
+              { key: 'debugUrl', value: pickDebugField('debugUrl') || debugMediaSrc },
+              { key: 'deletedAt', value: pickDebugField('deletedAt') },
+              { key: 'deletedBy', value: pickDebugField('deletedBy') },
+              { key: 'entityKinds', value: pickDebugField('entityKinds') },
+              { key: 'entityTally', value: pickDebugField('entityTally') },
+              { key: 'motion', value: pickDebugField('motion') },
+              { key: 'frameH', value: pickDebugField('frameH') },
+              { key: 'frameW', value: pickDebugField('frameW') },
+              { key: 'locationId', value: pickDebugField('locationId') || entry.locationId },
+              { key: 'mediaType', value: pickDebugField('mediaType') || entry.mediaType },
+              { key: 'mediaUrl', value: pickDebugField('mediaUrl') || entry.mediaUrl },
+              { key: 'previewUrl', value: pickDebugField('previewUrl') || entry.previewUrl },
+              { key: 'primarySpecies', value: pickDebugField('primarySpecies') },
+              { key: 'reviewNotes', value: pickDebugField('reviewNotes') },
+              { key: 'reviewed', value: pickDebugField('reviewed') },
+              { key: 'sightingId', value: pickDebugField('sightingId') || entry.parentId },
+              { key: 'storagePathDebug', value: pickDebugField('storagePathDebug') },
+              { key: 'storagePathMedia', value: pickDebugField('storagePathMedia') },
+              { key: 'storagePathPreview', value: pickDebugField('storagePathPreview') },
+              { key: 'trigger', value: pickDebugField('trigger') },
+              { key: 'updatedAt', value: pickDebugField('updatedAt') },
+            ];
             return (
               <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
                 <div className="sightingCard__media">
@@ -1582,9 +1679,6 @@ export default function Sightings() {
                   >
                     {(() => {
                       const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                      const debugMediaSrc = entry.debugUrl || null;
-                      const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-                      const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
                       const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
                       const cardImageSrc = pickFirstSource(
                         entry.previewUrl,
@@ -1640,7 +1734,7 @@ export default function Sightings() {
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
                     )}
                   </div>
-                  {entry.trigger && (
+                  {isDebugViewEnabled && entry.trigger && (
                     <div className="sightingCard__trigger">
                       <div className="sightingCard__triggerHeader">
                         <span className="sightingCard__triggerLabel">Trigger</span>
@@ -1709,6 +1803,40 @@ export default function Sightings() {
                               </span>
                             </div>
                           </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isDebugViewEnabled && (
+                    <div className="sightingCard__debug">
+                      <div className="sightingCard__debugHeader">
+                        <span className="sightingCard__debugLabel">Debug</span>
+                      </div>
+                      <div className="sightingCard__debugGrid">
+                        {debugFields.map(({ key, value }) => {
+                          const isBlock = isDebugBlockValue(value);
+                          const formattedValue = formatDebugValue(value);
+                          return (
+                            <div
+                              key={key}
+                              className={`sightingCard__debugStat${isBlock ? ' sightingCard__debugStat--block' : ''}`}
+                            >
+                              <span className="sightingCard__debugStatLabel">{key}</span>
+                              {isBlock ? (
+                                <pre className="sightingCard__debugStatValue">{formattedValue}</pre>
+                              ) : (
+                                <span className="sightingCard__debugStatValue">{formattedValue}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {debugImageSrc && (
+                        <div className="sightingCard__debugMedia">
+                          <img
+                            src={debugImageSrc}
+                            alt={`${entry.species} debug bounding preview`}
+                          />
                         </div>
                       )}
                     </div>
