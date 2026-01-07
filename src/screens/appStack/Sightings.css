@@ -423,6 +423,24 @@
   background: rgba(21, 31, 17, 0.92);
 }
 
+.sightingCard--new {
+  border-color: rgba(120, 210, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(120, 210, 255, 0.35), 0 28px 55px rgba(17, 38, 61, 0.6);
+  animation: sightingPulse 1.8s ease-out 2;
+}
+
+@keyframes sightingPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(120, 210, 255, 0.7), 0 20px 45px rgba(11, 15, 8, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(120, 210, 255, 0.15), 0 26px 55px rgba(17, 38, 61, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(120, 210, 255, 0.35), 0 28px 55px rgba(17, 38, 61, 0.6);
+  }
+}
+
 .sightingCard__media {
   position: relative;
   background: #050603;

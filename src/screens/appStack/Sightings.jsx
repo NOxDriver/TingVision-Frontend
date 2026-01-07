@@ -359,6 +359,7 @@ export default function Sightings() {
   const [selectedSightings, setSelectedSightings] = useState(() => new Set());
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
+  const [newSightingIds, setNewSightingIds] = useState(() => new Set());
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -372,6 +373,7 @@ export default function Sightings() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
+  const sightingsRef = useRef([]);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -396,7 +398,7 @@ export default function Sightings() {
   }, [user]);
 
   const loadSightings = useCallback(async (options = {}) => {
-    const { pageIndex = 0 } = options;
+    const { pageIndex = 0, highlightNew = false } = options;
 
     if (!accessReady) {
       return;
@@ -410,6 +412,7 @@ export default function Sightings() {
       setLoading(false);
       setPaginationLoading(false);
       setCurrentPage(0);
+      setNewSightingIds(new Set());
       return;
     }
 
@@ -450,6 +453,7 @@ export default function Sightings() {
         setSightings([]);
         setHasMore(false);
         setCurrentPage(0);
+        setNewSightingIds(new Set());
         return;
       }
 
@@ -513,12 +517,25 @@ export default function Sightings() {
 
       if (snapshot.empty && pageIndex > 0) {
         setHasMore(false);
+        if (highlightNew) {
+          setNewSightingIds(new Set());
+        }
         return;
       }
 
       const filteredEntries = isAdmin
         ? entries
         : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
+
+      if (highlightNew) {
+        const previousIds = new Set(sightingsRef.current.map((entry) => entry.id));
+        const nextNewIds = filteredEntries
+          .filter((entry) => !previousIds.has(entry.id))
+          .map((entry) => entry.id);
+        setNewSightingIds(new Set(nextNewIds));
+      } else {
+        setNewSightingIds(new Set());
+      }
 
       setSightings(filteredEntries);
 
@@ -535,6 +552,7 @@ export default function Sightings() {
         if (isFirstPage) {
           setError('Unable to load sightings');
           setSightings([]);
+          setNewSightingIds(new Set());
         } else {
           setError('Unable to load sightings page');
         }
@@ -558,6 +576,10 @@ export default function Sightings() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
+
+  useEffect(() => {
+    sightingsRef.current = sightings;
+  }, [sightings]);
 
   const availableLocations = useMemo(() => {
     const ids = sightings
@@ -1544,7 +1566,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
-                loadSightings({ pageIndex: currentPage });
+                loadSightings({ pageIndex: currentPage, highlightNew: true });
               }}
               disabled={loading || paginationLoading}
             >
@@ -1669,7 +1691,12 @@ export default function Sightings() {
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
             return (
-              <article className={`sightingCard ${getConfidenceClass(entry.maxConf)}`} key={entry.id}>
+              <article
+                className={`sightingCard ${getConfidenceClass(entry.maxConf)}${
+                  newSightingIds.has(entry.id) ? ' sightingCard--new' : ''
+                }`}
+                key={entry.id}
+              >
                 <div className="sightingCard__media">
                   <button
                     type="button"
