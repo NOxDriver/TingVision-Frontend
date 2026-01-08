@@ -760,6 +760,21 @@ export default function Sightings() {
     handleOpenSighting(filteredSightings[nextIndex]);
   }, [activeSighting, filteredSightings, handleOpenSighting]);
 
+  const handleSetActiveSightingSelection = useCallback((shouldSelect) => {
+    if (!activeSighting?.id) {
+      return;
+    }
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      if (shouldSelect) {
+        next.add(activeSighting.id);
+      } else {
+        next.delete(activeSighting.id);
+      }
+      return next;
+    });
+  }, [activeSighting]);
+
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
@@ -1346,13 +1361,21 @@ export default function Sightings() {
         event.preventDefault();
         handleNavigateSighting(-1);
       }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        handleSetActiveSightingSelection(true);
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        handleSetActiveSightingSelection(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeSighting, handleCloseSighting, handleNavigateSighting]);
+  }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
