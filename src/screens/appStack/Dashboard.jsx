@@ -183,6 +183,7 @@ export default function Dashboard() {
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
+  const showLiveStreams = false;
   const streamsToRender = useMemo(
     () => filterStreamsByLocations(STREAMS, allowedLocationSet, isAdmin),
     [allowedLocationSet, isAdmin],
@@ -193,44 +194,46 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      <section className="dashboard__streams">
-        <header className="dashboard__streamsHeader">
-          <div>
-            <h2>Live Video Feeds</h2>
-            <p>Streams are filtered by your assigned locations.</p>
-          </div>
-          {accessError && !isAccessLoading && (
-            <span className="dashboard__status dashboard__status--error">{accessError}</span>
+      {showLiveStreams && (
+        <section className="dashboard__streams">
+          <header className="dashboard__streamsHeader">
+            <div>
+              <h2>Live Video Feeds</h2>
+              <p>Streams are filtered by your assigned locations.</p>
+            </div>
+            {accessError && !isAccessLoading && (
+              <span className="dashboard__status dashboard__status--error">{accessError}</span>
+            )}
+          </header>
+
+          {isAccessLoading && (
+            <div className="dashboard__status">Loading access…</div>
           )}
-        </header>
 
-        {isAccessLoading && (
-          <div className="dashboard__status">Loading access…</div>
-        )}
+          {!isAccessLoading && noAssignedStreams && (
+            <div className="dashboard__status dashboard__status--muted">
+              No locations have been assigned to your account yet.
+            </div>
+          )}
 
-        {!isAccessLoading && noAssignedStreams && (
-          <div className="dashboard__status dashboard__status--muted">
-            No locations have been assigned to your account yet.
+          {!isAccessLoading && !hasStreams && !noAssignedStreams && (
+            <div className="dashboard__status dashboard__status--muted">
+              No live streams are available for your locations.
+            </div>
+          )}
+
+          <div className="dashboard__streamGrid">
+            {streamsToRender.map((stream) => (
+              <HlsTile
+                key={stream.id}
+                title={stream.title}
+                baseUrl={stream.baseUrl}
+                autoRefresh
+              />
+            ))}
           </div>
-        )}
-
-        {!isAccessLoading && !hasStreams && !noAssignedStreams && (
-          <div className="dashboard__status dashboard__status--muted">
-            No live streams are available for your locations.
-          </div>
-        )}
-
-        <div className="dashboard__streamGrid">
-          {streamsToRender.map((stream) => (
-            <HlsTile
-              key={stream.id}
-              title={stream.title}
-              baseUrl={stream.baseUrl}
-              autoRefresh
-            />
-          ))}
-        </div>
-      </section>
+        </section>
+      )}
       <HighlightsWidget />
     </div>
   );
