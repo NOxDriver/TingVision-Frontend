@@ -1321,7 +1321,7 @@ export default function Sightings() {
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setActiveSighting(null);
+        handleCloseSighting();
       }
     };
 
@@ -1329,7 +1329,7 @@ export default function Sightings() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeSighting]);
+  }, [activeSighting, handleCloseSighting]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
@@ -2174,6 +2174,20 @@ export default function Sightings() {
                 <time dateTime={activeSighting.createdAt.toISOString()}>
                   {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
                 </time>
+              )}
+              {isAdmin && (
+                <label className="sightingModal__selection">
+                  <input
+                    type="checkbox"
+                    checked={selectedSightings.has(activeSighting.id)}
+                    onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                  />
+                  <span>
+                    {selectedSightings.has(activeSighting.id)
+                      ? 'Selected for deletion'
+                      : 'Select for deletion'}
+                  </span>
+                </label>
               )}
             </div>
           </div>
