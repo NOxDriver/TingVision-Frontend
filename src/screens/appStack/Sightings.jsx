@@ -1320,7 +1320,7 @@ export default function Sightings() {
     }
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' || event.key === 'Esc') {
         setActiveSighting(null);
       }
     };
@@ -2125,11 +2125,24 @@ export default function Sightings() {
               );
               const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
               const isDebugMode = modalViewMode === 'debug';
-              if (!hasHdImageAlternative && !hasDebugMedia) {
+              const isSelectedForDelete = selectedSightings.has(activeSighting.id);
+              const isDeleting = deleteStatusMap[activeSighting.id]?.state === 'pending';
+              const showSelectionToggle = isAdmin;
+              if (!hasHdImageAlternative && !hasDebugMedia && !showSelectionToggle) {
                 return null;
               }
               return (
                 <div className="sightingModal__controls">
+                  {showSelectionToggle && (
+                    <button
+                      type="button"
+                      className={`sightingModal__toggle${isSelectedForDelete ? ' is-active' : ''}`}
+                      onClick={() => handleToggleSightingSelection(activeSighting.id)}
+                      disabled={isDeleting}
+                    >
+                      {isSelectedForDelete ? 'Selected for deletion' : 'Select for deletion'}
+                    </button>
+                  )}
                   {hasHdImageAlternative && (
                     <button
                       type="button"
