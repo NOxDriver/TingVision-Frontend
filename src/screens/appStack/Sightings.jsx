@@ -729,7 +729,7 @@ export default function Sightings() {
     return 'sightingCard--low';
   };
 
-  const handleOpenSighting = (entry) => {
+  const handleOpenSighting = useCallback((entry) => {
     setActiveSighting(entry);
     setModalViewMode('standard');
     trackButton('sighting_open', {
@@ -737,13 +737,28 @@ export default function Sightings() {
       mediaType: entry?.mediaType,
       location: entry?.locationId,
     });
-  };
+  }, []);
 
-  const handleCloseSighting = () => {
+  const handleCloseSighting = useCallback(() => {
     setActiveSighting(null);
     setModalViewMode('standard');
     trackButton('sighting_close');
-  };
+  }, []);
+
+  const handleNavigateSighting = useCallback((direction) => {
+    if (!activeSighting || filteredSightings.length === 0) {
+      return;
+    }
+    const currentIndex = filteredSightings.findIndex((entry) => entry.id === activeSighting.id);
+    if (currentIndex === -1) {
+      return;
+    }
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= filteredSightings.length) {
+      return;
+    }
+    handleOpenSighting(filteredSightings[nextIndex]);
+  }, [activeSighting, filteredSightings, handleOpenSighting]);
 
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
@@ -1323,13 +1338,21 @@ export default function Sightings() {
       if (event.key === 'Escape') {
         handleCloseSighting();
       }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        handleNavigateSighting(1);
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        handleNavigateSighting(-1);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeSighting, handleCloseSighting]);
+  }, [activeSighting, handleCloseSighting, handleNavigateSighting]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
