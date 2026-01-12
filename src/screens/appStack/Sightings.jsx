@@ -1344,52 +1344,56 @@ export default function Sightings() {
     }
   }, [filteredSightings, activeSighting]);
 
+  const handleModalKeyDown = useCallback((event) => {
+    if (!activeSighting) {
+      return;
+    }
+
+    const { key } = event;
+    if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLElement
+      && (event.target.isContentEditable
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (key === 'Escape') {
+      handleCloseSighting();
+      return;
+    }
+
+    if (key === 'ArrowRight') {
+      handleNavigateSighting(1);
+    }
+    if (key === 'ArrowLeft') {
+      handleNavigateSighting(-1);
+    }
+    if (key === 'ArrowUp') {
+      handleSetActiveSightingSelection(true);
+    }
+    if (key === 'ArrowDown') {
+      handleSetActiveSightingSelection(false);
+    }
+  }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+
   useEffect(() => {
     if (!activeSighting) {
       return undefined;
     }
 
-    const handleKeyDown = (event) => {
-      const { key } = event;
-      if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
-        return;
-      }
-
-      if (
-        event.target instanceof HTMLElement
-        && (event.target.isContentEditable
-          || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
-      ) {
-        return;
-      }
-
-      if (key === 'Escape') {
-        handleCloseSighting();
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (key === 'ArrowRight') {
-        handleNavigateSighting(1);
-      }
-      if (key === 'ArrowLeft') {
-        handleNavigateSighting(-1);
-      }
-      if (key === 'ArrowUp') {
-        handleSetActiveSightingSelection(true);
-      }
-      if (key === 'ArrowDown') {
-        handleSetActiveSightingSelection(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    document.addEventListener('keydown', handleModalKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      document.removeEventListener('keydown', handleModalKeyDown, { capture: true });
     };
-  }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+  }, [activeSighting, handleModalKeyDown]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
@@ -2161,10 +2165,11 @@ export default function Sightings() {
           aria-modal="true"
           onClick={handleCloseSighting}
         >
-          <div
-            className="sightingModal__content"
-            onClick={(event) => event.stopPropagation()}
-          >
+        <div
+          className="sightingModal__content"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDownCapture={handleModalKeyDown}
+        >
             {(() => {
               const sendStatus = sendStatusMap[activeSighting.id] || { state: 'idle', message: '' };
               const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
