@@ -1350,30 +1350,40 @@ export default function Sightings() {
     }
 
     const handleKeyDown = (event) => {
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase() || '';
+      const isEditableTarget = target?.isContentEditable
+        || ['input', 'textarea', 'select'].includes(tagName);
+
+      if (isEditableTarget) {
+        return;
+      }
+
+      if (['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
       if (event.key === 'Escape') {
         handleCloseSighting();
       }
       if (event.key === 'ArrowRight') {
-        event.preventDefault();
         handleNavigateSighting(1);
       }
       if (event.key === 'ArrowLeft') {
-        event.preventDefault();
         handleNavigateSighting(-1);
       }
       if (event.key === 'ArrowUp') {
-        event.preventDefault();
         handleSetActiveSightingSelection(true);
       }
       if (event.key === 'ArrowDown') {
-        event.preventDefault();
         handleSetActiveSightingSelection(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
 
@@ -2221,19 +2231,85 @@ export default function Sightings() {
                   {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
                 </time>
               )}
+              {activeSighting.locationId && (
+                <div className="sightingModal__location">
+                  <span className="sightingModal__label">Location</span>
+                  <span className="sightingModal__locationValue">{activeSighting.locationId}</span>
+                </div>
+              )}
               {isAdmin && (
-                <label className="sightingModal__selection">
-                  <input
-                    type="checkbox"
-                    checked={selectedSightings.has(activeSighting.id)}
-                    onChange={() => handleToggleSightingSelection(activeSighting.id)}
-                  />
-                  <span>
-                    {selectedSightings.has(activeSighting.id)
-                      ? 'Selected for deletion'
-                      : 'Select for deletion'}
-                  </span>
-                </label>
+                <>
+                  <label className="sightingModal__selection">
+                    <input
+                      type="checkbox"
+                      checked={selectedSightings.has(activeSighting.id)}
+                      onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                    />
+                    <span>
+                      {selectedSightings.has(activeSighting.id)
+                        ? 'Selected for deletion'
+                        : 'Select for deletion'}
+                    </span>
+                  </label>
+                  <div className="sightingModal__actions">
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton"
+                      onClick={() => handleSendToWhatsApp(activeSighting)}
+                      disabled={sendStatusMap[activeSighting.id]?.state === 'pending'
+                        || deleteStatusMap[activeSighting.id]?.state === 'pending'}
+                    >
+                      {sendStatusMap[activeSighting.id]?.state === 'pending' ? 'Sending…' : 'Send to WhatsApp'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                      onClick={() =>
+                        handleSendToWhatsApp(activeSighting, {
+                          alertStyle: 'emoji',
+                          confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                        })
+                      }
+                      disabled={sendStatusMap[activeSighting.id]?.state === 'pending'
+                        || deleteStatusMap[activeSighting.id]?.state === 'pending'}
+                    >
+                      {sendStatusMap[activeSighting.id]?.state === 'pending' ? 'Sending…' : 'Alert'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                      onClick={() => handleDeleteSightings([activeSighting])}
+                      disabled={deleteStatusMap[activeSighting.id]?.state === 'pending'
+                        || sendStatusMap[activeSighting.id]?.state === 'pending'}
+                    >
+                      {deleteStatusMap[activeSighting.id]?.state === 'pending' ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                  {sendStatusMap[activeSighting.id]?.state === 'success'
+                    && sendStatusMap[activeSighting.id]?.message && (
+                      <span className="sightingModal__statusMessage sightingModal__statusMessage--success">
+                        {sendStatusMap[activeSighting.id]?.message}
+                      </span>
+                  )}
+                  {sendStatusMap[activeSighting.id]?.state === 'error'
+                    && sendStatusMap[activeSighting.id]?.message && (
+                      <span className="sightingModal__statusMessage sightingModal__statusMessage--error">
+                        {sendStatusMap[activeSighting.id]?.message}
+                      </span>
+                  )}
+                  {deleteStatusMap[activeSighting.id]?.state === 'success'
+                    && deleteStatusMap[activeSighting.id]?.message && (
+                      <span className="sightingModal__statusMessage sightingModal__statusMessage--success">
+                        {deleteStatusMap[activeSighting.id]?.message}
+                      </span>
+                  )}
+                  {deleteStatusMap[activeSighting.id]?.state === 'error'
+                    && deleteStatusMap[activeSighting.id]?.message && (
+                      <span className="sightingModal__statusMessage sightingModal__statusMessage--error">
+                        {deleteStatusMap[activeSighting.id]?.message}
+                      </span>
+                  )}
+                </>
               )}
             </div>
           </div>

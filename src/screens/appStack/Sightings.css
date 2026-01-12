@@ -987,6 +987,24 @@
   gap: 8px;
 }
 
+.sightingModal__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.sightingModal__location {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sightingModal__locationValue {
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+}
+
 .sightingModal__selection {
   display: inline-flex;
   align-items: center;
@@ -997,6 +1015,24 @@
 
 .sightingModal__selection input {
   accent-color: #ff8c1a;
+}
+
+.sightingModal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sightingModal__statusMessage {
+  font-size: 0.85rem;
+}
+
+.sightingModal__statusMessage--success {
+  color: #9dffa1;
+}
+
+.sightingModal__statusMessage--error {
+  color: #ffb0b0;
 }
 
 .sightingModal__placeholder {
