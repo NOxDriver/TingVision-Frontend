@@ -1350,30 +1350,36 @@ export default function Sightings() {
     }
 
     const handleKeyDown = (event) => {
+      const handledKeys = ['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'];
+      if (!handledKeys.includes(event.key)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
       if (event.key === 'Escape') {
         handleCloseSighting();
       }
       if (event.key === 'ArrowRight') {
-        event.preventDefault();
         handleNavigateSighting(1);
       }
       if (event.key === 'ArrowLeft') {
-        event.preventDefault();
         handleNavigateSighting(-1);
       }
       if (event.key === 'ArrowUp') {
-        event.preventDefault();
         handleSetActiveSightingSelection(true);
       }
       if (event.key === 'ArrowDown') {
-        event.preventDefault();
         handleSetActiveSightingSelection(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    const keydownOptions = { capture: true };
+    window.addEventListener('keydown', handleKeyDown, keydownOptions);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, keydownOptions);
     };
   }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
 
@@ -2215,26 +2221,95 @@ export default function Sightings() {
             })()}
             <div className="sightingModal__media">{renderModalContent()}</div>
             <div className="sightingModal__details">
-              <h3>{activeSighting.species}</h3>
-              {activeSighting.createdAt && (
-                <time dateTime={activeSighting.createdAt.toISOString()}>
-                  {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
-                </time>
-              )}
-              {isAdmin && (
-                <label className="sightingModal__selection">
-                  <input
-                    type="checkbox"
-                    checked={selectedSightings.has(activeSighting.id)}
-                    onChange={() => handleToggleSightingSelection(activeSighting.id)}
-                  />
-                  <span>
-                    {selectedSightings.has(activeSighting.id)
-                      ? 'Selected for deletion'
-                      : 'Select for deletion'}
-                  </span>
-                </label>
-              )}
+              {(() => {
+                const sendStatus = sendStatusMap[activeSighting.id] || { state: 'idle', message: '' };
+                const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
+                const isSending = sendStatus.state === 'pending';
+                const isDeleting = deleteStatus.state === 'pending';
+                return (
+                  <>
+                    <h3>{activeSighting.species}</h3>
+                    {activeSighting.createdAt && (
+                      <time dateTime={activeSighting.createdAt.toISOString()}>
+                        {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                      </time>
+                    )}
+                    <div className="sightingModal__meta">
+                      <span className="sightingModal__metaLabel">Location</span>
+                      <span className="sightingModal__metaValue">
+                        {activeSighting.locationId || 'Unknown'}
+                      </span>
+                    </div>
+                    {isAdmin && (
+                      <>
+                        <label className="sightingModal__selection">
+                          <input
+                            type="checkbox"
+                            checked={selectedSightings.has(activeSighting.id)}
+                            onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                          />
+                          <span>
+                            {selectedSightings.has(activeSighting.id)
+                              ? 'Selected for deletion'
+                              : 'Select for deletion'}
+                          </span>
+                        </label>
+                        <div className="sightingModal__actions">
+                          <button
+                            type="button"
+                            className="sightingModal__actionsButton"
+                            onClick={() => handleSendToWhatsApp(activeSighting)}
+                            disabled={isSending || isDeleting}
+                          >
+                            {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingModal__actionsButton sightingModal__actionsButton--alert"
+                            onClick={() =>
+                              handleSendToWhatsApp(activeSighting, {
+                                alertStyle: 'emoji',
+                                confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                              })
+                            }
+                            disabled={isSending || isDeleting}
+                          >
+                            {isSending ? 'Sending…' : 'Alert'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingModal__actionsButton sightingModal__actionsButton--danger"
+                            onClick={() => handleDeleteSightings([activeSighting])}
+                            disabled={isDeleting || isSending}
+                          >
+                            {isDeleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
+                        {sendStatus.state === 'success' && sendStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                            {sendStatus.message}
+                          </span>
+                        )}
+                        {sendStatus.state === 'error' && sendStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                            {sendStatus.message}
+                          </span>
+                        )}
+                        {deleteStatus.state === 'success' && deleteStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                            {deleteStatus.message}
+                          </span>
+                        )}
+                        {deleteStatus.state === 'error' && deleteStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                            {deleteStatus.message}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

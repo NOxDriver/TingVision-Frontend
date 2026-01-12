@@ -987,6 +987,24 @@
   gap: 8px;
 }
 
+.sightingModal__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.sightingModal__metaLabel {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sightingModal__metaValue {
+  font-weight: 600;
+}
+
 .sightingModal__selection {
   display: inline-flex;
   align-items: center;
@@ -997,6 +1015,59 @@
 
 .sightingModal__selection input {
   accent-color: #ff8c1a;
+}
+
+.sightingModal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.sightingModal__actionsButton {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(26, 36, 18, 0.85);
+  color: var(--color-text-primary);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingModal__actionsButton:hover,
+.sightingModal__actionsButton:focus-visible {
+  background: rgba(255, 140, 26, 0.25);
+  transform: translateY(-1px);
+}
+
+.sightingModal__actionsButton--alert {
+  border-color: rgba(255, 200, 84, 0.4);
+  background: rgba(90, 66, 12, 0.5);
+}
+
+.sightingModal__actionsButton--danger {
+  border-color: rgba(255, 111, 111, 0.45);
+  background: rgba(88, 24, 24, 0.55);
+}
+
+.sightingModal__actionsButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sightingModal__actionsMessage {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.sightingModal__actionsMessage--success {
+  color: #baf7c0;
+}
+
+.sightingModal__actionsMessage--error {
+  color: #ffb3b3;
 }
 
 .sightingModal__placeholder {
