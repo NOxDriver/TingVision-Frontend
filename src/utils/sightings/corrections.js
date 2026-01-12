@@ -229,6 +229,26 @@ const buildParentUpdates = ({
     stateUpdates.correctedBy = actor || null;
   }
 
+  if (shouldUpdateField(parentDocData, 'entityTally')) {
+    const entityTally = parentDocData?.entityTally;
+    const nextKey = change.normalizedName;
+    if (entityTally && typeof entityTally === 'object' && !Array.isArray(entityTally)) {
+      const currentKey = typeof parentDocData?.species === 'string' && parentDocData.species.trim().length > 0
+        ? parentDocData.species.trim()
+        : Object.keys(entityTally)[0];
+      if (currentKey && Object.prototype.hasOwnProperty.call(entityTally, currentKey)) {
+        const currentValue = entityTally[currentKey];
+        if (currentKey !== nextKey) {
+          const nextEntityTally = { ...entityTally };
+          delete nextEntityTally[currentKey];
+          nextEntityTally[nextKey] = currentValue;
+          updates.entityTally = nextEntityTally;
+          stateUpdates.entityTally = nextEntityTally;
+        }
+      }
+    }
+  }
+
   updates.updatedAt = serverTimestamp();
 
   return { firestore: updates, state: stateUpdates };
