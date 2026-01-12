@@ -1,15 +1,8 @@
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import {
-  deleteObject,
-  getBlob,
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytes,
-} from 'firebase/storage';
-import { db, storage as defaultStorage } from '../../firebase';
+// src/utils/sightings/corrections.js
+import { doc, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 
-const STORAGE_PATH_PREFIX = 'storagePath';
+const PER_SPECIES_COLLECTION = 'perSpecies';
 
 const sanitizePathSegments = (path) =>
   typeof path === 'string'
@@ -28,9 +21,7 @@ const toDocRef = (path) => {
 };
 
 const slugify = (value) => {
-  if (typeof value !== 'string') {
-    return '';
-  }
+  if (typeof value !== 'string') return '';
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -39,9 +30,7 @@ const slugify = (value) => {
 };
 
 const toTitleCase = (value) => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    return 'Unknown';
-  }
+  if (typeof value !== 'string' || value.trim().length === 0) return 'Unknown';
   return value
     .trim()
     .split(/\s+/)
@@ -49,78 +38,54 @@ const toTitleCase = (value) => {
     .join(' ');
 };
 
-const deriveUrlKey = (storageKey, docData) => {
-  if (typeof storageKey !== 'string' || !storageKey.startsWith(STORAGE_PATH_PREFIX)) {
-    return null;
-  }
-  const suffix = storageKey.slice(STORAGE_PATH_PREFIX.length);
-  if (!suffix) {
-    return null;
-  }
-  const candidate = suffix.charAt(0).toLowerCase() + suffix.slice(1) + 'Url';
-  if (docData && Object.prototype.hasOwnProperty.call(docData, candidate)) {
-    return candidate;
-  }
-  return null;
-};
-
-const deriveDestinationPath = (originalPath, locationId, folderName) => {
-  if (typeof originalPath !== 'string' || originalPath.length === 0) {
-    return null;
-  }
-  const segments = sanitizePathSegments(originalPath);
-  if (segments.length === 0) {
-    return null;
-  }
-
-  const locationIndex = typeof locationId === 'string' && locationId.length > 0
-    ? segments.findIndex((segment) => segment === locationId)
-    : -1;
-
-  if (locationIndex >= 0 && locationIndex + 1 < segments.length) {
-    const next = [...segments];
-    next[locationIndex + 1] = folderName;
-    return next.join('/');
-  }
-
-  if (segments.length >= 2) {
-    const next = [...segments];
-    next[next.length - 2] = folderName;
-    return next.join('/');
-  }
-
-  return `${folderName}/${segments[segments.length - 1]}`;
-};
-
-const moveStorageObject = async (storageInstance, fromPath, toPath) => {
-  if (!fromPath || !toPath || fromPath === toPath) {
-    const finalRef = ref(storageInstance, toPath || fromPath);
-    const downloadUrl = await getDownloadURL(finalRef);
-    return { downloadUrl };
-  }
-
-  const sourceRef = ref(storageInstance, fromPath);
-  const destinationRef = ref(storageInstance, toPath);
-  const blob = await getBlob(sourceRef);
-  await uploadBytes(destinationRef, blob, { contentType: blob.type });
-  await deleteObject(sourceRef).catch(() => {});
-  const downloadUrl = await getDownloadURL(destinationRef);
-  return { downloadUrl };
-};
-
 const mergeNotes = (existing, nextNote) => {
   const trimmedExisting = typeof existing === 'string' ? existing.trim() : '';
-  if (!trimmedExisting) {
-    return nextNote;
-  }
-  if (!nextNote) {
-    return trimmedExisting;
-  }
+  if (!trimmedExisting) return nextNote || '';
+  if (!nextNote) return trimmedExisting;
   return `${trimmedExisting}\n${nextNote}`;
 };
 
-const shouldUpdateField = (docData, field) =>
-  !docData || Object.prototype.hasOwnProperty.call(docData, field);
+const stripClientFields = (data) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  const clone = { ...data };
+  delete clone.id;
+  delete clone.deletedAt;
+  delete clone.deletedBy;
+  return clone;
+};
+
+const buildRenamedEntityTally = ({ entityTally, fromKey, toKey }) => {
+  if (!entityTally || typeof entityTally !== 'object' || Array.isArray(entityTally)) {
+    return null;
+  }
+
+  const keys = Object.keys(entityTally);
+  if (keys.length === 0) return null;
+
+  const resolvedFromKey =
+    (fromKey && Object.prototype.hasOwnProperty.call(entityTally, fromKey) && fromKey) ||
+    (keys.length === 1 ? keys[0] : null);
+
+  if (!resolvedFromKey) return null;
+  if (resolvedFromKey === toKey) return entityTally;
+
+  const next = { ...entityTally };
+  const valueToMove = next[resolvedFromKey];
+  delete next[resolvedFromKey];
+
+  if (Object.prototype.hasOwnProperty.call(next, toKey)) {
+    const existingValue = next[toKey];
+    if (typeof existingValue === 'number' && typeof valueToMove === 'number') {
+      next[toKey] = existingValue + valueToMove;
+    } else {
+      next[toKey] = valueToMove;
+    }
+  } else {
+    next[toKey] = valueToMove;
+  }
+
+  return next;
+};
 
 export const describeSpeciesChange = ({ mode, species }) => {
   if (mode === 'background') {
@@ -133,9 +98,11 @@ export const describeSpeciesChange = ({ mode, species }) => {
   }
 
   const trimmed = typeof species === 'string' ? species.trim() : '';
-  const normalizedName = trimmed.length > 0 ? trimmed : 'Unknown';
+  const raw = trimmed.length > 0 ? trimmed : 'unknown';
+
+  const normalizedName = raw.toLowerCase();
   const slug = slugify(normalizedName) || 'unknown';
-  const label = toTitleCase(normalizedName);
+  const label = toTitleCase(raw);
 
   return {
     normalizedName,
@@ -150,155 +117,29 @@ export const buildCorrectionNote = ({
   previousSpecies,
   nextLabel,
   locationId,
-  folderLabel,
   includeTimestamp = true,
   timestamp = new Date(),
 }) => {
   const actorName = typeof actor === 'string' && actor.trim().length > 0 ? actor.trim() : 'Admin';
-  const previousLabel = typeof previousSpecies === 'string' && previousSpecies.trim().length > 0
+  const prev = typeof previousSpecies === 'string' && previousSpecies.trim().length > 0
     ? previousSpecies.trim()
     : 'Unknown';
-  const nextSpeciesLabel = typeof nextLabel === 'string' && nextLabel.trim().length > 0
+  const next = typeof nextLabel === 'string' && nextLabel.trim().length > 0
     ? nextLabel.trim()
-    : 'Background';
+    : 'Unknown';
+
   const locationFragment = typeof locationId === 'string' && locationId.trim().length > 0
     ? ` at ${locationId.trim()}`
     : '';
-  const folderFragment = folderLabel && folderLabel.length > 0
-    ? ` Media moved to the ${folderLabel} folder in storage.`
-    : '';
+
   const normalizedTimestamp = timestamp instanceof Date ? timestamp : new Date(timestamp);
-  const timestampPrefix = includeTimestamp
-    ? `${normalizedTimestamp.toISOString()} – `
-    : '';
+  const timestampPrefix = includeTimestamp ? `${normalizedTimestamp.toISOString()} – ` : '';
 
-  const previousNormalized = previousLabel.toLowerCase();
-  const nextNormalized = nextSpeciesLabel.toLowerCase();
-
-  if (previousNormalized === nextNormalized) {
-    return `${timestampPrefix}${actorName} reaffirmed ${nextSpeciesLabel}${locationFragment}.${folderFragment}`.trim();
+  if (prev.toLowerCase() === next.toLowerCase()) {
+    return `${timestampPrefix}${actorName} reaffirmed ${next}${locationFragment}.`.trim();
   }
 
-  return `${timestampPrefix}${actorName} corrected ${previousLabel} to ${nextSpeciesLabel}${locationFragment}.${folderFragment}`.trim();
-};
-
-const buildParentUpdates = ({
-  parentDocData,
-  change,
-  note,
-  storageMoves,
-  urlUpdates,
-  actor,
-}) => {
-  const updates = {
-    ...storageMoves,
-    ...urlUpdates,
-    corrected: true,
-    notes: mergeNotes(parentDocData?.notes, note),
-  };
-  const stateUpdates = { ...updates };
-
-  if (shouldUpdateField(parentDocData, 'species')) {
-    updates.species = change.normalizedName;
-    stateUpdates.species = change.normalizedName;
-  }
-
-  if (shouldUpdateField(parentDocData, 'speciesSlug')) {
-    updates.speciesSlug = change.slug;
-    stateUpdates.speciesSlug = change.slug;
-  }
-
-  if (shouldUpdateField(parentDocData, 'label')) {
-    updates.label = change.label;
-    stateUpdates.label = change.label;
-  }
-
-  if (shouldUpdateField(parentDocData, 'isBackground')) {
-    const isBackground = change.slug === 'background';
-    updates.isBackground = isBackground;
-    stateUpdates.isBackground = isBackground;
-  }
-
-  if (shouldUpdateField(parentDocData, 'classification')) {
-    updates.classification = change.slug;
-    stateUpdates.classification = change.slug;
-  }
-
-  if (shouldUpdateField(parentDocData, 'correctedBy')) {
-    updates.correctedBy = actor || null;
-    stateUpdates.correctedBy = actor || null;
-  }
-
-  if (shouldUpdateField(parentDocData, 'entityTally')) {
-    const entityTally = parentDocData?.entityTally;
-    const nextKey = change.normalizedName;
-    if (entityTally && typeof entityTally === 'object' && !Array.isArray(entityTally)) {
-      const currentKey = typeof parentDocData?.species === 'string' && parentDocData.species.trim().length > 0
-        ? parentDocData.species.trim()
-        : Object.keys(entityTally)[0];
-      if (currentKey && Object.prototype.hasOwnProperty.call(entityTally, currentKey)) {
-        const currentValue = entityTally[currentKey];
-        if (currentKey !== nextKey) {
-          const nextEntityTally = { ...entityTally };
-          delete nextEntityTally[currentKey];
-          nextEntityTally[nextKey] = currentValue;
-          updates.entityTally = nextEntityTally;
-          stateUpdates.entityTally = nextEntityTally;
-        }
-      }
-    }
-  }
-
-  updates.updatedAt = serverTimestamp();
-
-  return { firestore: updates, state: stateUpdates };
-};
-
-const buildSpeciesDocUpdates = ({ speciesDocData, change, note, actor }) => {
-  if (!speciesDocData) {
-    return { firestore: null, state: null };
-  }
-
-  const updates = {
-    corrected: true,
-    notes: mergeNotes(speciesDocData.notes, note),
-  };
-  const stateUpdates = { ...updates };
-
-  if (shouldUpdateField(speciesDocData, 'species')) {
-    updates.species = change.normalizedName;
-    stateUpdates.species = change.normalizedName;
-  }
-
-  if (shouldUpdateField(speciesDocData, 'speciesSlug')) {
-    updates.speciesSlug = change.slug;
-    stateUpdates.speciesSlug = change.slug;
-  }
-
-  if (shouldUpdateField(speciesDocData, 'label')) {
-    updates.label = change.label;
-    stateUpdates.label = change.label;
-  }
-
-  if (shouldUpdateField(speciesDocData, 'isBackground')) {
-    const isBackground = change.slug === 'background';
-    updates.isBackground = isBackground;
-    stateUpdates.isBackground = isBackground;
-  }
-
-  if (shouldUpdateField(speciesDocData, 'classification')) {
-    updates.classification = change.slug;
-    stateUpdates.classification = change.slug;
-  }
-
-  if (shouldUpdateField(speciesDocData, 'correctedBy')) {
-    updates.correctedBy = actor || null;
-    stateUpdates.correctedBy = actor || null;
-  }
-
-  updates.updatedAt = serverTimestamp();
-
-  return { firestore: updates, state: stateUpdates };
+  return `${timestampPrefix}${actorName} corrected ${prev} to ${next}${locationFragment}.`.trim();
 };
 
 export const applySightingCorrection = async ({
@@ -309,79 +150,145 @@ export const applySightingCorrection = async ({
   note,
   change: providedChange,
 }) => {
-  if (!entry || !entry.meta || !entry.meta.parentPath) {
+  if (!entry?.meta?.parentPath) {
     throw new Error('Sighting metadata is missing required references.');
+  }
+  if (!entry?.meta?.speciesDocPath) {
+    throw new Error('Sighting metadata is missing the perSpecies document reference.');
   }
 
   const change = providedChange || describeSpeciesChange({ mode, species: nextSpeciesName });
+
   const parentDocData = entry.meta.parentDoc || {};
-  const speciesDocData = entry.meta.speciesDoc || null;
-  const locationId = entry.locationId || parentDocData.locationId || '';
-  const storageInstance = defaultStorage || getStorage();
+  const speciesDocData = entry.meta.speciesDoc || {};
 
-  const finalNote = note
-    || buildCorrectionNote({
+  const oldSpeciesKey =
+    (typeof speciesDocData.species === 'string' && speciesDocData.species.trim()) ||
+    (typeof entry.species === 'string' && entry.species.trim()) ||
+    '';
+
+  const nextSpeciesKey = change.normalizedName;
+
+  const finalNote =
+    note ||
+    buildCorrectionNote({
       actor,
-      previousSpecies: entry.species,
+      previousSpecies: oldSpeciesKey || entry.species,
       nextLabel: change.label,
-      locationId,
-      folderLabel: change.folderLabel,
+      locationId: entry.locationId || parentDocData.locationId,
     });
-
-  const storageMoves = {};
-  const urlUpdates = {};
-
-  Object.entries(parentDocData)
-    .filter(([key, value]) => key.startsWith(STORAGE_PATH_PREFIX) && typeof value === 'string' && value.length > 0)
-    .forEach(([key, value]) => {
-      const destination = deriveDestinationPath(value, locationId, change.folderLabel);
-      if (!destination || destination === value) {
-        return;
-      }
-      storageMoves[key] = { from: value, to: destination };
-    });
-
-  const moveResults = {};
-
-  for (const [key, paths] of Object.entries(storageMoves)) {
-    const { downloadUrl } = await moveStorageObject(storageInstance, paths.from, paths.to);
-    moveResults[key] = paths.to;
-    const urlKey = deriveUrlKey(key, parentDocData);
-    if (urlKey) {
-      urlUpdates[urlKey] = downloadUrl;
-    }
-  }
-
-  const parentUpdates = buildParentUpdates({
-    parentDocData,
-    change,
-    note: finalNote,
-    storageMoves: Object.fromEntries(Object.entries(moveResults)),
-    urlUpdates,
-    actor,
-  });
-
-  const speciesUpdates = buildSpeciesDocUpdates({
-    speciesDocData,
-    change,
-    note: finalNote,
-    actor,
-  });
 
   const parentRef = toDocRef(entry.meta.parentPath);
-  const updateTasks = [updateDoc(parentRef, parentUpdates.firestore)];
+  const oldSpeciesRef = toDocRef(entry.meta.speciesDocPath);
 
-  if (entry.meta.speciesDocPath && speciesUpdates.firestore) {
-    updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), speciesUpdates.firestore));
+  const oldSpeciesDocId =
+    (typeof speciesDocData.id === 'string' && speciesDocData.id) ||
+    sanitizePathSegments(entry.meta.speciesDocPath).slice(-1)[0];
+
+  const nextSpeciesDocId = change.slug || oldSpeciesDocId;
+
+  const batch = writeBatch(db);
+
+  // ----- Parent doc updates -----
+  const parentUpdatesFirestore = {
+    corrected: true,
+    updatedAt: serverTimestamp(),
+  };
+  const parentUpdatesState = {
+    corrected: true,
+  };
+
+  const noteField = Object.prototype.hasOwnProperty.call(parentDocData, 'reviewNotes')
+    ? 'reviewNotes'
+    : (Object.prototype.hasOwnProperty.call(parentDocData, 'notes') ? 'notes' : 'reviewNotes');
+
+  const mergedNote = mergeNotes(parentDocData?.[noteField], finalNote);
+  parentUpdatesFirestore[noteField] = mergedNote;
+  parentUpdatesState[noteField] = mergedNote;
+
+  const nextTally = buildRenamedEntityTally({
+    entityTally: parentDocData.entityTally,
+    fromKey: oldSpeciesKey,
+    toKey: nextSpeciesKey,
+  });
+
+  if (nextTally) {
+    parentUpdatesFirestore.entityTally = nextTally;
+    parentUpdatesState.entityTally = nextTally;
   }
 
-  await Promise.all(updateTasks);
+  if (typeof parentDocData.primarySpecies === 'string' && parentDocData.primarySpecies.trim()) {
+    const primary = parentDocData.primarySpecies.trim();
+    if (oldSpeciesKey && primary.toLowerCase() === oldSpeciesKey.toLowerCase() && primary !== nextSpeciesKey) {
+      parentUpdatesFirestore.primarySpecies = nextSpeciesKey;
+      parentUpdatesState.primarySpecies = nextSpeciesKey;
+    }
+  } else if (Object.prototype.hasOwnProperty.call(parentDocData, 'primarySpecies')) {
+    parentUpdatesFirestore.primarySpecies = nextSpeciesKey;
+    parentUpdatesState.primarySpecies = nextSpeciesKey;
+  }
+
+  batch.update(parentRef, parentUpdatesFirestore);
+
+  // ----- perSpecies doc update / recreation -----
+  let nextSpeciesDocPath = entry.meta.speciesDocPath;
+
+  if (nextSpeciesDocId === oldSpeciesDocId) {
+    // Same doc id -> update in place
+    batch.update(oldSpeciesRef, {
+      species: nextSpeciesKey,
+      corrected: true,
+      correctedBy: actor || null,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    const parentSegments = sanitizePathSegments(entry.meta.parentPath);
+    const newSpeciesRef = doc(db, ...parentSegments, PER_SPECIES_COLLECTION, nextSpeciesDocId);
+    nextSpeciesDocPath = newSpeciesRef.path;
+
+    const clonedSpeciesData = stripClientFields(speciesDocData);
+
+    const locationId =
+      (typeof clonedSpeciesData.locationId === 'string' && clonedSpeciesData.locationId.trim()) ||
+      (typeof entry.locationId === 'string' && entry.locationId.trim()) ||
+      (typeof parentDocData.locationId === 'string' && parentDocData.locationId.trim()) ||
+      null;
+
+    const newSpeciesDocData = {
+      ...clonedSpeciesData,
+      species: nextSpeciesKey,
+      corrected: true,
+      correctedBy: actor || null,
+      updatedAt: serverTimestamp(),
+      ...(locationId ? { locationId } : {}),
+      ...(!clonedSpeciesData.createdAt && parentDocData.createdAt ? { createdAt: parentDocData.createdAt } : {}),
+    };
+
+    // Create/overwrite the new doc
+    batch.set(newSpeciesRef, newSpeciesDocData);
+
+    // IMPORTANT: hard delete the old perSpecies doc so it disappears
+    // (cannot do deleteDoc inside batch; do it after commit)
+  }
+
+  await batch.commit();
+
+  // Hard delete old doc if we renamed (doc id changed)
+  if (nextSpeciesDocId !== oldSpeciesDocId) {
+    await deleteDoc(oldSpeciesRef);
+  }
 
   return {
     change,
     note: finalNote,
-    parentDocUpdates: parentUpdates.state,
-    speciesDocUpdates: speciesUpdates.state,
+    parentDocUpdates: parentUpdatesState,
+    speciesDocUpdates: {
+      species: nextSpeciesKey,
+      corrected: true,
+      correctedBy: actor || null,
+    },
+    speciesDocId: nextSpeciesDocId,
+    speciesDocPath: nextSpeciesDocPath,
   };
 };
 

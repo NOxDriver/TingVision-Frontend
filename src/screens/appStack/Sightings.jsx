@@ -890,7 +890,6 @@ export default function Sightings() {
       previousSpecies: editTarget.species,
       nextLabel: editChange.label,
       locationId: editTarget.locationId,
-      folderLabel: editChange.folderLabel,
       includeTimestamp: false,
     });
   }, [editTarget, editChange, actorName]);
@@ -956,7 +955,6 @@ export default function Sightings() {
           previousSpecies: editTarget.species,
           nextLabel: change.label,
           locationId: editTarget.locationId,
-          folderLabel: change.folderLabel,
         });
 
         const result = await applySightingCorrection({
@@ -967,6 +965,13 @@ export default function Sightings() {
           note: finalNote,
           change,
         });
+
+        const baseId = typeof editTarget.id === 'string' ? editTarget.id.split('::')[0] : '';
+        const nextSpeciesDocId = result.speciesDocId || editTarget.meta?.speciesDoc?.id || '';
+        const nextEntryId =
+          baseId && nextSpeciesDocId ? `${baseId}::${nextSpeciesDocId}` : editTarget.id;
+        const nextSpeciesDocPath = result.speciesDocPath || editTarget.meta?.speciesDocPath || '';
+
 
         setSightings((prev) =>
           prev.map((item) => {
@@ -1013,12 +1018,15 @@ export default function Sightings() {
                 speciesDoc: {
                   ...(prev.meta.speciesDoc || {}),
                   ...(result.speciesDocUpdates || {}),
+                  id: nextSpeciesDocId || prev.meta?.speciesDoc?.id,
                 },
+                speciesDocPath: nextSpeciesDocPath || prev.meta?.speciesDocPath,
               }
             : prev.meta;
 
           return {
             ...prev,
+            id: nextEntryId,
             species: result.change.label,
             mediaUrl: result.parentDocUpdates.mediaUrl ?? prev.mediaUrl,
             previewUrl: result.parentDocUpdates.previewUrl ?? prev.previewUrl,
@@ -1027,6 +1035,17 @@ export default function Sightings() {
             meta: nextMeta,
           };
         });
+
+        // If the user had this sighting selected, preserve selection across the id change.
+        if (nextEntryId !== editTarget.id) {
+          setSelectedSightings((prev) => {
+            if (!prev.has(editTarget.id)) return prev;
+            const next = new Set(prev);
+            next.delete(editTarget.id);
+            next.add(nextEntryId);
+            return next;
+          });
+        }
 
         setEditFeedback({ type: 'success', text: `Sighting corrected to ${result.change.label}.` });
         setEditTarget(null);
