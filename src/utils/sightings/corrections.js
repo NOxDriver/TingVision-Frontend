@@ -64,6 +64,17 @@ const deriveUrlKey = (storageKey, docData) => {
   return null;
 };
 
+const SPECIES_SUBFOLDERS = new Set([
+  'clips',
+  'clippreviews',
+  'previews',
+  'debug',
+  'debugpreviews',
+  'debugvideos',
+  'videos',
+  'images',
+]);
+
 const deriveDestinationPath = (originalPath, locationId, folderName) => {
   if (typeof originalPath !== 'string' || originalPath.length === 0) {
     return null;
@@ -71,6 +82,16 @@ const deriveDestinationPath = (originalPath, locationId, folderName) => {
   const segments = sanitizePathSegments(originalPath);
   if (segments.length === 0) {
     return null;
+  }
+
+  const subfolderIndex = segments.findIndex((segment, index) =>
+    index > 0 && SPECIES_SUBFOLDERS.has(segment.toLowerCase()),
+  );
+
+  if (subfolderIndex > 0) {
+    const next = [...segments];
+    next[subfolderIndex - 1] = folderName;
+    return next.join('/');
   }
 
   const locationIndex = typeof locationId === 'string' && locationId.length > 0
