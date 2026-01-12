@@ -107,17 +107,20 @@ export default function HighlightsWidget() {
         const parentDataMap = new Map();
         parentSnaps.forEach((snap) => {
           if (!snap.exists()) return;
-          parentDataMap.set(snap.ref.path, { id: snap.id, ...snap.data() });
+          const data = snap.data();
+          if (data?.deletedAt) return;
+          parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
         });
 
         const groupedBySpecies = {};
 
         snapshot.docs.forEach((docSnap) => {
           const speciesDoc = { id: docSnap.id, ...docSnap.data() };
+          if (speciesDoc.deletedAt) return;
           const parentRef = docSnap.ref.parent.parent;
           if (!parentRef) return;
           const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc) return;
+          if (!parentDoc || parentDoc.deletedAt) return;
 
           if (!isAdmin) {
             const normalizedLocation = normalizeLocationId(parentDoc.locationId);
@@ -636,4 +639,3 @@ export default function HighlightsWidget() {
     </section>
   );
 }
-
