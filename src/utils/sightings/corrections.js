@@ -203,6 +203,11 @@ const buildParentUpdates = ({
     stateUpdates.species = change.normalizedName;
   }
 
+  if (shouldUpdateField(parentDocData, 'primarySpecies')) {
+    updates.primarySpecies = change.normalizedName;
+    stateUpdates.primarySpecies = change.normalizedName;
+  }
+
   if (shouldUpdateField(parentDocData, 'speciesSlug')) {
     updates.speciesSlug = change.slug;
     stateUpdates.speciesSlug = change.slug;
@@ -227,6 +232,24 @@ const buildParentUpdates = ({
   if (shouldUpdateField(parentDocData, 'correctedBy')) {
     updates.correctedBy = actor || null;
     stateUpdates.correctedBy = actor || null;
+  }
+
+  if (parentDocData?.trigger && typeof parentDocData.trigger === 'object') {
+    if (Object.prototype.hasOwnProperty.call(parentDocData.trigger, 'animal')) {
+      updates['trigger.animal'] = change.normalizedName;
+      stateUpdates.trigger = {
+        ...(stateUpdates.trigger || parentDocData.trigger),
+        animal: change.normalizedName,
+      };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(parentDocData.trigger, 'clip_label')) {
+      updates['trigger.clip_label'] = change.normalizedName;
+      stateUpdates.trigger = {
+        ...(stateUpdates.trigger || parentDocData.trigger),
+        clip_label: change.normalizedName,
+      };
+    }
   }
 
   updates.updatedAt = serverTimestamp();
