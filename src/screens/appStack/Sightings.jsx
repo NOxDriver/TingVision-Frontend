@@ -760,21 +760,6 @@ export default function Sightings() {
     handleOpenSighting(filteredSightings[nextIndex]);
   }, [activeSighting, filteredSightings, handleOpenSighting]);
 
-  const handleSetActiveSightingSelection = useCallback((shouldSelect) => {
-    if (!activeSighting?.id) {
-      return;
-    }
-    setSelectedSightings((prev) => {
-      const next = new Set(prev);
-      if (shouldSelect) {
-        next.add(activeSighting.id);
-      } else {
-        next.delete(activeSighting.id);
-      }
-      return next;
-    });
-  }, [activeSighting]);
-
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
     setConfidenceThreshold(nextValue);
@@ -1333,9 +1318,25 @@ export default function Sightings() {
     handleDeleteSightings(selectedEntries);
   }, [handleDeleteSightings, selectedSightings, sightings]);
 
+  const handleToggleActiveSightingSelection = useCallback(() => {
+    if (!activeSighting?.id) {
+      return;
+    }
+    setSelectedSightings((prev) => {
+      const next = new Set(prev);
+      if (next.has(activeSighting.id)) {
+        next.delete(activeSighting.id);
+      } else {
+        next.add(activeSighting.id);
+      }
+      return next;
+    });
+  }, [activeSighting]);
+
   const handleModalKeyDown = useCallback((event) => {
     const { key } = event;
-    if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
+    const normalizedKey = key.length === 1 ? key.toLowerCase() : key;
+    if (!['Escape', 'a', 'd', 'c'].includes(normalizedKey)) {
       return;
     }
 
@@ -1355,19 +1356,16 @@ export default function Sightings() {
     event.preventDefault();
     event.stopPropagation();
 
-    if (key === 'ArrowRight') {
+    if (normalizedKey === 'd') {
       handleNavigateSighting(1);
     }
-    if (key === 'ArrowLeft') {
+    if (normalizedKey === 'a') {
       handleNavigateSighting(-1);
     }
-    if (key === 'ArrowUp') {
-      handleSetActiveSightingSelection(true);
+    if (normalizedKey === 'c') {
+      handleToggleActiveSightingSelection();
     }
-    if (key === 'ArrowDown') {
-      handleSetActiveSightingSelection(false);
-    }
-  }, [handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+  }, [handleCloseSighting, handleNavigateSighting, handleToggleActiveSightingSelection]);
 
   useEffect(() => {
     if (!activeSighting) {
