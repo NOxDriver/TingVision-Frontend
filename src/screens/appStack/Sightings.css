@@ -987,6 +987,35 @@
   gap: 8px;
 }
 
+.sightingModal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+}
+
+.sightingModal__metaRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sightingModal__metaLabel {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.sightingModal__location {
+  color: var(--color-text-primary);
+}
+
+.sightingModal__admin {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .sightingModal__selection {
   display: inline-flex;
   align-items: center;
@@ -997,6 +1026,25 @@
 
 .sightingModal__selection input {
   accent-color: #ff8c1a;
+}
+
+.sightingModal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sightingModal__actionsMessage {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.sightingModal__actionsMessage--success {
+  color: #7dd3ae;
+}
+
+.sightingModal__actionsMessage--error {
+  color: #ff9a9a;
 }
 
 .sightingModal__placeholder {

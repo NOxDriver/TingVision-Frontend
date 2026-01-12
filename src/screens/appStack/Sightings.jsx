@@ -1350,30 +1350,44 @@ export default function Sightings() {
     }
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        handleCloseSighting();
+      const { key } = event;
+      if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
+        return;
       }
-      if (event.key === 'ArrowRight') {
-        event.preventDefault();
+
+      if (
+        event.target instanceof HTMLElement
+        && (event.target.isContentEditable
+          || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
+      ) {
+        return;
+      }
+
+      if (key === 'Escape') {
+        handleCloseSighting();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (key === 'ArrowRight') {
         handleNavigateSighting(1);
       }
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
+      if (key === 'ArrowLeft') {
         handleNavigateSighting(-1);
       }
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
+      if (key === 'ArrowUp') {
         handleSetActiveSightingSelection(true);
       }
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
+      if (key === 'ArrowDown') {
         handleSetActiveSightingSelection(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
   }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
 
@@ -2151,6 +2165,13 @@ export default function Sightings() {
             className="sightingModal__content"
             onClick={(event) => event.stopPropagation()}
           >
+            {(() => {
+              const sendStatus = sendStatusMap[activeSighting.id] || { state: 'idle', message: '' };
+              const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
+              const isSending = sendStatus.state === 'pending';
+              const isDeleting = deleteStatus.state === 'pending';
+              return (
+                <>
             <button
               type="button"
               className="sightingModal__close"
@@ -2216,26 +2237,93 @@ export default function Sightings() {
             <div className="sightingModal__media">{renderModalContent()}</div>
             <div className="sightingModal__details">
               <h3>{activeSighting.species}</h3>
-              {activeSighting.createdAt && (
-                <time dateTime={activeSighting.createdAt.toISOString()}>
-                  {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
-                </time>
-              )}
+              <div className="sightingModal__meta">
+                {activeSighting.createdAt && (
+                  <div className="sightingModal__metaRow">
+                    <span className="sightingModal__metaLabel">Captured</span>
+                    <time dateTime={activeSighting.createdAt.toISOString()}>
+                      {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                    </time>
+                  </div>
+                )}
+                {activeSighting.locationId && (
+                  <div className="sightingModal__metaRow">
+                    <span className="sightingModal__metaLabel">Location</span>
+                    <span className="sightingModal__location">{activeSighting.locationId}</span>
+                  </div>
+                )}
+              </div>
               {isAdmin && (
-                <label className="sightingModal__selection">
-                  <input
-                    type="checkbox"
-                    checked={selectedSightings.has(activeSighting.id)}
-                    onChange={() => handleToggleSightingSelection(activeSighting.id)}
-                  />
-                  <span>
-                    {selectedSightings.has(activeSighting.id)
-                      ? 'Selected for deletion'
-                      : 'Select for deletion'}
-                  </span>
-                </label>
+                <div className="sightingModal__admin">
+                  <label className="sightingModal__selection">
+                    <input
+                      type="checkbox"
+                      checked={selectedSightings.has(activeSighting.id)}
+                      onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                    />
+                    <span>
+                      {selectedSightings.has(activeSighting.id)
+                        ? 'Selected for deletion'
+                        : 'Select for deletion'}
+                    </span>
+                  </label>
+                  <div className="sightingModal__actions">
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton"
+                      onClick={() => handleSendToWhatsApp(activeSighting)}
+                      disabled={isSending || isDeleting}
+                    >
+                      {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                      onClick={() =>
+                        handleSendToWhatsApp(activeSighting, {
+                          alertStyle: 'emoji',
+                          confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                        })
+                      }
+                      disabled={isSending || isDeleting}
+                    >
+                      {isSending ? 'Sending…' : 'Alert'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                      onClick={() => handleDeleteSightings([activeSighting])}
+                      disabled={isDeleting || isSending}
+                    >
+                      {isDeleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                  {sendStatus.state === 'success' && sendStatus.message && (
+                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                      {sendStatus.message}
+                    </span>
+                  )}
+                  {sendStatus.state === 'error' && sendStatus.message && (
+                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                      {sendStatus.message}
+                    </span>
+                  )}
+                  {deleteStatus.state === 'success' && deleteStatus.message && (
+                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                      {deleteStatus.message}
+                    </span>
+                  )}
+                  {deleteStatus.state === 'error' && deleteStatus.message && (
+                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                      {deleteStatus.message}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
