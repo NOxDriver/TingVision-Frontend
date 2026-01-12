@@ -1333,6 +1333,42 @@ export default function Sightings() {
     handleDeleteSightings(selectedEntries);
   }, [handleDeleteSightings, selectedSightings, sightings]);
 
+  const handleModalKeyDown = useCallback((event) => {
+    const { key } = event;
+    if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLElement
+      && (event.target.isContentEditable
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
+    ) {
+      return;
+    }
+
+    if (key === 'Escape') {
+      handleCloseSighting();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (key === 'ArrowRight') {
+      handleNavigateSighting(1);
+    }
+    if (key === 'ArrowLeft') {
+      handleNavigateSighting(-1);
+    }
+    if (key === 'ArrowUp') {
+      handleSetActiveSightingSelection(true);
+    }
+    if (key === 'ArrowDown') {
+      handleSetActiveSightingSelection(false);
+    }
+  }, [handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+
   useEffect(() => {
     if (!activeSighting) {
       return;
@@ -1349,47 +1385,11 @@ export default function Sightings() {
       return undefined;
     }
 
-    const handleKeyDown = (event) => {
-      const { key } = event;
-      if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
-        return;
-      }
-
-      if (
-        event.target instanceof HTMLElement
-        && (event.target.isContentEditable
-          || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))
-      ) {
-        return;
-      }
-
-      if (key === 'Escape') {
-        handleCloseSighting();
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (key === 'ArrowRight') {
-        handleNavigateSighting(1);
-      }
-      if (key === 'ArrowLeft') {
-        handleNavigateSighting(-1);
-      }
-      if (key === 'ArrowUp') {
-        handleSetActiveSightingSelection(true);
-      }
-      if (key === 'ArrowDown') {
-        handleSetActiveSightingSelection(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('keydown', handleModalKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keydown', handleModalKeyDown, { capture: true });
     };
-  }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+  }, [activeSighting, handleModalKeyDown]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
@@ -1460,6 +1460,7 @@ export default function Sightings() {
           autoPlay={!shouldDisableAutoplay}
           playsInline
           preload={shouldDisableAutoplay ? 'none' : 'metadata'}
+          onKeyDown={handleModalKeyDown}
         />
       );
     }
@@ -1484,6 +1485,7 @@ export default function Sightings() {
           autoPlay={!shouldDisableAutoplay}
           playsInline
           preload={shouldDisableAutoplay ? 'none' : 'metadata'}
+          onKeyDown={handleModalKeyDown}
         />
       );
     }
