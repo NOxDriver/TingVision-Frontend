@@ -1220,16 +1220,21 @@ export default function Sightings() {
             try {
               const storageInstance = defaultStorage || getStorage();
               const parentDocData = entry.meta?.parentDoc || {};
+              const speciesDocData = entry.meta?.speciesDoc || {};
 
-              const storagePaths = Object.entries(parentDocData)
-                .filter(
-                  ([key, value]) =>
-                    typeof key === 'string'
-                    && key.startsWith('storagePath')
-                    && typeof value === 'string'
-                    && value.length > 0,
+              const storagePaths = [parentDocData, speciesDocData]
+                .flatMap((docData) =>
+                  Object.entries(docData)
+                    .filter(
+                      ([key, value]) =>
+                        typeof key === 'string'
+                        && key.startsWith('storagePath')
+                        && typeof value === 'string'
+                        && value.length > 0,
+                    )
+                    .map(([, value]) => value),
                 )
-                .map(([, value]) => value);
+                .filter((value, index, array) => array.indexOf(value) === index);
 
               await Promise.all(
                 storagePaths.map((path) =>
