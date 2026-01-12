@@ -333,15 +333,27 @@ export const applySightingCorrection = async ({
   note,
   change: providedChange,
 }) => {
+  console.info('[sightings] applySightingCorrection:start', {
+    entryId: entry?.id,
+    mode,
+    nextSpeciesName,
+    actor,
+  });
   if (!entry || !entry.meta || !entry.meta.parentPath) {
     throw new Error('Sighting metadata is missing required references.');
   }
 
   const change = providedChange || describeSpeciesChange({ mode, species: nextSpeciesName });
+  console.info('[sightings] applySightingCorrection:change', change);
   const parentDocData = entry.meta.parentDoc || {};
   const speciesDocData = entry.meta.speciesDoc || null;
   const locationId = entry.locationId || parentDocData.locationId || '';
   const storageInstance = defaultStorage || getStorage();
+  console.info('[sightings] applySightingCorrection:context', {
+    parentPath: entry.meta.parentPath,
+    speciesDocPath: entry.meta.speciesDocPath,
+    locationId,
+  });
 
   const finalNote = note
     || buildCorrectionNote({
@@ -351,6 +363,7 @@ export const applySightingCorrection = async ({
       locationId,
       folderLabel: change.folderLabel,
     });
+  console.info('[sightings] applySightingCorrection:note', finalNote);
 
   const storageMoves = {};
   const urlUpdates = {};
@@ -364,17 +377,29 @@ export const applySightingCorrection = async ({
       }
       storageMoves[key] = { from: value, to: destination };
     });
+  console.info('[sightings] applySightingCorrection:storageMoves', storageMoves);
 
   const moveResults = {};
 
   for (const [key, paths] of Object.entries(storageMoves)) {
+    console.info('[sightings] applySightingCorrection:moveStorageObject:start', {
+      key,
+      from: paths.from,
+      to: paths.to,
+    });
     const { downloadUrl } = await moveStorageObject(storageInstance, paths.from, paths.to);
+    console.info('[sightings] applySightingCorrection:moveStorageObject:done', {
+      key,
+      to: paths.to,
+      downloadUrl,
+    });
     moveResults[key] = paths.to;
     const urlKey = deriveUrlKey(key, parentDocData);
     if (urlKey) {
       urlUpdates[urlKey] = downloadUrl;
     }
   }
+  console.info('[sightings] applySightingCorrection:urlUpdates', urlUpdates);
 
   const parentUpdates = buildParentUpdates({
     parentDocData,
@@ -384,6 +409,7 @@ export const applySightingCorrection = async ({
     urlUpdates,
     actor,
   });
+  console.info('[sightings] applySightingCorrection:parentUpdates', parentUpdates);
 
   const speciesUpdates = buildSpeciesDocUpdates({
     speciesDocData,
@@ -391,6 +417,7 @@ export const applySightingCorrection = async ({
     note: finalNote,
     actor,
   });
+  console.info('[sightings] applySightingCorrection:speciesUpdates', speciesUpdates);
 
   const parentRef = toDocRef(entry.meta.parentPath);
   const updateTasks = [updateDoc(parentRef, parentUpdates.firestore)];
@@ -399,7 +426,9 @@ export const applySightingCorrection = async ({
     updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), speciesUpdates.firestore));
   }
 
+  console.info('[sightings] applySightingCorrection:firestoreUpdates:start');
   await Promise.all(updateTasks);
+  console.info('[sightings] applySightingCorrection:firestoreUpdates:done');
 
   return {
     change,
