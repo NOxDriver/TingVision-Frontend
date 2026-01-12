@@ -987,6 +987,22 @@
   gap: 8px;
 }
 
+.sightingModal__metaRow {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.95rem;
+}
+
+.sightingModal__metaLabel {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.sightingModal__metaValue {
+  color: var(--color-text-primary);
+}
+
 .sightingModal__selection {
   display: inline-flex;
   align-items: center;
@@ -997,6 +1013,19 @@
 
 .sightingModal__selection input {
   accent-color: #ff8c1a;
+}
+
+.sightingModal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.sightingModal__actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .sightingModal__placeholder {
