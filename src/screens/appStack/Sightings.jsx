@@ -1344,12 +1344,12 @@ export default function Sightings() {
     }
   }, [filteredSightings, activeSighting]);
 
-  useEffect(() => {
-    if (!activeSighting) {
-      return undefined;
-    }
+  const handleModalKeyDown = useCallback(
+    (event) => {
+      if (!activeSighting) {
+        return;
+      }
 
-    const handleKeyDown = (event) => {
       const { key } = event;
       if (!['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(key)) {
         return;
@@ -1383,13 +1383,20 @@ export default function Sightings() {
       if (key === 'ArrowDown') {
         handleSetActiveSightingSelection(false);
       }
-    };
+    },
+    [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection],
+  );
 
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
+  useEffect(() => {
+    if (!activeSighting) {
+      return undefined;
+    }
+
+    window.addEventListener('keydown', handleModalKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keydown', handleModalKeyDown, { capture: true });
     };
-  }, [activeSighting, handleCloseSighting, handleNavigateSighting, handleSetActiveSightingSelection]);
+  }, [activeSighting, handleModalKeyDown]);
 
   const renderModalContent = () => {
     if (!activeSighting) {
@@ -1457,9 +1464,11 @@ export default function Sightings() {
           key={`video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
+          tabIndex={0}
           autoPlay={!shouldDisableAutoplay}
           playsInline
           preload={shouldDisableAutoplay ? 'none' : 'metadata'}
+          onKeyDown={handleModalKeyDown}
         />
       );
     }
@@ -1481,9 +1490,11 @@ export default function Sightings() {
           key={`fallback-video-${modalViewMode}-${selectedVideoSrc}`}
           src={selectedVideoSrc}
           controls
+          tabIndex={0}
           autoPlay={!shouldDisableAutoplay}
           playsInline
           preload={shouldDisableAutoplay ? 'none' : 'metadata'}
+          onKeyDown={handleModalKeyDown}
         />
       );
     }
