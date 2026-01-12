@@ -69,11 +69,14 @@ const SPECIES_SUBFOLDERS = new Set([
   'clippreviews',
   'previews',
   'debug',
+  'debugs',
   'debugpreviews',
   'debugvideos',
   'videos',
   'images',
 ]);
+
+const isNumericSegment = (segment) => typeof segment === 'string' && /^\d+$/.test(segment);
 
 const deriveDestinationPath = (originalPath, locationId, folderName) => {
   if (typeof originalPath !== 'string' || originalPath.length === 0) {
@@ -97,6 +100,18 @@ const deriveDestinationPath = (originalPath, locationId, folderName) => {
   const locationIndex = typeof locationId === 'string' && locationId.length > 0
     ? segments.findIndex((segment) => segment === locationId)
     : -1;
+
+  if (
+    locationIndex >= 0
+    && segments.length > locationIndex + 4
+    && isNumericSegment(segments[locationIndex + 1])
+    && isNumericSegment(segments[locationIndex + 2])
+    && isNumericSegment(segments[locationIndex + 3])
+  ) {
+    const next = [...segments];
+    next[locationIndex + 4] = folderName;
+    return next.join('/');
+  }
 
   if (locationIndex >= 0 && locationIndex + 1 < segments.length) {
     const next = [...segments];
