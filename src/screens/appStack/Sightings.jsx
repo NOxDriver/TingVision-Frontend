@@ -2221,6 +2221,10 @@ export default function Sightings() {
               const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
               const isSending = sendStatus.state === 'pending';
               const isDeleting = deleteStatus.state === 'pending';
+              const activeIndex = filteredSightings.findIndex((entry) => entry.id === activeSighting.id);
+              const hasPrevious = activeIndex > 0;
+              const hasNext = activeIndex >= 0 && activeIndex < filteredSightings.length - 1;
+              const showNavigation = filteredSightings.length > 1 && activeIndex !== -1;
               return (
                 <>
                   <button
@@ -2231,6 +2235,28 @@ export default function Sightings() {
                   >
                     Close
                   </button>
+                  {showNavigation && (
+                    <div className="sightingModal__nav" role="group" aria-label="Sighting navigation">
+                      <button
+                        type="button"
+                        className="sightingModal__navButton"
+                        onClick={() => handleNavigateSighting(-1)}
+                        disabled={!hasPrevious}
+                        aria-label="View previous sighting"
+                      >
+                        ← Previous
+                      </button>
+                      <button
+                        type="button"
+                        className="sightingModal__navButton"
+                        onClick={() => handleNavigateSighting(1)}
+                        disabled={!hasNext}
+                        aria-label="View next sighting"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
                     const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
@@ -2347,6 +2373,18 @@ export default function Sightings() {
                             disabled={isDeleting || isSending}
                           >
                             {isDeleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingModal__bulkDelete"
+                            onClick={handleBulkDeleteSelected}
+                            disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
+                          >
+                            {hasPendingSelectedDeletes
+                              ? 'Deleting selected…'
+                              : `Delete all selected${selectedSightingsCount > 0
+                                ? ` (${selectedSightingsCount})`
+                                : ''}`}
                           </button>
                         </div>
                         {sendStatus.state === 'success' && sendStatus.message && (

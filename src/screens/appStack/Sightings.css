@@ -945,6 +945,34 @@
   cursor: pointer;
 }
 
+.sightingModal__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sightingModal__navButton {
+  border: 1px solid rgba(203, 146, 74, 0.45);
+  background: rgba(29, 41, 20, 0.75);
+  color: var(--color-text-primary);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.sightingModal__navButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sightingModal__navButton:not(:disabled):hover,
+.sightingModal__navButton:not(:disabled):focus-visible {
+  background: rgba(255, 140, 26, 0.25);
+  transform: translateY(-1px);
+}
+
 .sightingModal__controls {
   display: flex;
   justify-content: flex-end;
