@@ -376,6 +376,7 @@ export default function Sightings() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
+  const editSpeciesInputRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -383,6 +384,18 @@ export default function Sightings() {
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
 
   usePageTitle('Sightings');
+
+  useEffect(() => {
+    if (!editTarget || editMode !== 'animal' || editSaving) {
+      return;
+    }
+
+    const input = editSpeciesInputRef.current;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, [editMode, editSaving, editTarget]);
 
   const actorName = useMemo(() => {
     if (!user) {
@@ -2165,6 +2178,7 @@ export default function Sightings() {
                     type="text"
                     value={editSpeciesInput}
                     onChange={(event) => setEditSpeciesInput(event.target.value)}
+                    ref={editSpeciesInputRef}
                     className="sightingEditModal__input"
                     placeholder="Enter species name"
                     list="sightingEditSpeciesOptions"
