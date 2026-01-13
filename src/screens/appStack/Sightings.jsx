@@ -707,6 +707,12 @@ export default function Sightings() {
     [sightings, selectedSightings],
   );
   const selectedSightingsCount = selectedSightingsList.length;
+  const activeSightingIndex = useMemo(() => {
+    if (!activeSighting) {
+      return -1;
+    }
+    return filteredSightings.findIndex((entry) => entry.id === activeSighting.id);
+  }, [activeSighting, filteredSightings]);
   const isAllFilteredSelected = useMemo(
     () => filteredSightings.length > 0
       && filteredSightings.every((entry) => selectedSightings.has(entry.id)),
@@ -2196,14 +2202,38 @@ export default function Sightings() {
               const isDeleting = deleteStatus.state === 'pending';
               return (
                 <>
-            <button
-              type="button"
-              className="sightingModal__close"
-              onClick={handleCloseSighting}
-              aria-label="Close sighting preview"
-            >
-              Close
-            </button>
+            <div className="sightingModal__header">
+              <button
+                type="button"
+                className="sightingModal__close"
+                onClick={handleCloseSighting}
+                aria-label="Close sighting preview"
+              >
+                Close
+              </button>
+              <div className="sightingModal__navigation" role="group" aria-label="Sighting navigation">
+                <button
+                  type="button"
+                  className="sightingModal__navButton"
+                  onClick={() => handleNavigateSighting(-1)}
+                  disabled={activeSightingIndex <= 0}
+                  aria-label="View previous sighting"
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  className="sightingModal__navButton"
+                  onClick={() => handleNavigateSighting(1)}
+                  disabled={
+                    activeSightingIndex === -1 || activeSightingIndex >= filteredSightings.length - 1
+                  }
+                  aria-label="View next sighting"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
             {(() => {
               const prefersVideo = activeSighting.mediaType === 'video';
               const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
@@ -2320,6 +2350,16 @@ export default function Sightings() {
                       disabled={isDeleting || isSending}
                     >
                       {isDeleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                      onClick={handleBulkDeleteSelected}
+                      disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
+                    >
+                      {hasPendingSelectedDeletes
+                        ? 'Deleting selected…'
+                        : `Delete selected (${selectedSightingsCount})`}
                     </button>
                   </div>
                   {sendStatus.state === 'success' && sendStatus.message && (
