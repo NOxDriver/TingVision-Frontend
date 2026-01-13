@@ -2227,6 +2227,7 @@ export default function Sightings() {
               const hasPrevious = currentIndex > 0;
               const hasNext = currentIndex !== -1 && currentIndex < filteredSightings.length - 1;
               const shouldShowNav = filteredSightings.length > 1;
+              const shouldShowNavGroup = shouldShowNav || isAdmin;
               return (
                 <>
                   <button
@@ -2247,29 +2248,47 @@ export default function Sightings() {
                     const hasHdImageAlternative = Boolean(
                       !prefersVideo && hdImageSrc && hdImageSrc !== standardImageSrc,
                     );
-                    const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
-                    const isDebugMode = modalViewMode === 'debug';
-                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
+                      const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
+                      const isDebugMode = modalViewMode === 'debug';
+                      const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
                     return (
                       <div className="sightingModal__controls">
-                        {shouldShowNav && (
+                        {shouldShowNavGroup && (
                           <div className="sightingModal__nav">
-                            <button
-                              type="button"
-                              className="sightingModal__navButton"
-                              onClick={() => handleNavigateSighting(-1)}
-                              disabled={!hasPrevious}
-                            >
-                              ← Previous
-                            </button>
-                            <button
-                              type="button"
-                              className="sightingModal__navButton"
-                              onClick={() => handleNavigateSighting(1)}
-                              disabled={!hasNext}
-                            >
-                              Next →
-                            </button>
+                            {shouldShowNav && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="sightingModal__navButton"
+                                  onClick={() => handleNavigateSighting(-1)}
+                                  disabled={!hasPrevious}
+                                >
+                                  ← Previous
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sightingModal__navButton"
+                                  onClick={() => handleNavigateSighting(1)}
+                                  disabled={!hasNext}
+                                >
+                                  Next →
+                                </button>
+                              </>
+                            )}
+                            {isAdmin && (
+                              <label className="sightingModal__selection">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSightings.has(activeSighting.id)}
+                                  onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                                />
+                                <span>
+                                  {selectedSightings.has(activeSighting.id)
+                                    ? 'Selected for deletion'
+                                    : 'Select for deletion'}
+                                </span>
+                              </label>
+                            )}
                           </div>
                         )}
                         {shouldShowToggles && (
@@ -2333,20 +2352,6 @@ export default function Sightings() {
                       )}
                     </div>
                     <div className="sightingModal__admin">
-                      {isAdmin && (
-                        <label className="sightingModal__selection">
-                          <input
-                            type="checkbox"
-                            checked={selectedSightings.has(activeSighting.id)}
-                            onChange={() => handleToggleSightingSelection(activeSighting.id)}
-                          />
-                          <span>
-                            {selectedSightings.has(activeSighting.id)
-                              ? 'Selected for deletion'
-                              : 'Select for deletion'}
-                          </span>
-                        </label>
-                      )}
                       <div className="sightingModal__actions">
                         {isAdmin && (
                           <button
