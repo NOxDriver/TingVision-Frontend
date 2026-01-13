@@ -2221,6 +2221,10 @@ export default function Sightings() {
               const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
               const isSending = sendStatus.state === 'pending';
               const isDeleting = deleteStatus.state === 'pending';
+              const currentIndex = filteredSightings.findIndex((entry) => entry.id === activeSighting.id);
+              const hasPrevious = currentIndex > 0;
+              const hasNext = currentIndex !== -1 && currentIndex < filteredSightings.length - 1;
+              const shouldShowNav = filteredSightings.length > 1;
               return (
                 <>
                   <button
@@ -2243,44 +2247,66 @@ export default function Sightings() {
                     );
                     const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
                     const isDebugMode = modalViewMode === 'debug';
-                    if (!hasHdImageAlternative && !hasDebugMedia) {
-                      return null;
-                    }
+                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
                     return (
                       <div className="sightingModal__controls">
-                        {hasHdImageAlternative && (
-                          <button
-                            type="button"
-                            className={`sightingModal__toggle${isHdEnabled ? ' is-active' : ''}`}
-                            onClick={() => {
-                              const nextValue = !isHdEnabled;
-                              setIsHdEnabled(nextValue);
-                              trackButton('sighting_toggle_hd', {
-                                enabled: nextValue,
-                                species: activeSighting?.species,
-                                location: activeSighting?.locationId,
-                              });
-                            }}
-                          >
-                            {isHdEnabled ? 'Standard Quality' : 'View in HD'}
-                          </button>
+                        {shouldShowNav && (
+                          <div className="sightingModal__nav">
+                            <button
+                              type="button"
+                              className="sightingModal__navButton"
+                              onClick={() => handleNavigateSighting(-1)}
+                              disabled={!hasPrevious}
+                            >
+                              ← Previous
+                            </button>
+                            <button
+                              type="button"
+                              className="sightingModal__navButton"
+                              onClick={() => handleNavigateSighting(1)}
+                              disabled={!hasNext}
+                            >
+                              Next →
+                            </button>
+                          </div>
                         )}
-                        {hasDebugMedia && (
-                          <button
-                            type="button"
-                            className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                            onClick={() => {
-                              const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
-                              setModalViewMode(nextMode);
-                              trackButton('sighting_toggle_view', {
-                                mode: nextMode,
-                                species: activeSighting?.species,
-                                location: activeSighting?.locationId,
-                              });
-                            }}
-                          >
-                            {isDebugMode ? 'Standard View' : 'Debug'}
-                          </button>
+                        {shouldShowToggles && (
+                          <div className="sightingModal__toggles">
+                            {hasHdImageAlternative && (
+                              <button
+                                type="button"
+                                className={`sightingModal__toggle${isHdEnabled ? ' is-active' : ''}`}
+                                onClick={() => {
+                                  const nextValue = !isHdEnabled;
+                                  setIsHdEnabled(nextValue);
+                                  trackButton('sighting_toggle_hd', {
+                                    enabled: nextValue,
+                                    species: activeSighting?.species,
+                                    location: activeSighting?.locationId,
+                                  });
+                                }}
+                              >
+                                {isHdEnabled ? 'Standard Quality' : 'View in HD'}
+                              </button>
+                            )}
+                            {hasDebugMedia && (
+                              <button
+                                type="button"
+                                className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
+                                onClick={() => {
+                                  const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
+                                  setModalViewMode(nextMode);
+                                  trackButton('sighting_toggle_view', {
+                                    mode: nextMode,
+                                    species: activeSighting?.species,
+                                    location: activeSighting?.locationId,
+                                  });
+                                }}
+                              >
+                                {isDebugMode ? 'Standard View' : 'Debug'}
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
@@ -2347,6 +2373,16 @@ export default function Sightings() {
                             disabled={isDeleting || isSending}
                           >
                             {isDeleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                            onClick={handleBulkDeleteSelected}
+                            disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
+                          >
+                            {hasPendingSelectedDeletes
+                              ? 'Deleting…'
+                              : `Delete all selected (${selectedSightingsCount})`}
                           </button>
                         </div>
                         {sendStatus.state === 'success' && sendStatus.message && (
