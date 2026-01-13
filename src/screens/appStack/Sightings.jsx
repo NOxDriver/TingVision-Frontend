@@ -1555,6 +1555,21 @@ export default function Sightings() {
     return <div className="sightingModal__placeholder">No media available</div>;
   };
 
+  let statusMessage = null;
+  let isStatusError = false;
+
+  if (isAccessLoading) {
+    statusMessage = 'Loading access…';
+  } else if (loading) {
+    statusMessage = 'Loading…';
+  } else if (error) {
+    statusMessage = error;
+    isStatusError = true;
+  } else if (accessError) {
+    statusMessage = accessError;
+    isStatusError = true;
+  }
+
   return (
     <div className="sightingsPage">
       <div className="sightingsPage__inner">
@@ -1564,16 +1579,15 @@ export default function Sightings() {
             <p>Latest activity sorted by capture time.</p>
           </div>
           <div className="sightingsPage__controls">
-            {isAccessLoading && (
-              <span className="sightingsPage__status">Loading access…</span>
-            )}
-            {loading && !isAccessLoading && <span className="sightingsPage__status">Loading…</span>}
-            {!loading && error && (
-              <span className="sightingsPage__status sightingsPage__status--error">{error}</span>
-            )}
-            {!loading && accessError && (
-              <span className="sightingsPage__status sightingsPage__status--error">{accessError}</span>
-            )}
+            <div className="sightingsPage__statusSlot" role="status" aria-live="polite">
+              {statusMessage && (
+                <span
+                  className={`sightingsPage__status${isStatusError ? ' sightingsPage__status--error' : ''}`}
+                >
+                  {statusMessage}
+                </span>
+              )}
+            </div>
             <div className="sightingsPage__filterGroup">
               <div className="sightingsPage__field sightingsPage__field--checkbox">
                 <label className="sightingsPage__checkboxLabel" htmlFor="debugViewToggle">

@@ -40,6 +40,13 @@
   flex-wrap: wrap;
 }
 
+.sightingsPage__statusSlot {
+  min-width: 160px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
 .sightingsPage__status {
   font-size: 0.95rem;
   color: var(--color-text-secondary);

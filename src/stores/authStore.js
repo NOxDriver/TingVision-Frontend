@@ -208,6 +208,10 @@ const useAuthStore = create((set) => ({
     //     },
     logout: (e) => {
         try {
+            const shouldLogout = window.confirm('Are you sure you want to log out?');
+            if (!shouldLogout) {
+                return;
+            }
             signOut(auth);
             // remove all local storage items
             localStorage.clear();
