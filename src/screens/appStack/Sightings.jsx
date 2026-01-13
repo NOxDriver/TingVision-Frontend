@@ -2265,6 +2265,7 @@ export default function Sightings() {
                   >
                     Close
                   </button>
+                  <div className="sightingModal__media">{renderModalContent()}</div>
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
                     const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
@@ -2359,7 +2360,6 @@ export default function Sightings() {
                       </div>
                     );
                   })()}
-                  <div className="sightingModal__media">{renderModalContent()}</div>
                   <div className="sightingModal__details">
                     <h3>{activeSighting.species}</h3>
                     <div className="sightingModal__meta">
