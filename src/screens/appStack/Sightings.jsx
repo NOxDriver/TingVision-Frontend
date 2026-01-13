@@ -1990,9 +1990,9 @@ export default function Sightings() {
                       </div>
                     )}
                   </div>
-                  {isAdmin && (
-                    <div className="sightingCard__actions">
-                      <div className="sightingCard__actionsRow">
+                  <div className="sightingCard__actions">
+                    <div className="sightingCard__actionsRow">
+                      {isAdmin && (
                         <button
                           type="button"
                           className="sightingCard__editButton"
@@ -2003,27 +2003,29 @@ export default function Sightings() {
                         >
                           <FiEdit2 />
                         </button>
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton"
-                          onClick={() => handleSendToWhatsApp(entry)}
-                          disabled={isSending || isDeleting}
-                        >
-                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                        </button>
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton sightingCard__actionsButton--alert"
-                          onClick={() =>
-                            handleSendToWhatsApp(entry, {
-                              alertStyle: 'emoji',
-                              confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                            })
-                          }
-                          disabled={isSending || isDeleting}
-                        >
-                          {isSending ? 'Sending…' : 'Alert'}
-                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="sightingCard__actionsButton"
+                        onClick={() => handleSendToWhatsApp(entry)}
+                        disabled={isSending || isDeleting}
+                      >
+                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                      </button>
+                      <button
+                        type="button"
+                        className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                        onClick={() =>
+                          handleSendToWhatsApp(entry, {
+                            alertStyle: 'emoji',
+                            confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                          })
+                        }
+                        disabled={isSending || isDeleting}
+                      >
+                        {isSending ? 'Sending…' : 'Alert'}
+                      </button>
+                      {isAdmin && (
                         <button
                           type="button"
                           className="sightingCard__actionsButton sightingCard__actionsButton--danger"
@@ -2032,43 +2034,43 @@ export default function Sightings() {
                         >
                           {isDeleting ? 'Deleting…' : 'Delete'}
                         </button>
-                      </div>
-                      {selectedSightingsCount > 1 && (
-                        <div className="sightingCard__bulkActions">
-                          <button
-                            type="button"
-                            className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
-                            onClick={handleBulkDeleteSelected}
-                            disabled={hasPendingSelectedDeletes}
-                          >
-                            {hasPendingSelectedDeletes
-                              ? 'Deleting selected…'
-                              : `Delete selected (${selectedSightingsCount})`}
-                          </button>
-                        </div>
-                      )}
-                      {sendStatus.state === 'success' && sendStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
-                          {sendStatus.message}
-                        </span>
-                      )}
-                      {sendStatus.state === 'error' && sendStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
-                          {sendStatus.message}
-                        </span>
-                      )}
-                      {deleteStatus.state === 'success' && deleteStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
-                          {deleteStatus.message}
-                        </span>
-                      )}
-                      {deleteStatus.state === 'error' && deleteStatus.message && (
-                        <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
-                          {deleteStatus.message}
-                        </span>
                       )}
                     </div>
-                  )}
+                    {isAdmin && selectedSightingsCount > 1 && (
+                      <div className="sightingCard__bulkActions">
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
+                          onClick={handleBulkDeleteSelected}
+                          disabled={hasPendingSelectedDeletes}
+                        >
+                          {hasPendingSelectedDeletes
+                            ? 'Deleting selected…'
+                            : `Delete selected (${selectedSightingsCount})`}
+                        </button>
+                      </div>
+                    )}
+                    {sendStatus.state === 'success' && sendStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                        {sendStatus.message}
+                      </span>
+                    )}
+                    {sendStatus.state === 'error' && sendStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                        {sendStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                        {deleteStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && deleteStatus.state === 'error' && deleteStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                        {deleteStatus.message}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </article>
             );
@@ -2330,8 +2332,8 @@ export default function Sightings() {
                         </div>
                       )}
                     </div>
-                    {isAdmin && (
-                      <div className="sightingModal__admin">
+                    <div className="sightingModal__admin">
+                      {isAdmin && (
                         <label className="sightingModal__selection">
                           <input
                             type="checkbox"
@@ -2344,69 +2346,83 @@ export default function Sightings() {
                               : 'Select for deletion'}
                           </span>
                         </label>
-                        <div className="sightingModal__actions">
+                      )}
+                      <div className="sightingModal__actions">
+                        {isAdmin && (
                           <button
                             type="button"
                             className="sightingCard__actionsButton"
-                            onClick={() => handleSendToWhatsApp(activeSighting)}
-                            disabled={isSending || isDeleting}
+                            onClick={() => handleOpenEditModal(activeSighting)}
+                            disabled={editSaving || isDeleting}
                           >
-                            {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                            Edit
                           </button>
-                          <button
-                            type="button"
-                            className="sightingCard__actionsButton sightingCard__actionsButton--alert"
-                            onClick={() =>
-                              handleSendToWhatsApp(activeSighting, {
-                                alertStyle: 'emoji',
-                                confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                              })
-                            }
-                            disabled={isSending || isDeleting}
-                          >
-                            {isSending ? 'Sending…' : 'Alert'}
-                          </button>
-                          <button
-                            type="button"
-                            className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                            onClick={() => handleDeleteSightings([activeSighting])}
-                            disabled={isDeleting || isSending}
-                          >
-                            {isDeleting ? 'Deleting…' : 'Delete'}
-                          </button>
-                          <button
-                            type="button"
-                            className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                            onClick={handleBulkDeleteSelected}
-                            disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
-                          >
-                            {hasPendingSelectedDeletes
-                              ? 'Deleting…'
-                              : `Delete all selected (${selectedSightingsCount})`}
-                          </button>
-                        </div>
-                        {sendStatus.state === 'success' && sendStatus.message && (
-                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
-                            {sendStatus.message}
-                          </span>
                         )}
-                        {sendStatus.state === 'error' && sendStatus.message && (
-                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
-                            {sendStatus.message}
-                          </span>
-                        )}
-                        {deleteStatus.state === 'success' && deleteStatus.message && (
-                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
-                            {deleteStatus.message}
-                          </span>
-                        )}
-                        {deleteStatus.state === 'error' && deleteStatus.message && (
-                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
-                            {deleteStatus.message}
-                          </span>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton"
+                          onClick={() => handleSendToWhatsApp(activeSighting)}
+                          disabled={isSending || isDeleting}
+                        >
+                          {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                          onClick={() =>
+                            handleSendToWhatsApp(activeSighting, {
+                              alertStyle: 'emoji',
+                              confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                            })
+                          }
+                          disabled={isSending || isDeleting}
+                        >
+                          {isSending ? 'Sending…' : 'Alert'}
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                              onClick={() => handleDeleteSightings([activeSighting])}
+                              disabled={isDeleting || isSending}
+                            >
+                              {isDeleting ? 'Deleting…' : 'Delete'}
+                            </button>
+                            <button
+                              type="button"
+                              className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                              onClick={handleBulkDeleteSelected}
+                              disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
+                            >
+                              {hasPendingSelectedDeletes
+                                ? 'Deleting…'
+                                : `Delete all selected (${selectedSightingsCount})`}
+                            </button>
+                          </>
                         )}
                       </div>
-                    )}
+                      {sendStatus.state === 'success' && sendStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                          {sendStatus.message}
+                        </span>
+                      )}
+                      {sendStatus.state === 'error' && sendStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                          {sendStatus.message}
+                        </span>
+                      )}
+                      {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                          {deleteStatus.message}
+                        </span>
+                      )}
+                      {isAdmin && deleteStatus.state === 'error' && deleteStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                          {deleteStatus.message}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </>
               );
