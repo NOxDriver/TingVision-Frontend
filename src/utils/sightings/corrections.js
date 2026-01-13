@@ -4,6 +4,9 @@ import { db } from '../../firebase';
 
 const PER_SPECIES_COLLECTION = 'perSpecies';
 
+const RELOCATE_MEDIA_ENDPOINT =
+  process.env.REACT_APP_RELOCATE_MEDIA_ENDPOINT || '';
+
 const sanitizePathSegments = (path) =>
   typeof path === 'string'
     ? path
@@ -142,6 +145,39 @@ export const buildCorrectionNote = ({
   return `${timestampPrefix}${actorName} corrected ${prev} to ${next}${locationFragment}.`.trim();
 };
 
+const relocateSightingMedia = async ({ parentPath, targetSpecies, authToken }) => {
+  if (!RELOCATE_MEDIA_ENDPOINT) {
+    return null;
+  }
+  if (!authToken) {
+    throw new Error('Missing auth token for media relocation.');
+  }
+
+  const response = await fetch(RELOCATE_MEDIA_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      parentPath,
+      targetSpecies,
+    }),
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const body = contentType.includes('application/json')
+    ? await response.json().catch(() => ({}))
+    : await response.text();
+
+  if (!response.ok) {
+    const message = typeof body === 'string' ? body : body?.error;
+    throw new Error(message || 'Failed to relocate sighting media.');
+  }
+
+  return body; // { ok: true, updates: {...} }
+};
+
 export const applySightingCorrection = async ({
   entry,
   mode,
@@ -149,6 +185,10 @@ export const applySightingCorrection = async ({
   actor,
   note,
   change: providedChange,
+
+  // NEW:
+  relocateMedia = false,
+  authToken = null,
 }) => {
   if (!entry?.meta?.parentPath) {
     throw new Error('Sighting metadata is missing required references.');
@@ -266,9 +306,6 @@ export const applySightingCorrection = async ({
 
     // Create/overwrite the new doc
     batch.set(newSpeciesRef, newSpeciesDocData);
-
-    // IMPORTANT: hard delete the old perSpecies doc so it disappears
-    // (cannot do deleteDoc inside batch; do it after commit)
   }
 
   await batch.commit();
@@ -276,6 +313,47 @@ export const applySightingCorrection = async ({
   // Hard delete old doc if we renamed (doc id changed)
   if (nextSpeciesDocId !== oldSpeciesDocId) {
     await deleteDoc(oldSpeciesRef);
+  }
+
+  // ----- NEW: relocate media in GCS + update Firestore urls/paths -----
+  // Only relocate if the parent doc is now primarily classified as nextSpeciesKey.
+  // This prevents moving storage when editing a non-primary perSpecies on multi-species sightings.
+  const parentPrimaryAfter =
+    typeof parentUpdatesState.primarySpecies === 'string' && parentUpdatesState.primarySpecies.trim()
+      ? parentUpdatesState.primarySpecies.trim().toLowerCase()
+      : (typeof parentDocData.primarySpecies === 'string' && parentDocData.primarySpecies.trim()
+          ? parentDocData.primarySpecies.trim().toLowerCase()
+          : null);
+
+  const shouldRelocate =
+    Boolean(relocateMedia)
+    && Boolean(authToken)
+    && Boolean(RELOCATE_MEDIA_ENDPOINT)
+    && Boolean(entry?.meta?.parentPath)
+    && parentPrimaryAfter === String(nextSpeciesKey).toLowerCase();
+
+  let relocationError = null;
+
+  if (shouldRelocate) {
+    try {
+      const relocation = await relocateSightingMedia({
+        parentPath: entry.meta.parentPath,
+        targetSpecies: nextSpeciesKey,
+        authToken,
+      });
+
+      const updates = relocation?.updates || null;
+      if (updates && typeof updates === 'object') {
+        // Merge so UI can immediately use updated mediaUrl/previewUrl/debugUrl
+        Object.assign(parentUpdatesState, updates);
+      }
+    } catch (err) {
+      relocationError = err?.message || 'Media relocation failed.';
+      // Do not throw: the Firestore correction already succeeded.
+      // UI can surface this warning and you can retry.
+      // eslint-disable-next-line no-console
+      console.warn('Media relocation failed', err);
+    }
   }
 
   return {
@@ -289,6 +367,7 @@ export const applySightingCorrection = async ({
     },
     speciesDocId: nextSpeciesDocId,
     speciesDocPath: nextSpeciesDocPath,
+    mediaRelocationError: relocationError,
   };
 };
 

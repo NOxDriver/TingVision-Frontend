@@ -7,12 +7,9 @@ import {
   limit,
   orderBy,
   query,
-  serverTimestamp,
   startAfter,
-  updateDoc,
 } from 'firebase/firestore';
-import { deleteObject, getStorage, ref } from 'firebase/storage';
-import { db, storage as defaultStorage } from '../../firebase';
+import { db } from '../../firebase';
 import './Sightings.css';
 import {
   buildHighlightEntry,
@@ -33,10 +30,15 @@ import {
   buildCorrectionNote,
 } from '../../utils/sightings/corrections';
 
+
+
 const SIGHTINGS_PAGE_SIZE = 50;
 const SEND_WHATSAPP_ENDPOINT =
   process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT ||
   'https://send-manual-whatsapp-alert-186628423921.us-central1.run.app';
+const DELETE_SIGHTING_ENDPOINT =
+  process.env.REACT_APP_DELETE_SIGHTING_ENDPOINT ||
+  '';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -102,10 +104,10 @@ const normalizeTrigger = (rawTrigger) => {
   const thresholdData =
     rawTrigger.thresholds && typeof rawTrigger.thresholds === 'object'
       ? {
-          min_net_dist: normalizeNumericValue(rawTrigger.thresholds.min_net_dist),
-          confirm_hits: normalizeNumericValue(rawTrigger.thresholds.confirm_hits),
-          min_persist_hits: normalizeNumericValue(rawTrigger.thresholds.min_persist_hits),
-        }
+        min_net_dist: normalizeNumericValue(rawTrigger.thresholds.min_net_dist),
+        confirm_hits: normalizeNumericValue(rawTrigger.thresholds.confirm_hits),
+        min_persist_hits: normalizeNumericValue(rawTrigger.thresholds.min_persist_hits),
+      }
       : null;
 
   const trigger = {
@@ -217,7 +219,7 @@ const useShouldDisableAutoplay = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return () => {};
+      return () => { };
     }
 
     const queries = [
@@ -262,18 +264,18 @@ const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
   useEffect(() => {
     if (!videoSrc) {
       setIsVisible(false);
-      return () => {};
+      return () => { };
     }
 
     if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
       setIsVisible(true);
-      return () => {};
+      return () => { };
     }
 
     const node = containerRef.current;
     if (!node) {
       setIsVisible(false);
-      return () => {};
+      return () => { };
     }
 
     const observer = new IntersectionObserver(
@@ -317,7 +319,7 @@ const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
     videoElement.load();
     const playPromise = videoElement.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch(() => {});
+      playPromise.catch(() => { });
     }
   }, [activeSrc]);
 
@@ -957,6 +959,9 @@ export default function Sightings() {
           locationId: editTarget.locationId,
         });
 
+        const authToken =
+          typeof user?.getIdToken === 'function' ? await user.getIdToken() : null;
+
         const result = await applySightingCorrection({
           entry: editTarget,
           mode: editMode,
@@ -964,14 +969,22 @@ export default function Sightings() {
           actor: actorName,
           note: finalNote,
           change,
+          relocateMedia: true,
+          authToken,
         });
+
+        if (result.mediaRelocationError) {
+          setEditFeedback({
+            type: 'error',
+            text: `Sighting corrected, but media move failed: ${result.mediaRelocationError}`,
+          });
+        }
 
         const baseId = typeof editTarget.id === 'string' ? editTarget.id.split('::')[0] : '';
         const nextSpeciesDocId = result.speciesDocId || editTarget.meta?.speciesDoc?.id || '';
         const nextEntryId =
           baseId && nextSpeciesDocId ? `${baseId}::${nextSpeciesDocId}` : editTarget.id;
         const nextSpeciesDocPath = result.speciesDocPath || editTarget.meta?.speciesDocPath || '';
-
 
         setSightings((prev) =>
           prev.map((item) => {
@@ -988,11 +1001,14 @@ export default function Sightings() {
               speciesDoc: {
                 ...(item.meta?.speciesDoc || {}),
                 ...(result.speciesDocUpdates || {}),
+                id: nextSpeciesDocId || item.meta?.speciesDoc?.id,
               },
+              speciesDocPath: nextSpeciesDocPath || item.meta?.speciesDocPath,
             };
 
             return {
               ...item,
+              id: nextEntryId,
               species: result.change.label,
               mediaUrl: result.parentDocUpdates.mediaUrl ?? item.mediaUrl,
               previewUrl: result.parentDocUpdates.previewUrl ?? item.previewUrl,
@@ -1010,18 +1026,18 @@ export default function Sightings() {
 
           const nextMeta = prev.meta
             ? {
-                ...prev.meta,
-                parentDoc: {
-                  ...(prev.meta.parentDoc || {}),
-                  ...result.parentDocUpdates,
-                },
-                speciesDoc: {
-                  ...(prev.meta.speciesDoc || {}),
-                  ...(result.speciesDocUpdates || {}),
-                  id: nextSpeciesDocId || prev.meta?.speciesDoc?.id,
-                },
-                speciesDocPath: nextSpeciesDocPath || prev.meta?.speciesDocPath,
-              }
+              ...prev.meta,
+              parentDoc: {
+                ...(prev.meta.parentDoc || {}),
+                ...result.parentDocUpdates,
+              },
+              speciesDoc: {
+                ...(prev.meta.speciesDoc || {}),
+                ...(result.speciesDocUpdates || {}),
+                id: nextSpeciesDocId || prev.meta?.speciesDoc?.id,
+              },
+              speciesDocPath: nextSpeciesDocPath || prev.meta?.speciesDocPath,
+            }
             : prev.meta;
 
           return {
@@ -1036,7 +1052,6 @@ export default function Sightings() {
           };
         });
 
-        // If the user had this sighting selected, preserve selection across the id change.
         if (nextEntryId !== editTarget.id) {
           setSelectedSightings((prev) => {
             if (!prev.has(editTarget.id)) return prev;
@@ -1047,7 +1062,10 @@ export default function Sightings() {
           });
         }
 
-        setEditFeedback({ type: 'success', text: `Sighting corrected to ${result.change.label}.` });
+        if (!result.mediaRelocationError) {
+          setEditFeedback({ type: 'success', text: `Sighting corrected to ${result.change.label}.` });
+        }
+
         setEditTarget(null);
         setEditMode('animal');
         setEditSpeciesInput('');
@@ -1058,8 +1076,9 @@ export default function Sightings() {
         setEditSaving(false);
       }
     },
-    [editTarget, editMode, editSpeciesInput, actorName],
+    [editTarget, editMode, editSpeciesInput, actorName, user],
   );
+
 
   const handleSendToWhatsApp = useCallback(
     async (entry, options = {}) => {
@@ -1233,47 +1252,54 @@ export default function Sightings() {
         return next;
       });
 
+      let authToken = null;
+      try {
+        authToken = typeof user?.getIdToken === 'function' ? await user.getIdToken() : null;
+      } catch (err) {
+        authToken = null;
+      }
+
       try {
         const results = await Promise.all(
           targets.map(async (entry) => {
             try {
-              const storageInstance = defaultStorage || getStorage();
-              const parentDocData = entry.meta?.parentDoc || {};
-              const speciesDocData = entry.meta?.speciesDoc || {};
-
-              const storagePaths = [parentDocData, speciesDocData]
-                .flatMap((docData) =>
-                  Object.entries(docData)
-                    .filter(
-                      ([key, value]) =>
-                        typeof key === 'string'
-                        && key.startsWith('storagePath')
-                        && typeof value === 'string'
-                        && value.length > 0,
-                    )
-                    .map(([, value]) => value),
-                )
-                .filter((value, index, array) => array.indexOf(value) === index);
-
-              await Promise.all(
-                storagePaths.map((path) =>
-                  deleteObject(ref(storageInstance, path)).catch((err) => {
-                    console.warn('Failed to delete storage object', path, err);
-                  })),
-              );
-
-              const updates = {
-                deletedAt: serverTimestamp(),
-                deletedBy: actorName || 'Admin',
-                updatedAt: serverTimestamp(),
-              };
-              const updateTasks = [updateDoc(toDocRef(entry.meta?.parentPath), updates)];
-
-              if (entry.meta?.speciesDocPath) {
-                updateTasks.push(updateDoc(toDocRef(entry.meta.speciesDocPath), updates));
+              if (!DELETE_SIGHTING_ENDPOINT) {
+                throw new Error('Delete endpoint is not configured.');
               }
 
-              await Promise.all(updateTasks);
+              const parentPath = entry?.meta?.parentPath;
+              if (!parentPath) {
+                throw new Error('Sighting metadata is missing required references.');
+              }
+
+              if (!authToken) {
+                throw new Error('Missing auth token for delete.');
+              }
+
+              const response = await fetch(DELETE_SIGHTING_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${authToken}`,
+                },
+                body: JSON.stringify({
+                  parentPath,
+                  actorName,
+                }),
+              });
+
+              const contentType = response.headers.get('content-type') || '';
+              const responseBody = contentType.includes('application/json')
+                ? await response.json().catch(() => ({}))
+                : await response.text();
+
+              if (!response.ok) {
+                const message =
+                  typeof responseBody === 'string'
+                    ? responseBody
+                    : responseBody?.error || 'Unable to delete sighting.';
+                throw new Error(message);
+              }
 
               return { id: entry.id, status: 'success', message: 'Sighting deleted.' };
             } catch (err) {
@@ -1313,8 +1339,9 @@ export default function Sightings() {
         console.error('Failed to delete sightings', err);
       }
     },
-    [actorName],
+    [actorName, user],
   );
+
 
   const handleToggleSightingSelection = useCallback((sightingId) => {
     if (!sightingId) {
@@ -2196,155 +2223,155 @@ export default function Sightings() {
               const isDeleting = deleteStatus.state === 'pending';
               return (
                 <>
-            <button
-              type="button"
-              className="sightingModal__close"
-              onClick={handleCloseSighting}
-              aria-label="Close sighting preview"
-            >
-              Close
-            </button>
-            {(() => {
-              const prefersVideo = activeSighting.mediaType === 'video';
-              const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
-              const hdImageSrc = pickFirstSource(
-                !prefersVideo ? activeSighting.mediaUrl : null,
-                activeSighting.previewUrl,
-              );
-              const hasHdImageAlternative = Boolean(
-                !prefersVideo && hdImageSrc && hdImageSrc !== standardImageSrc,
-              );
-              const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
-              const isDebugMode = modalViewMode === 'debug';
-              if (!hasHdImageAlternative && !hasDebugMedia) {
-                return null;
-              }
-              return (
-                <div className="sightingModal__controls">
-                  {hasHdImageAlternative && (
-                    <button
-                      type="button"
-                      className={`sightingModal__toggle${isHdEnabled ? ' is-active' : ''}`}
-                      onClick={() => {
-                        const nextValue = !isHdEnabled;
-                        setIsHdEnabled(nextValue);
-                        trackButton('sighting_toggle_hd', {
-                          enabled: nextValue,
-                          species: activeSighting?.species,
-                          location: activeSighting?.locationId,
-                        });
-                      }}
-                    >
-                      {isHdEnabled ? 'Standard Quality' : 'View in HD'}
-                    </button>
-                  )}
-                  {hasDebugMedia && (
-                    <button
-                      type="button"
-                      className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
-                      onClick={() => {
-                        const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
-                        setModalViewMode(nextMode);
-                        trackButton('sighting_toggle_view', {
-                          mode: nextMode,
-                          species: activeSighting?.species,
-                          location: activeSighting?.locationId,
-                        });
-                      }}
-                    >
-                      {isDebugMode ? 'Standard View' : 'Debug'}
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-            <div className="sightingModal__media">{renderModalContent()}</div>
-            <div className="sightingModal__details">
-              <h3>{activeSighting.species}</h3>
-              <div className="sightingModal__meta">
-                {activeSighting.createdAt && (
-                  <div className="sightingModal__metaRow">
-                    <span className="sightingModal__metaLabel">Captured</span>
-                    <time dateTime={activeSighting.createdAt.toISOString()}>
-                      {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
-                    </time>
+                  <button
+                    type="button"
+                    className="sightingModal__close"
+                    onClick={handleCloseSighting}
+                    aria-label="Close sighting preview"
+                  >
+                    Close
+                  </button>
+                  {(() => {
+                    const prefersVideo = activeSighting.mediaType === 'video';
+                    const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
+                    const hdImageSrc = pickFirstSource(
+                      !prefersVideo ? activeSighting.mediaUrl : null,
+                      activeSighting.previewUrl,
+                    );
+                    const hasHdImageAlternative = Boolean(
+                      !prefersVideo && hdImageSrc && hdImageSrc !== standardImageSrc,
+                    );
+                    const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
+                    const isDebugMode = modalViewMode === 'debug';
+                    if (!hasHdImageAlternative && !hasDebugMedia) {
+                      return null;
+                    }
+                    return (
+                      <div className="sightingModal__controls">
+                        {hasHdImageAlternative && (
+                          <button
+                            type="button"
+                            className={`sightingModal__toggle${isHdEnabled ? ' is-active' : ''}`}
+                            onClick={() => {
+                              const nextValue = !isHdEnabled;
+                              setIsHdEnabled(nextValue);
+                              trackButton('sighting_toggle_hd', {
+                                enabled: nextValue,
+                                species: activeSighting?.species,
+                                location: activeSighting?.locationId,
+                              });
+                            }}
+                          >
+                            {isHdEnabled ? 'Standard Quality' : 'View in HD'}
+                          </button>
+                        )}
+                        {hasDebugMedia && (
+                          <button
+                            type="button"
+                            className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
+                            onClick={() => {
+                              const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
+                              setModalViewMode(nextMode);
+                              trackButton('sighting_toggle_view', {
+                                mode: nextMode,
+                                species: activeSighting?.species,
+                                location: activeSighting?.locationId,
+                              });
+                            }}
+                          >
+                            {isDebugMode ? 'Standard View' : 'Debug'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <div className="sightingModal__media">{renderModalContent()}</div>
+                  <div className="sightingModal__details">
+                    <h3>{activeSighting.species}</h3>
+                    <div className="sightingModal__meta">
+                      {activeSighting.createdAt && (
+                        <div className="sightingModal__metaRow">
+                          <span className="sightingModal__metaLabel">Captured</span>
+                          <time dateTime={activeSighting.createdAt.toISOString()}>
+                            {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                          </time>
+                        </div>
+                      )}
+                      {activeSighting.locationId && (
+                        <div className="sightingModal__metaRow">
+                          <span className="sightingModal__metaLabel">Location</span>
+                          <span className="sightingModal__location">{activeSighting.locationId}</span>
+                        </div>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <div className="sightingModal__admin">
+                        <label className="sightingModal__selection">
+                          <input
+                            type="checkbox"
+                            checked={selectedSightings.has(activeSighting.id)}
+                            onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                          />
+                          <span>
+                            {selectedSightings.has(activeSighting.id)
+                              ? 'Selected for deletion'
+                              : 'Select for deletion'}
+                          </span>
+                        </label>
+                        <div className="sightingModal__actions">
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton"
+                            onClick={() => handleSendToWhatsApp(activeSighting)}
+                            disabled={isSending || isDeleting}
+                          >
+                            {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton sightingCard__actionsButton--alert"
+                            onClick={() =>
+                              handleSendToWhatsApp(activeSighting, {
+                                alertStyle: 'emoji',
+                                confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                              })
+                            }
+                            disabled={isSending || isDeleting}
+                          >
+                            {isSending ? 'Sending…' : 'Alert'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sightingCard__actionsButton sightingCard__actionsButton--danger"
+                            onClick={() => handleDeleteSightings([activeSighting])}
+                            disabled={isDeleting || isSending}
+                          >
+                            {isDeleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
+                        {sendStatus.state === 'success' && sendStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                            {sendStatus.message}
+                          </span>
+                        )}
+                        {sendStatus.state === 'error' && sendStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                            {sendStatus.message}
+                          </span>
+                        )}
+                        {deleteStatus.state === 'success' && deleteStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                            {deleteStatus.message}
+                          </span>
+                        )}
+                        {deleteStatus.state === 'error' && deleteStatus.message && (
+                          <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                            {deleteStatus.message}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-                {activeSighting.locationId && (
-                  <div className="sightingModal__metaRow">
-                    <span className="sightingModal__metaLabel">Location</span>
-                    <span className="sightingModal__location">{activeSighting.locationId}</span>
-                  </div>
-                )}
-              </div>
-              {isAdmin && (
-                <div className="sightingModal__admin">
-                  <label className="sightingModal__selection">
-                    <input
-                      type="checkbox"
-                      checked={selectedSightings.has(activeSighting.id)}
-                      onChange={() => handleToggleSightingSelection(activeSighting.id)}
-                    />
-                    <span>
-                      {selectedSightings.has(activeSighting.id)
-                        ? 'Selected for deletion'
-                        : 'Select for deletion'}
-                    </span>
-                  </label>
-                  <div className="sightingModal__actions">
-                    <button
-                      type="button"
-                      className="sightingCard__actionsButton"
-                      onClick={() => handleSendToWhatsApp(activeSighting)}
-                      disabled={isSending || isDeleting}
-                    >
-                      {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                    </button>
-                    <button
-                      type="button"
-                      className="sightingCard__actionsButton sightingCard__actionsButton--alert"
-                      onClick={() =>
-                        handleSendToWhatsApp(activeSighting, {
-                          alertStyle: 'emoji',
-                          confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                        })
-                      }
-                      disabled={isSending || isDeleting}
-                    >
-                      {isSending ? 'Sending…' : 'Alert'}
-                    </button>
-                    <button
-                      type="button"
-                      className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                      onClick={() => handleDeleteSightings([activeSighting])}
-                      disabled={isDeleting || isSending}
-                    >
-                      {isDeleting ? 'Deleting…' : 'Delete'}
-                    </button>
-                  </div>
-                  {sendStatus.state === 'success' && sendStatus.message && (
-                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
-                      {sendStatus.message}
-                    </span>
-                  )}
-                  {sendStatus.state === 'error' && sendStatus.message && (
-                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
-                      {sendStatus.message}
-                    </span>
-                  )}
-                  {deleteStatus.state === 'success' && deleteStatus.message && (
-                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
-                      {deleteStatus.message}
-                    </span>
-                  )}
-                  {deleteStatus.state === 'error' && deleteStatus.message && (
-                    <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
-                      {deleteStatus.message}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
                 </>
               );
             })()}
