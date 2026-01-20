@@ -104,6 +104,10 @@ export function buildHighlightEntry({
   extra,
 }) {
   const trigger = parentDoc?.trigger || null;
+  const megadetectorVerify =
+    parentDoc?.megadetector_verify
+    || speciesDoc?.megadetector_verify
+    || null;
   const formatSpeciesName = (value) => {
     if (typeof value !== 'string' || value.length === 0) {
       return 'Unknown';
@@ -146,6 +150,7 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     mediaUrl,
+    megadetectorVerify,
     extra: extra || {},
     trigger,
   };
