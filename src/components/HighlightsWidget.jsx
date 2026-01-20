@@ -319,6 +319,9 @@ export default function HighlightsWidget() {
     });
 
     return uniqueEntries.filter((entry) => {
+      if (entry?.megadetectorVerify?.passed === false) {
+        return false;
+      }
       if (entry.mediaType === 'video') {
         return true;
       }

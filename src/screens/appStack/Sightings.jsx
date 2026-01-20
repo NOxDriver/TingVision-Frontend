@@ -377,11 +377,37 @@ export default function Sightings() {
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
   const editSpeciesInputRef = useRef(null);
+  const cardRefs = useRef(new Map());
+  const scrollToNewRef = useRef(false);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+
+  const setCardRef = useCallback((id) => (node) => {
+    if (!id) {
+      return;
+    }
+    if (node) {
+      cardRefs.current.set(id, node);
+    } else {
+      cardRefs.current.delete(id);
+    }
+  }, []);
+
+  const scrollToCard = useCallback((id) => {
+    if (!id) {
+      return;
+    }
+    const node = cardRefs.current.get(id);
+    if (!node) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, []);
 
   usePageTitle('Sightings');
 
@@ -715,6 +741,24 @@ export default function Sightings() {
     [sightings, confidenceThreshold, locationFilter, mediaTypeFilter, selectedSpecies, speciesFilterMode],
   );
 
+  useEffect(() => {
+    if (!scrollToNewRef.current) {
+      return;
+    }
+    if (newSightingIds.size === 0) {
+      scrollToNewRef.current = false;
+      return;
+    }
+    const newEntries = filteredSightings.filter((entry) => newSightingIds.has(entry.id));
+    if (newEntries.length === 0) {
+      scrollToNewRef.current = false;
+      return;
+    }
+    const targetEntry = newEntries[newEntries.length - 1];
+    scrollToCard(targetEntry.id);
+    scrollToNewRef.current = false;
+  }, [filteredSightings, newSightingIds, scrollToCard]);
+
   const hasAnySightings = sightings.length > 0;
   const hasSightings = filteredSightings.length > 0;
   const selectedSightingsList = useMemo(
@@ -755,10 +799,14 @@ export default function Sightings() {
   }, []);
 
   const handleCloseSighting = useCallback(() => {
+    const closingId = activeSighting?.id || null;
     setActiveSighting(null);
     setModalViewMode('standard');
     trackButton('sighting_close');
-  }, []);
+    if (closingId) {
+      scrollToCard(closingId);
+    }
+  }, [activeSighting, scrollToCard]);
 
   const handleNavigateSighting = useCallback((direction) => {
     if (!activeSighting || filteredSightings.length === 0) {
@@ -1702,6 +1750,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
+                scrollToNewRef.current = true;
                 loadSightings({ pageIndex: currentPage, highlightNew: true });
               }}
               disabled={loading || paginationLoading}
@@ -1790,6 +1839,12 @@ export default function Sightings() {
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
             const parentDoc = entry.meta?.parentDoc || null;
             const speciesDoc = entry.meta?.speciesDoc || null;
+            const megadetectorVerify = entry.megadetectorVerify || null;
+            const hasMegaFailure = megadetectorVerify?.passed === false;
+            const megaReason = typeof megadetectorVerify?.reason === 'string' && megadetectorVerify.reason.trim().length > 0
+              ? megadetectorVerify.reason.trim()
+              : '';
+            const megaTooltip = megaReason ? `MegaDetector failed: ${megaReason}` : 'MegaDetector failed';
             const pickDebugField = (key) => {
               if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
                 return speciesDoc[key];
@@ -1831,6 +1886,7 @@ export default function Sightings() {
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
                 key={entry.id}
+                ref={setCardRef(entry.id)}
               >
                 <div className="sightingCard__media">
                   <button
@@ -1894,6 +1950,11 @@ export default function Sightings() {
                   <div className="sightingCard__meta">
                     {typeof entry.maxConf === 'number' && (
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                    {hasMegaFailure && (
+                      <span className="sightingCard__metaBadge" title={megaTooltip}>
+                        MegaDetector failed
+                      </span>
                     )}
                   </div>
                   {isDebugViewEnabled && entry.trigger && (

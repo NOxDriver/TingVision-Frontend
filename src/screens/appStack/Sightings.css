@@ -545,6 +545,20 @@
   color: var(--color-text-secondary);
 }
 
+.sightingCard__metaBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(231, 76, 60, 0.2);
+  color: #f7b9b1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .sightingCard__trigger {
   border: 1px solid rgba(203, 146, 74, 0.35);
   border-radius: 12px;

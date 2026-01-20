@@ -126,6 +126,9 @@ export function buildHighlightEntry({
   const videoUrl = parentDoc?.videoUrl
     || (parentDoc?.mediaType === 'video' ? mediaUrl : null)
     || null;
+  const megadetectorVerify = parentDoc?.megadetector_verify
+    || parentDoc?.megadetectorVerify
+    || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
   const meta = CATEGORY_META[category] || {};
   return {
@@ -148,6 +151,7 @@ export function buildHighlightEntry({
     mediaUrl,
     extra: extra || {},
     trigger,
+    megadetectorVerify,
   };
 }
 
