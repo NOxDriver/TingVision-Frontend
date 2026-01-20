@@ -146,6 +146,7 @@ export function buildHighlightEntry({
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     mediaUrl,
+    megadetectorVerify: parentDoc?.megadetector_verify || null,
     extra: extra || {},
     trigger,
   };

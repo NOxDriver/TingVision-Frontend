@@ -70,6 +70,7 @@ export default function HighlightsWidget() {
   const accessError = useAuthStore((state) => state.accessError);
   const user = useAuthStore((state) => state.user);
   const editSpeciesInputRef = useRef(null);
+  const highlightCardRefs = useRef(new Map());
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -276,6 +277,22 @@ export default function HighlightsWidget() {
     };
   }, [accessReady, isAdmin, allowedLocationSet, refreshToken]);
 
+  const handleCloseModal = useCallback(() => {
+    const targetId = activeEntry?.parentId || activeEntry?.id;
+    setActiveEntry(null);
+    setModalViewMode('standard');
+    trackButton('highlight_close');
+    if (!targetId) {
+      return;
+    }
+    window.setTimeout(() => {
+      const cardNode = highlightCardRefs.current.get(targetId);
+      if (cardNode) {
+        cardNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 0);
+  }, [activeEntry]);
+
   useEffect(() => {
     if (!activeEntry) {
       return undefined;
@@ -283,8 +300,7 @@ export default function HighlightsWidget() {
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setActiveEntry(null);
-        setModalViewMode('standard');
+        handleCloseModal();
       }
     };
 
@@ -292,7 +308,7 @@ export default function HighlightsWidget() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeEntry]);
+  }, [activeEntry, handleCloseModal]);
 
   const speciesList = useMemo(() => Object.entries(highlights || {}), [highlights]);
   const availableSpecies = useMemo(() => (
@@ -319,6 +335,9 @@ export default function HighlightsWidget() {
     });
 
     return uniqueEntries.filter((entry) => {
+      if (entry?.megadetectorVerify && entry.megadetectorVerify.passed === false) {
+        return false;
+      }
       if (entry.mediaType === 'video') {
         return true;
       }
@@ -341,12 +360,6 @@ export default function HighlightsWidget() {
       category: entry?.category,
       mediaType: entry?.mediaType,
     });
-  };
-
-  const handleCloseModal = () => {
-    setActiveEntry(null);
-    setModalViewMode('standard');
-    trackButton('highlight_close');
   };
 
   const isDebugMode = modalViewMode === 'debug';
@@ -923,7 +936,21 @@ export default function HighlightsWidget() {
                 const isDeleting = deleteStatus.state === 'pending';
 
                 return (
-                  <article className="highlightCard" key={entry.parentId || entry.id}>
+                  <article
+                    className="highlightCard"
+                    key={entry.parentId || entry.id}
+                    ref={(node) => {
+                      const mapKey = entry.parentId || entry.id;
+                      if (!mapKey) {
+                        return;
+                      }
+                      if (node) {
+                        highlightCardRefs.current.set(mapKey, node);
+                      } else {
+                        highlightCardRefs.current.delete(mapKey);
+                      }
+                    }}
+                  >
                     <div className="highlightCard__media">
                       <button
                         type="button"
