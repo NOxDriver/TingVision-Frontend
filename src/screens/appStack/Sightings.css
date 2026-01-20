@@ -545,6 +545,19 @@
   color: var(--color-text-secondary);
 }
 
+.sightingCard__metaNotice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 228, 228, 0.9);
+  color: #b42318;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
 .sightingCard__trigger {
   border: 1px solid rgba(203, 146, 74, 0.35);
   border-radius: 12px;

@@ -314,6 +314,10 @@ export default function HighlightsWidget() {
       if (seenParents.has(parentKey)) {
         return;
       }
+      const megaVerify = entry?.meta?.parentDoc?.megadetector_verify;
+      if (megaVerify && megaVerify.passed === false) {
+        return;
+      }
       seenParents.add(parentKey);
       uniqueEntries.push(entry);
     });

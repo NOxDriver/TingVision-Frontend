@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
-  doc,
   getDoc,
   getDocs,
   limit,
@@ -193,14 +192,6 @@ const isDebugBlockValue = (value) => {
   return typeof value === 'object';
 };
 
-const toDocRef = (path) => {
-  const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
-  if (segments.length < 2 || segments.length % 2 !== 0) {
-    throw new Error('Sighting metadata is missing required references.');
-  }
-  return doc(db, ...segments);
-};
-
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false;
@@ -377,6 +368,9 @@ export default function Sightings() {
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
   const editSpeciesInputRef = useRef(null);
+  const cardRefs = useRef(new Map());
+  const lastClosedSightingIdRef = useRef(null);
+  const refreshScrollTargetRef = useRef(null);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -551,6 +545,7 @@ export default function Sightings() {
           .filter((entry) => !previousIds.has(entry.id))
           .map((entry) => entry.id);
         setNewSightingIds(new Set(nextIds));
+        refreshScrollTargetRef.current = nextIds.length > 0 ? nextIds[nextIds.length - 1] : null;
       }
 
       const nextCursor = snapshot.docs[snapshot.docs.length - 1] || null;
@@ -593,6 +588,37 @@ export default function Sightings() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
+
+  const scrollToSighting = useCallback((sightingId) => {
+    if (!sightingId) {
+      return;
+    }
+    const target = cardRefs.current.get(sightingId);
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSighting) {
+      return;
+    }
+    const targetId = lastClosedSightingIdRef.current;
+    if (!targetId) {
+      return;
+    }
+    lastClosedSightingIdRef.current = null;
+    scrollToSighting(targetId);
+  }, [activeSighting, scrollToSighting]);
+
+  useEffect(() => {
+    const targetId = refreshScrollTargetRef.current;
+    if (!targetId) {
+      return;
+    }
+    refreshScrollTargetRef.current = null;
+    scrollToSighting(targetId);
+  }, [newSightingIds, sightings, scrollToSighting]);
 
   const availableLocations = useMemo(() => {
     const ids = sightings
@@ -755,10 +781,13 @@ export default function Sightings() {
   }, []);
 
   const handleCloseSighting = useCallback(() => {
+    if (activeSighting?.id) {
+      lastClosedSightingIdRef.current = activeSighting.id;
+    }
     setActiveSighting(null);
     setModalViewMode('standard');
     trackButton('sighting_close');
-  }, []);
+  }, [activeSighting]);
 
   const handleNavigateSighting = useCallback((direction) => {
     if (!activeSighting || filteredSightings.length === 0) {
@@ -1790,6 +1819,9 @@ export default function Sightings() {
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
             const parentDoc = entry.meta?.parentDoc || null;
             const speciesDoc = entry.meta?.speciesDoc || null;
+            const megaVerify = parentDoc?.megadetector_verify;
+            const hasMegaVerify = megaVerify && typeof megaVerify === 'object';
+            const isMegaDetectorFailed = hasMegaVerify && megaVerify.passed === false;
             const pickDebugField = (key) => {
               if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
                 return speciesDoc[key];
@@ -1831,6 +1863,13 @@ export default function Sightings() {
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
                 key={entry.id}
+                ref={(node) => {
+                  if (node) {
+                    cardRefs.current.set(entry.id, node);
+                  } else {
+                    cardRefs.current.delete(entry.id);
+                  }
+                }}
               >
                 <div className="sightingCard__media">
                   <button
@@ -1894,6 +1933,9 @@ export default function Sightings() {
                   <div className="sightingCard__meta">
                     {typeof entry.maxConf === 'number' && (
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                    {isMegaDetectorFailed && (
+                      <span className="sightingCard__metaNotice">MegaDetector failed</span>
                     )}
                   </div>
                   {isDebugViewEnabled && entry.trigger && (
