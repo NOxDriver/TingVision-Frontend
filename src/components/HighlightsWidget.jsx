@@ -49,6 +49,14 @@ const formatSpeciesName = (value) => {
 const pickFirstSource = (...sources) =>
   sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const hasMegadetectorFailure = (entry) => {
+  const verify = entry?.megadetectorVerify;
+  if (!verify || typeof verify !== 'object') {
+    return false;
+  }
+  return verify.passed === false;
+};
+
 export default function HighlightsWidget() {
   const [highlights, setHighlights] = useState({});
   const [loading, setLoading] = useState(false);
@@ -319,6 +327,9 @@ export default function HighlightsWidget() {
     });
 
     return uniqueEntries.filter((entry) => {
+      if (hasMegadetectorFailure(entry)) {
+        return false;
+      }
       if (entry.mediaType === 'video') {
         return true;
       }

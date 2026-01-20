@@ -82,6 +82,23 @@ const formatTimestampLabel = (value) => {
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
 
+const normalizeMegadetectorVerify = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  return value;
+};
+
+const resolveMegadetectorVerify = (...sources) => {
+  for (const source of sources) {
+    const normalized = normalizeMegadetectorVerify(source);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+};
+
 const normalizeNumericValue = (value) => {
   if (typeof value === 'number' && !Number.isNaN(value)) {
     return value;
@@ -377,6 +394,7 @@ export default function Sightings() {
   const user = useAuthStore((state) => state.user);
   const speciesMenuRef = useRef(null);
   const editSpeciesInputRef = useRef(null);
+  const pendingRefreshScrollRef = useRef(false);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -755,10 +773,23 @@ export default function Sightings() {
   }, []);
 
   const handleCloseSighting = useCallback(() => {
+    const targetId = activeSighting?.id;
     setActiveSighting(null);
     setModalViewMode('standard');
     trackButton('sighting_close');
-  }, []);
+
+    if (targetId && typeof document !== 'undefined') {
+      const escapedId = typeof window !== 'undefined' && window.CSS?.escape
+        ? window.CSS.escape(targetId)
+        : targetId.replace(/"/g, '\\"');
+      window.requestAnimationFrame(() => {
+        const target = document.querySelector(`[data-sighting-id="${escapedId}"]`);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    }
+  }, [activeSighting]);
 
   const handleNavigateSighting = useCallback((direction) => {
     if (!activeSighting || filteredSightings.length === 0) {
@@ -857,6 +888,33 @@ export default function Sightings() {
     }
     setIsHdEnabled(false);
   }, [activeSighting]);
+
+  useEffect(() => {
+    if (!pendingRefreshScrollRef.current) {
+      return;
+    }
+
+    if (newSightingIds.size === 0) {
+      pendingRefreshScrollRef.current = false;
+      return;
+    }
+
+    const listToCheck = filteredSightings.length > 0 ? filteredSightings : sightings;
+    const oldestNew = [...listToCheck].reverse().find((entry) => newSightingIds.has(entry.id));
+    if (oldestNew && typeof document !== 'undefined') {
+      const escapedId = typeof window !== 'undefined' && window.CSS?.escape
+        ? window.CSS.escape(oldestNew.id)
+        : oldestNew.id.replace(/"/g, '\\"');
+      window.requestAnimationFrame(() => {
+        const target = document.querySelector(`[data-sighting-id="${escapedId}"]`);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    }
+
+    pendingRefreshScrollRef.current = false;
+  }, [filteredSightings, newSightingIds, sightings]);
 
   const handleLocationFilterChange = (event) => {
     const nextValue = event.target.value;
@@ -1702,6 +1760,7 @@ export default function Sightings() {
               className="sightingsPage__refresh"
               onClick={() => {
                 trackButton('sightings_refresh');
+                pendingRefreshScrollRef.current = true;
                 loadSightings({ pageIndex: currentPage, highlightNew: true });
               }}
               disabled={loading || paginationLoading}
@@ -1816,6 +1875,7 @@ export default function Sightings() {
               { key: 'locationId', value: pickDebugField('locationId') || entry.locationId },
               { key: 'mediaType', value: pickDebugField('mediaType') || entry.mediaType },
               { key: 'mediaUrl', value: pickDebugField('mediaUrl') || entry.mediaUrl },
+              { key: 'megadetector_verify', value: pickDebugField('megadetector_verify') },
               { key: 'previewUrl', value: pickDebugField('previewUrl') || entry.previewUrl },
               { key: 'primarySpecies', value: pickDebugField('primarySpecies') },
               { key: 'reviewNotes', value: pickDebugField('reviewNotes') },
@@ -1827,10 +1887,19 @@ export default function Sightings() {
               { key: 'trigger', value: pickDebugField('trigger') },
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
+            const megadetectorVerify = resolveMegadetectorVerify(
+              entry.megadetectorVerify,
+              pickDebugField('megadetector_verify'),
+            );
+            const isMegadetectorFailed = Boolean(megadetectorVerify && megadetectorVerify.passed === false);
+            const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
+              ? megadetectorVerify.reason.replace(/_/g, ' ')
+              : '';
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
                 key={entry.id}
+                data-sighting-id={entry.id}
               >
                 <div className="sightingCard__media">
                   <button
@@ -1894,6 +1963,11 @@ export default function Sightings() {
                   <div className="sightingCard__meta">
                     {typeof entry.maxConf === 'number' && (
                       <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                    {isMegadetectorFailed && (
+                      <span className="sightingCard__megadetector">
+                        Mega detector failed{megadetectorReason ? ` (${megadetectorReason})` : ''}
+                      </span>
                     )}
                   </div>
                   {isDebugViewEnabled && entry.trigger && (
