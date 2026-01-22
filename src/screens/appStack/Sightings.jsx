@@ -805,6 +805,7 @@ export default function Sightings() {
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
+  const [isAnimalBoxesEnabled, setIsAnimalBoxesEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -2082,6 +2083,17 @@ export default function Sightings() {
                   <span>Debug view</span>
                 </label>
               </div>
+              <div className="sightingsPage__field sightingsPage__field--checkbox">
+                <label className="sightingsPage__checkboxLabel" htmlFor="animalBoxesToggle">
+                  <input
+                    id="animalBoxesToggle"
+                    type="checkbox"
+                    checked={isAnimalBoxesEnabled}
+                    onChange={(event) => setIsAnimalBoxesEnabled(event.target.checked)}
+                  />
+                  <span>Animal Boxes</span>
+                </label>
+              </div>
               <div className="sightingsPage__filter">
                 <label htmlFor="confidenceFilter">Confidence ≥ {confidencePercentage}%</label>
                 <input
@@ -2307,7 +2319,8 @@ export default function Sightings() {
             const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
               ? megadetectorVerify.reason.replace(/_/g, ' ')
               : '';
-            const shouldShowDebugOverlay = isDebugViewEnabled && debugBoxes.length > 0;
+            const shouldShowDebugOverlay = (isDebugViewEnabled || isAnimalBoxesEnabled)
+              && debugBoxes.length > 0;
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
