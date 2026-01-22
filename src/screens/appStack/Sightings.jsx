@@ -210,6 +210,158 @@ const isDebugBlockValue = (value) => {
   return typeof value === 'object';
 };
 
+const normalizeBoxCoordinate = (value) =>
+  typeof value === 'number' && !Number.isNaN(value) ? value : null;
+
+const normalizeBox = (rawBox, frameSize) => {
+  if (!rawBox || typeof rawBox !== 'object') {
+    return null;
+  }
+
+  let left = null;
+  let top = null;
+  let width = null;
+  let height = null;
+
+  if (Array.isArray(rawBox) && rawBox.length >= 4) {
+    [left, top, width, height] = rawBox;
+  } else if (Array.isArray(rawBox.bbox) && rawBox.bbox.length >= 4) {
+    [left, top, width, height] = rawBox.bbox;
+  } else if (Array.isArray(rawBox.box) && rawBox.box.length >= 4) {
+    [left, top, width, height] = rawBox.box;
+  } else if (rawBox.xmin !== undefined && rawBox.xmax !== undefined && rawBox.ymin !== undefined && rawBox.ymax !== undefined) {
+    left = rawBox.xmin;
+    top = rawBox.ymin;
+    width = rawBox.xmax - rawBox.xmin;
+    height = rawBox.ymax - rawBox.ymin;
+  } else if (rawBox.x !== undefined && rawBox.y !== undefined && rawBox.w !== undefined && rawBox.h !== undefined) {
+    left = rawBox.x;
+    top = rawBox.y;
+    width = rawBox.w;
+    height = rawBox.h;
+  } else if (rawBox.left !== undefined && rawBox.top !== undefined && rawBox.width !== undefined && rawBox.height !== undefined) {
+    left = rawBox.left;
+    top = rawBox.top;
+    width = rawBox.width;
+    height = rawBox.height;
+  }
+
+  left = normalizeBoxCoordinate(left);
+  top = normalizeBoxCoordinate(top);
+  width = normalizeBoxCoordinate(width);
+  height = normalizeBoxCoordinate(height);
+
+  if ([left, top, width, height].some((value) => value === null)) {
+    return null;
+  }
+
+  const hasFrame = frameSize && frameSize.width && frameSize.height;
+  const looksNormalized = [left, top, width, height].every((value) => value >= 0 && value <= 1);
+
+  if (!looksNormalized && hasFrame) {
+    left /= frameSize.width;
+    width /= frameSize.width;
+    top /= frameSize.height;
+    height /= frameSize.height;
+  } else if (!looksNormalized && !hasFrame) {
+    const looksPercent = [left, top, width, height].every((value) => value >= 0 && value <= 100);
+    if (looksPercent) {
+      left /= 100;
+      top /= 100;
+      width /= 100;
+      height /= 100;
+    }
+  }
+
+  if ([left, top, width, height].some((value) => Number.isNaN(value) || !Number.isFinite(value))) {
+    return null;
+  }
+
+  const clamp = (value) => Math.min(Math.max(value, 0), 1);
+  const labelParts = [];
+  const labelValue = rawBox.label ?? rawBox.category ?? rawBox.class ?? rawBox.entity;
+  if (typeof labelValue === 'string' && labelValue.trim()) {
+    labelParts.push(labelValue.trim());
+  } else if (typeof labelValue === 'number' && !Number.isNaN(labelValue)) {
+    labelParts.push(`Class ${labelValue}`);
+  }
+
+  const confidence = normalizeNumericValue(
+    rawBox.conf ?? rawBox.confidence ?? rawBox.score ?? rawBox.prob ?? rawBox.p,
+  );
+  if (confidence !== null) {
+    const percent = confidence <= 1 ? confidence * 100 : confidence;
+    labelParts.push(`${percent.toFixed(1)}%`);
+  }
+
+  return {
+    left: clamp(left) * 100,
+    top: clamp(top) * 100,
+    width: clamp(width) * 100,
+    height: clamp(height) * 100,
+    label: labelParts.length > 0 ? labelParts.join(' • ') : null,
+  };
+};
+
+const collectBoundingBoxes = (rawSources = [], frameSize = null) => {
+  const flattened = rawSources.flatMap((source) => (Array.isArray(source) ? source : []));
+  return flattened
+    .map((box) => normalizeBox(box, frameSize))
+    .filter(Boolean);
+};
+
+const getBoundingBoxesForEntry = (entry) => {
+  if (!entry) {
+    return [];
+  }
+
+  const speciesDoc = entry?.meta?.speciesDoc || null;
+  const parentDoc = entry?.meta?.parentDoc || null;
+  const frameW = normalizeNumericValue(speciesDoc?.frameW ?? parentDoc?.frameW);
+  const frameH = normalizeNumericValue(speciesDoc?.frameH ?? parentDoc?.frameH);
+  const frameSize = frameW && frameH ? { width: frameW, height: frameH } : null;
+  const megadetectorVerify = resolveMegadetectorVerify(
+    entry?.megadetectorVerify,
+    parentDoc?.megadetector_verify,
+    speciesDoc?.megadetector_verify,
+  );
+
+  const rawSources = [
+    speciesDoc?.topBoxes,
+    speciesDoc?.boxes,
+    speciesDoc?.bboxes,
+    parentDoc?.topBoxes,
+    parentDoc?.boxes,
+    parentDoc?.bboxes,
+    megadetectorVerify?.detections,
+    megadetectorVerify?.boxes,
+    megadetectorVerify?.bboxes,
+    megadetectorVerify?.topBoxes,
+  ];
+
+  return collectBoundingBoxes(rawSources, frameSize);
+};
+
+const BoundingBoxMedia = ({ src, alt, boxes, className = '' }) => (
+  <div className={`boundingBoxMedia ${className}`.trim()}>
+    <img src={src} alt={alt} />
+    {boxes.map((box, index) => (
+      <div
+        key={`${box.left}-${box.top}-${index}`}
+        className="boundingBoxMedia__box"
+        style={{
+          left: `${box.left}%`,
+          top: `${box.top}%`,
+          width: `${box.width}%`,
+          height: `${box.height}%`,
+        }}
+      >
+        {box.label && <span className="boundingBoxMedia__label">{box.label}</span>}
+      </div>
+    ))}
+  </div>
+);
+
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
   if (segments.length < 2 || segments.length % 2 !== 0) {
@@ -1572,6 +1724,7 @@ export default function Sightings() {
     const isUsingDebugAsset = useDebugMedia
       && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
         || (selectedImageSrc && selectedImageSrc === debugImageSrc));
+    const debugBoxes = isUsingDebugAsset ? getBoundingBoxesForEntry(activeSighting) : [];
 
     if (prefersVideo && selectedVideoSrc) {
       return (
@@ -1588,6 +1741,16 @@ export default function Sightings() {
 
     if (selectedImageSrc) {
       const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      if (isUsingDebugAsset && debugBoxes.length > 0) {
+        return (
+          <BoundingBoxMedia
+            className="sightingModal__mediaImage"
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
+            boxes={debugBoxes}
+          />
+        );
+      }
       return (
         <img
           key={`img-${modalViewMode}-${selectedImageSrc}`}
@@ -1895,6 +2058,7 @@ export default function Sightings() {
             const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
               ? megadetectorVerify.reason.replace(/_/g, ' ')
               : '';
+            const debugBoxes = getBoundingBoxesForEntry(entry);
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
@@ -2069,10 +2233,18 @@ export default function Sightings() {
                       </div>
                       {debugImageSrc && (
                         <div className="sightingCard__debugMedia">
-                          <img
-                            src={debugImageSrc}
-                            alt={`${entry.species} debug bounding preview`}
-                          />
+                          {debugBoxes.length > 0 ? (
+                            <BoundingBoxMedia
+                              src={debugImageSrc}
+                              alt={`${entry.species} debug bounding preview`}
+                              boxes={debugBoxes}
+                            />
+                          ) : (
+                            <img
+                              src={debugImageSrc}
+                              alt={`${entry.species} debug bounding preview`}
+                            />
+                          )}
                         </div>
                       )}
                     </div>
