@@ -197,6 +197,196 @@ const formatDebugValue = (value) => {
   }
 };
 
+const extractNumericValue = (value) => (typeof value === 'number' && !Number.isNaN(value) ? value : null);
+
+const buildBoxFromBounds = (minX, minY, maxX, maxY) => {
+  const x1 = extractNumericValue(minX);
+  const y1 = extractNumericValue(minY);
+  const x2 = extractNumericValue(maxX);
+  const y2 = extractNumericValue(maxY);
+  if (x1 === null || y1 === null || x2 === null || y2 === null) {
+    return null;
+  }
+  return {
+    x: x1,
+    y: y1,
+    w: x2 - x1,
+    h: y2 - y1,
+  };
+};
+
+const normalizeBoundingBox = (rawBox) => {
+  if (!rawBox || typeof rawBox !== 'object') {
+    return null;
+  }
+
+  if (Array.isArray(rawBox)) {
+    const [x, y, w, h] = rawBox;
+    const xVal = extractNumericValue(x);
+    const yVal = extractNumericValue(y);
+    const wVal = extractNumericValue(w);
+    const hVal = extractNumericValue(h);
+    if (xVal === null || yVal === null || wVal === null || hVal === null) {
+      return null;
+    }
+    return { x: xVal, y: yVal, w: wVal, h: hVal };
+  }
+
+  if (Array.isArray(rawBox.bbox)) {
+    return normalizeBoundingBox(rawBox.bbox);
+  }
+
+  if (rawBox.bbox && typeof rawBox.bbox === 'object') {
+    const { x, y, w, h, width, height } = rawBox.bbox;
+    const xVal = extractNumericValue(x);
+    const yVal = extractNumericValue(y);
+    const wVal = extractNumericValue(w ?? width);
+    const hVal = extractNumericValue(h ?? height);
+    if (xVal !== null && yVal !== null && wVal !== null && hVal !== null) {
+      return { x: xVal, y: yVal, w: wVal, h: hVal };
+    }
+    const { xmin, ymin, xmax, ymax } = rawBox.bbox;
+    const boundsBox = buildBoxFromBounds(xmin, ymin, xmax, ymax);
+    if (boundsBox) {
+      return boundsBox;
+    }
+  }
+
+  if (
+    rawBox.xmin !== undefined
+    || rawBox.ymin !== undefined
+    || rawBox.xmax !== undefined
+    || rawBox.ymax !== undefined
+  ) {
+    return buildBoxFromBounds(rawBox.xmin, rawBox.ymin, rawBox.xmax, rawBox.ymax);
+  }
+
+  if (
+    rawBox.left !== undefined
+    || rawBox.top !== undefined
+    || rawBox.right !== undefined
+    || rawBox.bottom !== undefined
+  ) {
+    return buildBoxFromBounds(rawBox.left, rawBox.top, rawBox.right, rawBox.bottom);
+  }
+
+  const xVal = extractNumericValue(rawBox.x);
+  const yVal = extractNumericValue(rawBox.y);
+  const wVal = extractNumericValue(rawBox.w ?? rawBox.width);
+  const hVal = extractNumericValue(rawBox.h ?? rawBox.height);
+  if (xVal !== null && yVal !== null && wVal !== null && hVal !== null) {
+    return { x: xVal, y: yVal, w: wVal, h: hVal };
+  }
+
+  return null;
+};
+
+const extractBoundingBoxes = (meta) => {
+  const candidates = [
+    meta?.speciesDoc?.topBoxes,
+    meta?.parentDoc?.topBoxes,
+    meta?.speciesDoc?.boxes,
+    meta?.parentDoc?.boxes,
+    meta?.speciesDoc?.bboxes,
+    meta?.parentDoc?.bboxes,
+  ];
+
+  const rawBoxes = candidates.find((value) => Array.isArray(value) && value.length > 0);
+  if (!rawBoxes) {
+    return [];
+  }
+
+  return rawBoxes
+    .map((box) => normalizeBoundingBox(box))
+    .filter((box) => box && box.w > 0 && box.h > 0);
+};
+
+const resolveFrameDimensions = (meta) => {
+  const frameW = extractNumericValue(meta?.speciesDoc?.frameW ?? meta?.parentDoc?.frameW);
+  const frameH = extractNumericValue(meta?.speciesDoc?.frameH ?? meta?.parentDoc?.frameH);
+  if (frameW && frameH) {
+    return { width: frameW, height: frameH };
+  }
+  return null;
+};
+
+const normalizeBoxesForFrame = (boxes, frameWidth, frameHeight) => {
+  if (!frameWidth || !frameHeight) {
+    return boxes;
+  }
+  return boxes.map((box) => {
+    const values = [box.x, box.y, box.w, box.h];
+    const isNormalized = values.every((value) => value >= 0 && value <= 1.5);
+    if (!isNormalized) {
+      return box;
+    }
+    return {
+      ...box,
+      x: box.x * frameWidth,
+      y: box.y * frameHeight,
+      w: box.w * frameWidth,
+      h: box.h * frameHeight,
+    };
+  });
+};
+
+const DebugBoundingPreview = ({
+  src,
+  alt,
+  boxes,
+  frame,
+  className = '',
+}) => {
+  const [naturalSize, setNaturalSize] = useState(null);
+
+  const handleImageLoad = (event) => {
+    if (!event?.target) {
+      return;
+    }
+    const { naturalWidth, naturalHeight } = event.target;
+    if (naturalWidth && naturalHeight) {
+      setNaturalSize({ width: naturalWidth, height: naturalHeight });
+    }
+  };
+
+  const baseWidth = frame?.width || naturalSize?.width || null;
+  const baseHeight = frame?.height || naturalSize?.height || null;
+  const normalizedBoxes = useMemo(() => {
+    if (!Array.isArray(boxes) || boxes.length === 0) {
+      return [];
+    }
+    if (!baseWidth || !baseHeight) {
+      return [];
+    }
+    const scaled = normalizeBoxesForFrame(boxes, baseWidth, baseHeight);
+    return scaled.filter((box) => box.w > 0 && box.h > 0);
+  }, [boxes, baseWidth, baseHeight]);
+
+  return (
+    <div className={`sightingBoundingPreview ${className}`.trim()}>
+      <img src={src} alt={alt} onLoad={handleImageLoad} />
+      {normalizedBoxes.length > 0 && baseWidth && baseHeight && (
+        <svg
+          className="sightingBoundingPreview__overlay"
+          viewBox={`0 0 ${baseWidth} ${baseHeight}`}
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden="true"
+        >
+          {normalizedBoxes.map((box, index) => (
+            <rect
+              key={`${box.x}-${box.y}-${box.w}-${box.h}-${index}`}
+              x={box.x}
+              y={box.y}
+              width={box.w}
+              height={box.h}
+            />
+          ))}
+        </svg>
+      )}
+    </div>
+  );
+};
+
 const isDebugBlockValue = (value) => {
   if (value === null || value === undefined) {
     return false;
@@ -1572,6 +1762,9 @@ export default function Sightings() {
     const isUsingDebugAsset = useDebugMedia
       && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
         || (selectedImageSrc && selectedImageSrc === debugImageSrc));
+    const debugBoundingBoxes = extractBoundingBoxes(activeSighting.meta);
+    const debugFrame = resolveFrameDimensions(activeSighting.meta);
+    const shouldShowDebugOverlay = isDebugMode && isUsingDebugAsset && debugBoundingBoxes.length > 0;
 
     if (prefersVideo && selectedVideoSrc) {
       return (
@@ -1588,6 +1781,18 @@ export default function Sightings() {
 
     if (selectedImageSrc) {
       const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      if (shouldShowDebugOverlay) {
+        return (
+          <DebugBoundingPreview
+            key={`img-${modalViewMode}-${selectedImageSrc}`}
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
+            boxes={debugBoundingBoxes}
+            frame={debugFrame}
+            className="sightingBoundingPreview--modal"
+          />
+        );
+      }
       return (
         <img
           key={`img-${modalViewMode}-${selectedImageSrc}`}
@@ -1847,6 +2052,8 @@ export default function Sightings() {
             const debugMediaSrc = entry.debugUrl || null;
             const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+            const debugBoundingBoxes = extractBoundingBoxes(entry.meta);
+            const debugFrame = resolveFrameDimensions(entry.meta);
             const parentDoc = entry.meta?.parentDoc || null;
             const speciesDoc = entry.meta?.speciesDoc || null;
             const pickDebugField = (key) => {
@@ -2069,9 +2276,11 @@ export default function Sightings() {
                       </div>
                       {debugImageSrc && (
                         <div className="sightingCard__debugMedia">
-                          <img
+                          <DebugBoundingPreview
                             src={debugImageSrc}
                             alt={`${entry.species} debug bounding preview`}
+                            boxes={debugBoundingBoxes}
+                            frame={debugFrame}
                           />
                         </div>
                       )}
