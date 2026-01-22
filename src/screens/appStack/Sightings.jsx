@@ -21,7 +21,6 @@ import {
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
-import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
 import { FiEdit2 } from 'react-icons/fi';
 import {
@@ -87,6 +86,283 @@ const normalizeMegadetectorVerify = (value) => {
     return null;
   }
   return value;
+};
+
+const isFiniteNumber = (value) => typeof value === 'number' && !Number.isNaN(value);
+
+const hashStringToHue = (value) => {
+  if (typeof value !== 'string' || value.length === 0) {
+    return 32;
+  }
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 360;
+  }
+  return hash;
+};
+
+const getSpeciesColor = (label) => {
+  const hue = hashStringToHue(label);
+  return `hsla(${hue}, 78%, 60%, 0.95)`;
+};
+
+const pickEntryDebugValue = (entry, key) => {
+  const speciesDoc = entry?.meta?.speciesDoc;
+  const parentDoc = entry?.meta?.parentDoc;
+  if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
+    return speciesDoc[key];
+  }
+  if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
+    return parentDoc[key];
+  }
+  return null;
+};
+
+const normalizeBoundingBoxes = (rawBoxes, frameW, frameH, source = 'debug') => {
+  if (!Array.isArray(rawBoxes)) {
+    return [];
+  }
+
+  const toPercent = (value, dimension) => {
+    if (!isFiniteNumber(value)) {
+      return null;
+    }
+    if (isFiniteNumber(dimension) && dimension > 0 && value > 1.01) {
+      return (value / dimension) * 100;
+    }
+    if (value <= 1.01) {
+      return value * 100;
+    }
+    return value;
+  };
+
+  return rawBoxes
+    .map((box) => {
+      let x = null;
+      let y = null;
+      let w = null;
+      let h = null;
+
+      if (Array.isArray(box) && box.length >= 4) {
+        [x, y, w, h] = box;
+      } else if (Array.isArray(box?.bbox) && box.bbox.length >= 4) {
+        [x, y, w, h] = box.bbox;
+      } else if (box && typeof box === 'object') {
+        if (isFiniteNumber(box.x) && isFiniteNumber(box.y)) {
+          x = box.x;
+          y = box.y;
+          if (isFiniteNumber(box.w) && isFiniteNumber(box.h)) {
+            w = box.w;
+            h = box.h;
+          } else if (isFiniteNumber(box.width) && isFiniteNumber(box.height)) {
+            w = box.width;
+            h = box.height;
+          }
+        }
+
+        if (x === null && isFiniteNumber(box.left) && isFiniteNumber(box.top)) {
+          if (isFiniteNumber(box.right) && isFiniteNumber(box.bottom)) {
+            x = box.left;
+            y = box.top;
+            w = box.right - box.left;
+            h = box.bottom - box.top;
+          }
+        }
+
+        if (x === null && isFiniteNumber(box.x1) && isFiniteNumber(box.y1)) {
+          if (isFiniteNumber(box.x2) && isFiniteNumber(box.y2)) {
+            x = box.x1;
+            y = box.y1;
+            w = box.x2 - box.x1;
+            h = box.y2 - box.y1;
+          }
+        }
+      }
+
+      if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(w) || !isFiniteNumber(h)) {
+        return null;
+      }
+
+      const left = toPercent(x, frameW);
+      const top = toPercent(y, frameH);
+      const width = toPercent(w, frameW);
+      const height = toPercent(h, frameH);
+
+      if (![left, top, width, height].every(isFiniteNumber)) {
+        return null;
+      }
+
+      const confidence = isFiniteNumber(box?.conf)
+        ? box.conf
+        : (isFiniteNumber(box?.score) ? box.score : null);
+      const label = typeof box?.label === 'string'
+        ? box.label
+        : (typeof box?.species === 'string' ? box.species : null);
+
+      return {
+        left: Math.max(0, Math.min(left, 100)),
+        top: Math.max(0, Math.min(top, 100)),
+        width: Math.max(0, Math.min(width, 100)),
+        height: Math.max(0, Math.min(height, 100)),
+        confidence,
+        label,
+        source,
+      };
+    })
+    .filter(Boolean);
+};
+
+const resolveMegadetectorBoxes = (megadetectorVerify, frameW, frameH) => {
+  if (!megadetectorVerify || typeof megadetectorVerify !== 'object') {
+    return [];
+  }
+
+  const rawBoxes =
+    megadetectorVerify.detections
+    || megadetectorVerify.boxes
+    || megadetectorVerify.bboxes
+    || megadetectorVerify.bbox
+    || null;
+
+  const normalized = normalizeBoundingBoxes(rawBoxes, frameW, frameH, 'megadetector');
+  return normalized.map((box) => ({
+    ...box,
+    label: box.label || 'MegaDetector',
+  }));
+};
+
+const calculateIoU = (boxA, boxB) => {
+  const left = Math.max(boxA.left, boxB.left);
+  const top = Math.max(boxA.top, boxB.top);
+  const right = Math.min(boxA.left + boxA.width, boxB.left + boxB.width);
+  const bottom = Math.min(boxA.top + boxA.height, boxB.top + boxB.height);
+  const intersectionWidth = right - left;
+  const intersectionHeight = bottom - top;
+  if (intersectionWidth <= 0 || intersectionHeight <= 0) {
+    return 0;
+  }
+  const intersectionArea = intersectionWidth * intersectionHeight;
+  const areaA = boxA.width * boxA.height;
+  const areaB = boxB.width * boxB.height;
+  const unionArea = areaA + areaB - intersectionArea;
+  if (unionArea <= 0) {
+    return 0;
+  }
+  return intersectionArea / unionArea;
+};
+
+const resolveEntryDebugBoxes = (entry) => {
+  const frameW = pickEntryDebugValue(entry, 'frameW');
+  const frameH = pickEntryDebugValue(entry, 'frameH');
+  const debugBoxes =
+    pickEntryDebugValue(entry, 'topBoxes')
+    || pickEntryDebugValue(entry, 'boxes')
+    || pickEntryDebugValue(entry, 'bboxes')
+    || entry?.trigger?.topBoxes
+    || entry?.trigger?.boxes
+    || entry?.trigger?.bboxes
+    || null;
+  const megadetectorVerify = resolveMegadetectorVerify(
+    entry?.megadetectorVerify,
+    pickEntryDebugValue(entry, 'megadetector_verify'),
+  );
+  const normalizedDebugBoxes = normalizeBoundingBoxes(debugBoxes, frameW, frameH, 'debug');
+  const normalizedMegaBoxes = resolveMegadetectorBoxes(megadetectorVerify, frameW, frameH);
+  const matchedMegaIndexes = new Set();
+  const adjustedDebugBoxes = normalizedDebugBoxes.map((box) => {
+    let bestIoU = 0;
+    let bestIndex = -1;
+    normalizedMegaBoxes.forEach((megaBox, index) => {
+      const iou = calculateIoU(box, megaBox);
+      if (iou > bestIoU) {
+        bestIoU = iou;
+        bestIndex = index;
+      }
+    });
+    if (bestIoU >= 0.85 && bestIndex >= 0) {
+      matchedMegaIndexes.add(bestIndex);
+      return {
+        ...box,
+        source: 'megadetector',
+        matched: true,
+      };
+    }
+    return box;
+  });
+  const unmatchedMegaBoxes = normalizedMegaBoxes.filter((_, index) => !matchedMegaIndexes.has(index));
+  return [...adjustedDebugBoxes, ...unmatchedMegaBoxes];
+};
+
+const formatConfidenceLabel = (value) => {
+  if (!isFiniteNumber(value)) {
+    return null;
+  }
+  const normalized = value > 1 ? value / 100 : value;
+  return formatPercent(normalized, 1);
+};
+
+const formatBoxLabel = (box, fallbackLabel) => {
+  const parts = [];
+  const trimmedFallback = typeof fallbackLabel === 'string' ? fallbackLabel.trim() : '';
+  if (trimmedFallback) {
+    parts.push(trimmedFallback);
+  }
+  if (typeof box?.label === 'string' && box.label.trim()) {
+    const trimmedLabel = box.label.trim();
+    if (trimmedLabel && trimmedLabel !== trimmedFallback) {
+      parts.push(trimmedLabel);
+    }
+  }
+  const confidence = formatConfidenceLabel(box?.confidence);
+  if (confidence) {
+    parts.push(confidence);
+  }
+  if (parts.length === 0 && box?.source === 'megadetector') {
+    parts.push('MegaDetector');
+  }
+  if (parts.length === 0 && typeof fallbackLabel === 'string' && fallbackLabel.trim()) {
+    parts.push(fallbackLabel.trim());
+  }
+  return parts.length > 0 ? parts.join(' ') : null;
+};
+
+const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
+  const hasBoxes = Array.isArray(boxes) && boxes.length > 0;
+  return (
+    <div className={`debugBoundingImage${hasBoxes ? ' debugBoundingImage--boxed' : ''}`}>
+      <img src={src} alt={alt} className="debugBoundingImage__img" />
+      {hasBoxes && (
+        <div className="debugBoundingImage__boxes">
+          {boxes.map((box, index) => {
+            const label = formatBoxLabel(box, defaultLabel);
+            const speciesLabel = typeof box?.label === 'string' && box.label.trim()
+              ? box.label.trim()
+              : defaultLabel;
+            const borderColor = box.source === 'megadetector'
+              ? 'rgba(56, 189, 248, 0.95)'
+              : getSpeciesColor(speciesLabel);
+            return (
+              <div
+                key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
+                className={`debugBoundingImage__box${
+                  box.source === 'megadetector' ? ' debugBoundingImage__box--megadetector' : ''
+                }`}
+                style={{
+                  left: `${box.left}%`,
+                  top: `${box.top}%`,
+                  width: `${box.width}%`,
+                  height: `${box.height}%`,
+                  '--bbox-color': borderColor,
+                }}
+              >
+                {label && <span className="debugBoundingImage__label">{label}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const resolveMegadetectorVerify = (...sources) => {
@@ -1531,47 +1807,27 @@ export default function Sightings() {
       !prefersVideo ? activeSighting.mediaUrl : null,
       activeSighting.previewUrl,
     );
-    const debugMediaSrc = pickFirstSource(activeSighting.debugUrl);
-    const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-    const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-
-    const hasDebugMedia = Boolean(debugMediaSrc);
-    const useDebugMedia = isDebugMode && hasDebugMedia;
 
     const hasHdImageAlternative = Boolean(hdImageSrc && hdImageSrc !== standardImageSrc);
-    const useHdImage = isHdEnabled && hasHdImageAlternative && !useDebugMedia;
+    const useHdImage = isHdEnabled && hasHdImageAlternative;
     const shouldForceHdVideo = prefersVideo && Boolean(hdVideoSrc);
 
     let selectedVideoSrc = null;
     let selectedImageSrc = null;
 
-    if (useDebugMedia) {
-      selectedVideoSrc = debugVideoSrc || null;
-      selectedImageSrc = debugImageSrc || null;
-    } else {
-      selectedVideoSrc = prefersVideo
-        ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
-        : null;
-      selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
-        || null;
+    selectedVideoSrc = prefersVideo
+      ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
+      : null;
+    selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
+      || null;
 
-      if (prefersVideo && !selectedVideoSrc) {
-        selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
-      }
-
-      if (!prefersVideo && !selectedImageSrc) {
-        selectedImageSrc = (standardImageSrc || hdImageSrc || null);
-      }
-
-      if (!selectedVideoSrc && !selectedImageSrc && hasDebugMedia) {
-        selectedVideoSrc = debugVideoSrc || null;
-        selectedImageSrc = debugImageSrc || null;
-      }
+    if (prefersVideo && !selectedVideoSrc) {
+      selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
     }
 
-    const isUsingDebugAsset = useDebugMedia
-      && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
-        || (selectedImageSrc && selectedImageSrc === debugImageSrc));
+    if (!prefersVideo && !selectedImageSrc) {
+      selectedImageSrc = (standardImageSrc || hdImageSrc || null);
+    }
 
     if (prefersVideo && selectedVideoSrc) {
       return (
@@ -1587,13 +1843,24 @@ export default function Sightings() {
     }
 
     if (selectedImageSrc) {
-      const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      const debugBoxes = isDebugMode ? resolveEntryDebugBoxes(activeSighting) : [];
+      const shouldOverlay = isDebugMode && debugBoxes.length > 0;
       return (
-        <img
-          key={`img-${modalViewMode}-${selectedImageSrc}`}
-          src={selectedImageSrc}
-          alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
-        />
+        shouldOverlay ? (
+          <DebugBoundingImage
+            key={`img-${modalViewMode}-${selectedImageSrc}`}
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting enlarged`}
+            boxes={debugBoxes}
+            defaultLabel={activeSighting.species}
+          />
+        ) : (
+          <img
+            key={`img-${modalViewMode}-${selectedImageSrc}`}
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting enlarged`}
+          />
+        )
       );
     }
 
@@ -1844,27 +2111,14 @@ export default function Sightings() {
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
             const isNew = newSightingIds.has(entry.id);
-            const debugMediaSrc = entry.debugUrl || null;
-            const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-            const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-            const parentDoc = entry.meta?.parentDoc || null;
-            const speciesDoc = entry.meta?.speciesDoc || null;
-            const pickDebugField = (key) => {
-              if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
-                return speciesDoc[key];
-              }
-              if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
-                return parentDoc[key];
-              }
-              return null;
-            };
+            const pickDebugField = (key) => pickEntryDebugValue(entry, key);
             const debugFields = [
               { key: 'bboxArea', value: pickDebugField('bboxArea') },
               { key: 'centerDist', value: pickDebugField('centerDist') },
               { key: 'conf', value: pickDebugField('conf') },
               { key: 'corrected', value: pickDebugField('corrected') },
               { key: 'createdAt', value: pickDebugField('createdAt') || entry.createdAt },
-              { key: 'debugUrl', value: pickDebugField('debugUrl') || debugMediaSrc },
+              { key: 'debugUrl', value: pickDebugField('debugUrl') },
               { key: 'deletedAt', value: pickDebugField('deletedAt') },
               { key: 'deletedBy', value: pickDebugField('deletedBy') },
               { key: 'entityKinds', value: pickDebugField('entityKinds') },
@@ -1887,6 +2141,7 @@ export default function Sightings() {
               { key: 'trigger', value: pickDebugField('trigger') },
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
+            const debugBoxes = resolveEntryDebugBoxes(entry);
             const megadetectorVerify = resolveMegadetectorVerify(
               entry.megadetectorVerify,
               pickDebugField('megadetector_verify'),
@@ -1895,6 +2150,7 @@ export default function Sightings() {
             const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
               ? megadetectorVerify.reason.replace(/_/g, ' ')
               : '';
+            const shouldShowDebugOverlay = isDebugViewEnabled && debugBoxes.length > 0;
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
@@ -1910,12 +2166,22 @@ export default function Sightings() {
                   >
                     {(() => {
                       const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
+                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc);
                       const cardImageSrc = pickFirstSource(
                         entry.previewUrl,
                         entry.mediaType !== 'video' ? entry.mediaUrl : null,
-                        debugImageSrc,
                       );
+
+                      if (shouldShowDebugOverlay && cardImageSrc) {
+                        return (
+                          <DebugBoundingImage
+                            src={cardImageSrc}
+                            alt={`${entry.species} debug bounding preview`}
+                            boxes={debugBoxes}
+                            defaultLabel={entry.species}
+                          />
+                        );
+                      }
 
                       if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
                         return (
@@ -2067,14 +2333,6 @@ export default function Sightings() {
                           );
                         })}
                       </div>
-                      {debugImageSrc && (
-                        <div className="sightingCard__debugMedia">
-                          <img
-                            src={debugImageSrc}
-                            alt={`${entry.species} debug bounding preview`}
-                          />
-                        </div>
-                      )}
                     </div>
                   )}
                   <div className="sightingCard__footer">
