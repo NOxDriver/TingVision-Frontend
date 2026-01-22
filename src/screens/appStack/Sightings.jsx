@@ -89,6 +89,162 @@ const normalizeMegadetectorVerify = (value) => {
   return value;
 };
 
+const isFiniteNumber = (value) => typeof value === 'number' && !Number.isNaN(value);
+
+const pickEntryDebugValue = (entry, key) => {
+  const speciesDoc = entry?.meta?.speciesDoc;
+  const parentDoc = entry?.meta?.parentDoc;
+  if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
+    return speciesDoc[key];
+  }
+  if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
+    return parentDoc[key];
+  }
+  return null;
+};
+
+const normalizeBoundingBoxes = (rawBoxes, frameW, frameH) => {
+  if (!Array.isArray(rawBoxes)) {
+    return [];
+  }
+
+  const toPercent = (value, dimension) => {
+    if (!isFiniteNumber(value)) {
+      return null;
+    }
+    if (isFiniteNumber(dimension) && dimension > 0 && value > 1.01) {
+      return (value / dimension) * 100;
+    }
+    if (value <= 1.01) {
+      return value * 100;
+    }
+    return value;
+  };
+
+  return rawBoxes
+    .map((box) => {
+      let x = null;
+      let y = null;
+      let w = null;
+      let h = null;
+
+      if (Array.isArray(box) && box.length >= 4) {
+        [x, y, w, h] = box;
+      } else if (Array.isArray(box?.bbox) && box.bbox.length >= 4) {
+        [x, y, w, h] = box.bbox;
+      } else if (box && typeof box === 'object') {
+        if (isFiniteNumber(box.x) && isFiniteNumber(box.y)) {
+          x = box.x;
+          y = box.y;
+          if (isFiniteNumber(box.w) && isFiniteNumber(box.h)) {
+            w = box.w;
+            h = box.h;
+          } else if (isFiniteNumber(box.width) && isFiniteNumber(box.height)) {
+            w = box.width;
+            h = box.height;
+          }
+        }
+
+        if (x === null && isFiniteNumber(box.left) && isFiniteNumber(box.top)) {
+          if (isFiniteNumber(box.right) && isFiniteNumber(box.bottom)) {
+            x = box.left;
+            y = box.top;
+            w = box.right - box.left;
+            h = box.bottom - box.top;
+          }
+        }
+
+        if (x === null && isFiniteNumber(box.x1) && isFiniteNumber(box.y1)) {
+          if (isFiniteNumber(box.x2) && isFiniteNumber(box.y2)) {
+            x = box.x1;
+            y = box.y1;
+            w = box.x2 - box.x1;
+            h = box.y2 - box.y1;
+          }
+        }
+      }
+
+      if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(w) || !isFiniteNumber(h)) {
+        return null;
+      }
+
+      const left = toPercent(x, frameW);
+      const top = toPercent(y, frameH);
+      const width = toPercent(w, frameW);
+      const height = toPercent(h, frameH);
+
+      if (![left, top, width, height].every(isFiniteNumber)) {
+        return null;
+      }
+
+      const confidence = isFiniteNumber(box?.conf)
+        ? box.conf
+        : (isFiniteNumber(box?.score) ? box.score : null);
+
+      return {
+        left: Math.max(0, Math.min(left, 100)),
+        top: Math.max(0, Math.min(top, 100)),
+        width: Math.max(0, Math.min(width, 100)),
+        height: Math.max(0, Math.min(height, 100)),
+        confidence,
+      };
+    })
+    .filter(Boolean);
+};
+
+const resolveEntryDebugBoxes = (entry) => {
+  const frameW = pickEntryDebugValue(entry, 'frameW');
+  const frameH = pickEntryDebugValue(entry, 'frameH');
+  const rawBoxes =
+    pickEntryDebugValue(entry, 'topBoxes')
+    || pickEntryDebugValue(entry, 'boxes')
+    || pickEntryDebugValue(entry, 'bboxes')
+    || entry?.trigger?.topBoxes
+    || entry?.trigger?.boxes
+    || entry?.trigger?.bboxes
+    || null;
+
+  return normalizeBoundingBoxes(rawBoxes, frameW, frameH);
+};
+
+const formatConfidenceLabel = (value) => {
+  if (!isFiniteNumber(value)) {
+    return null;
+  }
+  const normalized = value > 1 ? value / 100 : value;
+  return formatPercent(normalized, 1);
+};
+
+const DebugBoundingImage = ({ src, alt, boxes }) => {
+  const hasBoxes = Array.isArray(boxes) && boxes.length > 0;
+  return (
+    <div className={`debugBoundingImage${hasBoxes ? ' debugBoundingImage--boxed' : ''}`}>
+      <img src={src} alt={alt} className="debugBoundingImage__img" />
+      {hasBoxes && (
+        <div className="debugBoundingImage__boxes">
+          {boxes.map((box, index) => {
+            const label = formatConfidenceLabel(box.confidence);
+            return (
+              <div
+                key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
+                className="debugBoundingImage__box"
+                style={{
+                  left: `${box.left}%`,
+                  top: `${box.top}%`,
+                  width: `${box.width}%`,
+                  height: `${box.height}%`,
+                }}
+              >
+                {label && <span className="debugBoundingImage__label">{label}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const resolveMegadetectorVerify = (...sources) => {
   for (const source of sources) {
     const normalized = normalizeMegadetectorVerify(source);
@@ -1588,12 +1744,25 @@ export default function Sightings() {
 
     if (selectedImageSrc) {
       const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      const debugBoxes = useDebugMedia ? resolveEntryDebugBoxes(activeSighting) : [];
+      const shouldOverlay = useDebugMedia
+        && selectedImageSrc === debugImageSrc
+        && debugBoxes.length > 0;
       return (
-        <img
-          key={`img-${modalViewMode}-${selectedImageSrc}`}
-          src={selectedImageSrc}
-          alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
-        />
+        shouldOverlay ? (
+          <DebugBoundingImage
+            key={`img-${modalViewMode}-${selectedImageSrc}`}
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
+            boxes={debugBoxes}
+          />
+        ) : (
+          <img
+            key={`img-${modalViewMode}-${selectedImageSrc}`}
+            src={selectedImageSrc}
+            alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
+          />
+        )
       );
     }
 
@@ -1847,17 +2016,7 @@ export default function Sightings() {
             const debugMediaSrc = entry.debugUrl || null;
             const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-            const parentDoc = entry.meta?.parentDoc || null;
-            const speciesDoc = entry.meta?.speciesDoc || null;
-            const pickDebugField = (key) => {
-              if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
-                return speciesDoc[key];
-              }
-              if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
-                return parentDoc[key];
-              }
-              return null;
-            };
+            const pickDebugField = (key) => pickEntryDebugValue(entry, key);
             const debugFields = [
               { key: 'bboxArea', value: pickDebugField('bboxArea') },
               { key: 'centerDist', value: pickDebugField('centerDist') },
@@ -1887,6 +2046,7 @@ export default function Sightings() {
               { key: 'trigger', value: pickDebugField('trigger') },
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
+            const debugBoxes = resolveEntryDebugBoxes(entry);
             const megadetectorVerify = resolveMegadetectorVerify(
               entry.megadetectorVerify,
               pickDebugField('megadetector_verify'),
@@ -2069,9 +2229,10 @@ export default function Sightings() {
                       </div>
                       {debugImageSrc && (
                         <div className="sightingCard__debugMedia">
-                          <img
+                          <DebugBoundingImage
                             src={debugImageSrc}
                             alt={`${entry.species} debug bounding preview`}
+                            boxes={debugBoxes}
                           />
                         </div>
                       )}
