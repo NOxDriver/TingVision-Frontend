@@ -722,7 +722,11 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.debugBoundingImage__box--megadetector {
+  border-color: rgba(56, 189, 248, 0.95);
 }
 
 .debugBoundingImage__label {
@@ -731,7 +735,16 @@
   color: #0f172a;
   background: rgba(251, 191, 36, 0.95);
   padding: 2px 6px;
-  border-bottom-right-radius: 6px;
+  border-radius: 6px;
+  position: absolute;
+  top: -1.35rem;
+  left: 0;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.debugBoundingImage__box--megadetector .debugBoundingImage__label {
+  background: rgba(56, 189, 248, 0.95);
 }
 
 .sightingCard__footer {

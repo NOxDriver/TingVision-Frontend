@@ -103,7 +103,7 @@ const pickEntryDebugValue = (entry, key) => {
   return null;
 };
 
-const normalizeBoundingBoxes = (rawBoxes, frameW, frameH) => {
+const normalizeBoundingBoxes = (rawBoxes, frameW, frameH, source = 'debug') => {
   if (!Array.isArray(rawBoxes)) {
     return [];
   }
@@ -180,6 +180,9 @@ const normalizeBoundingBoxes = (rawBoxes, frameW, frameH) => {
       const confidence = isFiniteNumber(box?.conf)
         ? box.conf
         : (isFiniteNumber(box?.score) ? box.score : null);
+      const label = typeof box?.label === 'string'
+        ? box.label
+        : (typeof box?.species === 'string' ? box.species : null);
 
       return {
         left: Math.max(0, Math.min(left, 100)),
@@ -187,15 +190,36 @@ const normalizeBoundingBoxes = (rawBoxes, frameW, frameH) => {
         width: Math.max(0, Math.min(width, 100)),
         height: Math.max(0, Math.min(height, 100)),
         confidence,
+        label,
+        source,
       };
     })
     .filter(Boolean);
 };
 
+const resolveMegadetectorBoxes = (megadetectorVerify, frameW, frameH) => {
+  if (!megadetectorVerify || typeof megadetectorVerify !== 'object') {
+    return [];
+  }
+
+  const rawBoxes =
+    megadetectorVerify.detections
+    || megadetectorVerify.boxes
+    || megadetectorVerify.bboxes
+    || megadetectorVerify.bbox
+    || null;
+
+  const normalized = normalizeBoundingBoxes(rawBoxes, frameW, frameH, 'megadetector');
+  return normalized.map((box) => ({
+    ...box,
+    label: box.label || 'MegaDetector',
+  }));
+};
+
 const resolveEntryDebugBoxes = (entry) => {
   const frameW = pickEntryDebugValue(entry, 'frameW');
   const frameH = pickEntryDebugValue(entry, 'frameH');
-  const rawBoxes =
+  const debugBoxes =
     pickEntryDebugValue(entry, 'topBoxes')
     || pickEntryDebugValue(entry, 'boxes')
     || pickEntryDebugValue(entry, 'bboxes')
@@ -203,8 +227,14 @@ const resolveEntryDebugBoxes = (entry) => {
     || entry?.trigger?.boxes
     || entry?.trigger?.bboxes
     || null;
-
-  return normalizeBoundingBoxes(rawBoxes, frameW, frameH);
+  const megadetectorVerify = resolveMegadetectorVerify(
+    entry?.megadetectorVerify,
+    pickEntryDebugValue(entry, 'megadetector_verify'),
+  );
+  return [
+    ...normalizeBoundingBoxes(debugBoxes, frameW, frameH, 'debug'),
+    ...resolveMegadetectorBoxes(megadetectorVerify, frameW, frameH),
+  ];
 };
 
 const formatConfidenceLabel = (value) => {
@@ -215,7 +245,25 @@ const formatConfidenceLabel = (value) => {
   return formatPercent(normalized, 1);
 };
 
-const DebugBoundingImage = ({ src, alt, boxes }) => {
+const formatBoxLabel = (box, fallbackLabel) => {
+  const parts = [];
+  if (typeof box?.label === 'string' && box.label.trim()) {
+    parts.push(box.label.trim());
+  }
+  const confidence = formatConfidenceLabel(box?.confidence);
+  if (confidence) {
+    parts.push(confidence);
+  }
+  if (parts.length === 0 && box?.source === 'megadetector') {
+    parts.push('MegaDetector');
+  }
+  if (parts.length === 0 && typeof fallbackLabel === 'string' && fallbackLabel.trim()) {
+    parts.push(fallbackLabel.trim());
+  }
+  return parts.length > 0 ? parts.join(' ') : null;
+};
+
+const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
   const hasBoxes = Array.isArray(boxes) && boxes.length > 0;
   return (
     <div className={`debugBoundingImage${hasBoxes ? ' debugBoundingImage--boxed' : ''}`}>
@@ -223,11 +271,13 @@ const DebugBoundingImage = ({ src, alt, boxes }) => {
       {hasBoxes && (
         <div className="debugBoundingImage__boxes">
           {boxes.map((box, index) => {
-            const label = formatConfidenceLabel(box.confidence);
+            const label = formatBoxLabel(box, defaultLabel);
             return (
               <div
                 key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
-                className="debugBoundingImage__box"
+                className={`debugBoundingImage__box${
+                  box.source === 'megadetector' ? ' debugBoundingImage__box--megadetector' : ''
+                }`}
                 style={{
                   left: `${box.left}%`,
                   top: `${box.top}%`,
@@ -1755,6 +1805,7 @@ export default function Sightings() {
             src={selectedImageSrc}
             alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
             boxes={debugBoxes}
+            defaultLabel={activeSighting.species}
           />
         ) : (
           <img
@@ -2055,6 +2106,7 @@ export default function Sightings() {
             const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
               ? megadetectorVerify.reason.replace(/_/g, ' ')
               : '';
+            const shouldShowDebugOverlay = isDebugViewEnabled && debugImageSrc && debugBoxes.length > 0;
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
@@ -2076,6 +2128,17 @@ export default function Sightings() {
                         entry.mediaType !== 'video' ? entry.mediaUrl : null,
                         debugImageSrc,
                       );
+
+                      if (shouldShowDebugOverlay) {
+                        return (
+                          <DebugBoundingImage
+                            src={debugImageSrc}
+                            alt={`${entry.species} debug bounding preview`}
+                            boxes={debugBoxes}
+                            defaultLabel={entry.species}
+                          />
+                        );
+                      }
 
                       if (entry.mediaType === 'video' && cardVideoSrc && !shouldDisableAutoplay) {
                         return (
@@ -2227,15 +2290,6 @@ export default function Sightings() {
                           );
                         })}
                       </div>
-                      {debugImageSrc && (
-                        <div className="sightingCard__debugMedia">
-                          <DebugBoundingImage
-                            src={debugImageSrc}
-                            alt={`${entry.species} debug bounding preview`}
-                            boxes={debugBoxes}
-                          />
-                        </div>
-                      )}
                     </div>
                   )}
                   <div className="sightingCard__footer">
