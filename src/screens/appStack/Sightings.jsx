@@ -2318,8 +2318,21 @@ export default function Sightings() {
               pickDebugField('megadetector_verify'),
             );
             const isMegadetectorFailed = Boolean(megadetectorVerify && megadetectorVerify.passed === false);
-            const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
-              ? megadetectorVerify.reason.replace(/_/g, ' ')
+            const secondaryReason =
+              isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
+                ? megadetectorVerify.reason
+                : '';
+            const secondaryReasonLabel = (() => {
+              if (!secondaryReason) {
+                return '';
+              }
+              if (secondaryReason === 'no_md_detections') {
+                return 'no animals';
+              }
+              return secondaryReason.replace(/_/g, ' ');
+            })();
+            const secondaryVerificationMessage = isMegadetectorFailed
+              ? `Secondary animal identification failed${secondaryReasonLabel ? ` - ${secondaryReasonLabel}` : ''}`
               : '';
             const shouldShowDebugOverlay = (isDebugViewEnabled || isAnimalBoxesEnabled)
               && debugBoxes.length > 0;
@@ -2404,7 +2417,7 @@ export default function Sightings() {
                     )}
                     {isMegadetectorFailed && (
                       <span className="sightingCard__megadetector">
-                        Mega detector failed{megadetectorReason ? ` (${megadetectorReason})` : ''}
+                        {secondaryVerificationMessage}
                       </span>
                     )}
                   </div>
