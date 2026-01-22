@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
   doc,
@@ -328,19 +328,166 @@ const formatBoxLabel = (box, fallbackLabel) => {
 
 const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
   const hasBoxes = Array.isArray(boxes) && boxes.length > 0;
+  const containerRef = useRef(null);
+  const labelRefs = useRef([]);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [labelPositions, setLabelPositions] = useState([]);
+
+  const labeledBoxes = useMemo(() => {
+    if (!hasBoxes) {
+      return [];
+    }
+    return boxes.map((box) => {
+      const label = formatBoxLabel(box, defaultLabel);
+      const speciesLabel = typeof box?.label === 'string' && box.label.trim()
+        ? box.label.trim()
+        : defaultLabel;
+      const borderColor = box.source === 'megadetector'
+        ? 'rgba(56, 189, 248, 0.95)'
+        : getSpeciesColor(speciesLabel);
+      return {
+        box,
+        label,
+        borderColor,
+      };
+    });
+  }, [boxes, defaultLabel, hasBoxes]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+    const updateSize = () => {
+      setContainerSize({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!hasBoxes || !containerSize.width || !containerSize.height) {
+      if (labelPositions.length) {
+        setLabelPositions([]);
+      }
+      return;
+    }
+
+    const margin = 4;
+    const boxRects = labeledBoxes.map(({ box }) => ({
+      left: (box.left / 100) * containerSize.width,
+      top: (box.top / 100) * containerSize.height,
+      width: (box.width / 100) * containerSize.width,
+      height: (box.height / 100) * containerSize.height,
+    }));
+
+    const overlaps = (rect, other) =>
+      rect.left < other.left + other.width
+      && rect.left + rect.width > other.left
+      && rect.top < other.top + other.height
+      && rect.top + rect.height > other.top;
+    const hasOverlap = (rect, others) => {
+      for (const other of others) {
+        if (overlaps(rect, other)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const placedLabels = [];
+    let overflowTop = 0;
+
+    const nextPositions = labeledBoxes.map((entry, index) => {
+      if (!entry.label) {
+        return null;
+      }
+      const labelEl = labelRefs.current[index];
+      const labelWidth = labelEl?.offsetWidth || Math.max(48, entry.label.length * 6.5);
+      const labelHeight = labelEl?.offsetHeight || 18;
+      const boxRect = boxRects[index];
+
+      const candidates = [
+        { left: boxRect.left, top: boxRect.top - labelHeight - margin },
+        { left: boxRect.left + boxRect.width - labelWidth, top: boxRect.top - labelHeight - margin },
+        { left: boxRect.left, top: boxRect.top + boxRect.height + margin },
+        {
+          left: boxRect.left + boxRect.width - labelWidth,
+          top: boxRect.top + boxRect.height + margin,
+        },
+        { left: boxRect.left + boxRect.width + margin, top: boxRect.top },
+        {
+          left: boxRect.left + boxRect.width + margin,
+          top: boxRect.top + boxRect.height - labelHeight,
+        },
+        { left: boxRect.left - labelWidth - margin, top: boxRect.top },
+        {
+          left: boxRect.left - labelWidth - margin,
+          top: boxRect.top + boxRect.height - labelHeight,
+        },
+      ];
+
+      const isClear = (rect) => !hasOverlap(rect, boxRects) && !hasOverlap(rect, placedLabels);
+
+      let chosen = null;
+      for (const candidate of candidates) {
+        const rect = {
+          ...candidate,
+          width: labelWidth,
+          height: labelHeight,
+        };
+        if (isClear(rect)) {
+          chosen = rect;
+          break;
+        }
+      }
+
+      if (!chosen) {
+        let fallbackRect = {
+          left: containerSize.width + margin,
+          top: overflowTop,
+          width: labelWidth,
+          height: labelHeight,
+        };
+        while (hasOverlap(fallbackRect, placedLabels)) {
+          fallbackRect = {
+            ...fallbackRect,
+            top: fallbackRect.top + labelHeight + margin,
+          };
+        }
+        chosen = fallbackRect;
+        overflowTop = chosen.top + labelHeight + margin;
+      }
+
+      placedLabels.push(chosen);
+      return {
+        left: chosen.left - boxRect.left,
+        top: chosen.top - boxRect.top,
+      };
+    });
+
+    const positionKey = JSON.stringify(labelPositions);
+    const nextKey = JSON.stringify(nextPositions);
+    if (positionKey !== nextKey) {
+      setLabelPositions(nextPositions);
+    }
+  }, [containerSize.height, containerSize.width, hasBoxes, labeledBoxes, labelPositions]);
+
   return (
-    <div className={`debugBoundingImage${hasBoxes ? ' debugBoundingImage--boxed' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`debugBoundingImage${hasBoxes ? ' debugBoundingImage--boxed' : ''}`}
+    >
       <img src={src} alt={alt} className="debugBoundingImage__img" />
       {hasBoxes && (
         <div className="debugBoundingImage__boxes">
-          {boxes.map((box, index) => {
-            const label = formatBoxLabel(box, defaultLabel);
-            const speciesLabel = typeof box?.label === 'string' && box.label.trim()
-              ? box.label.trim()
-              : defaultLabel;
-            const borderColor = box.source === 'megadetector'
-              ? 'rgba(56, 189, 248, 0.95)'
-              : getSpeciesColor(speciesLabel);
+          {labeledBoxes.map(({ box, borderColor, label }, index) => {
+            const position = labelPositions[index];
             return (
               <div
                 key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
@@ -355,7 +502,17 @@ const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
                   '--bbox-color': borderColor,
                 }}
               >
-                {label && <span className="debugBoundingImage__label">{label}</span>}
+                {label && (
+                  <span
+                    ref={(node) => {
+                      labelRefs.current[index] = node;
+                    }}
+                    className="debugBoundingImage__label"
+                    style={position ? { left: `${position.left}px`, top: `${position.top}px` } : undefined}
+                  >
+                    {label}
+                  </span>
+                )}
               </div>
             );
           })}
