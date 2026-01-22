@@ -21,7 +21,6 @@ import {
 import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
-import { isLikelyVideoUrl } from '../../utils/media';
 import usePageTitle from '../../hooks/usePageTitle';
 import { FiEdit2 } from 'react-icons/fi';
 import {
@@ -90,6 +89,8 @@ const normalizeMegadetectorVerify = (value) => {
 };
 
 const isFiniteNumber = (value) => typeof value === 'number' && !Number.isNaN(value);
+const OVERLAP_IOU_THRESHOLD = 0.85;
+const MEGADETECTOR_COLOR = '#38bdf8';
 
 const pickEntryDebugValue = (entry, key) => {
   const speciesDoc = entry?.meta?.speciesDoc;
@@ -231,10 +232,31 @@ const resolveEntryDebugBoxes = (entry) => {
     entry?.megadetectorVerify,
     pickEntryDebugValue(entry, 'megadetector_verify'),
   );
-  return [
-    ...normalizeBoundingBoxes(debugBoxes, frameW, frameH, 'debug'),
-    ...resolveMegadetectorBoxes(megadetectorVerify, frameW, frameH),
-  ];
+  const normalizedDebugBoxes = normalizeBoundingBoxes(debugBoxes, frameW, frameH, 'debug');
+  const megadetectorBoxes = resolveMegadetectorBoxes(megadetectorVerify, frameW, frameH);
+
+  const computeIoU = (a, b) => {
+    const xA = Math.max(a.left, b.left);
+    const yA = Math.max(a.top, b.top);
+    const xB = Math.min(a.left + a.width, b.left + b.width);
+    const yB = Math.min(a.top + a.height, b.top + b.height);
+    const intersectionW = Math.max(0, xB - xA);
+    const intersectionH = Math.max(0, yB - yA);
+    const intersectionArea = intersectionW * intersectionH;
+    const areaA = Math.max(0, a.width) * Math.max(0, a.height);
+    const areaB = Math.max(0, b.width) * Math.max(0, b.height);
+    const unionArea = areaA + areaB - intersectionArea;
+    if (unionArea === 0) {
+      return 0;
+    }
+    return intersectionArea / unionArea;
+  };
+
+  const filteredDebugBoxes = normalizedDebugBoxes.filter(
+    (box) => !megadetectorBoxes.some((mdBox) => computeIoU(box, mdBox) >= OVERLAP_IOU_THRESHOLD),
+  );
+
+  return [...filteredDebugBoxes, ...megadetectorBoxes];
 };
 
 const formatConfidenceLabel = (value) => {
@@ -257,10 +279,25 @@ const formatBoxLabel = (box, fallbackLabel) => {
   if (parts.length === 0 && box?.source === 'megadetector') {
     parts.push('MegaDetector');
   }
-  if (parts.length === 0 && typeof fallbackLabel === 'string' && fallbackLabel.trim()) {
-    parts.push(fallbackLabel.trim());
+  if (typeof fallbackLabel === 'string' && fallbackLabel.trim()) {
+    const trimmedFallback = fallbackLabel.trim();
+    if (parts.length === 0) {
+      parts.push(trimmedFallback);
+    } else if (!parts.includes(trimmedFallback) && box?.source === 'megadetector') {
+      parts.push(trimmedFallback);
+    }
   }
   return parts.length > 0 ? parts.join(' ') : null;
+};
+
+const hashLabel = (label) => {
+  if (!label) return 0;
+  return Array.from(label).reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
+};
+
+const getBoxColor = (label) => {
+  const hue = Math.abs(hashLabel(label)) % 360;
+  return `hsl(${hue} 85% 60%)`;
 };
 
 const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
@@ -272,6 +309,9 @@ const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
         <div className="debugBoundingImage__boxes">
           {boxes.map((box, index) => {
             const label = formatBoxLabel(box, defaultLabel);
+            const boxColor = box.source === 'megadetector'
+              ? MEGADETECTOR_COLOR
+              : getBoxColor(box.label || defaultLabel || 'Unknown');
             return (
               <div
                 key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
@@ -283,9 +323,18 @@ const DebugBoundingImage = ({ src, alt, boxes, defaultLabel }) => {
                   top: `${box.top}%`,
                   width: `${box.width}%`,
                   height: `${box.height}%`,
+                  borderColor: boxColor,
+                  boxShadow: `0 0 0 1px rgba(15, 23, 42, 0.6), 0 0 8px ${boxColor}33`,
                 }}
               >
-                {label && <span className="debugBoundingImage__label">{label}</span>}
+                {label && (
+                  <span
+                    className="debugBoundingImage__label"
+                    style={{ background: boxColor }}
+                  >
+                    {label}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -1737,47 +1786,27 @@ export default function Sightings() {
       !prefersVideo ? activeSighting.mediaUrl : null,
       activeSighting.previewUrl,
     );
-    const debugMediaSrc = pickFirstSource(activeSighting.debugUrl);
-    const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-    const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
-
-    const hasDebugMedia = Boolean(debugMediaSrc);
-    const useDebugMedia = isDebugMode && hasDebugMedia;
 
     const hasHdImageAlternative = Boolean(hdImageSrc && hdImageSrc !== standardImageSrc);
-    const useHdImage = isHdEnabled && hasHdImageAlternative && !useDebugMedia;
+    const useHdImage = isHdEnabled && hasHdImageAlternative;
     const shouldForceHdVideo = prefersVideo && Boolean(hdVideoSrc);
 
     let selectedVideoSrc = null;
     let selectedImageSrc = null;
 
-    if (useDebugMedia) {
-      selectedVideoSrc = debugVideoSrc || null;
-      selectedImageSrc = debugImageSrc || null;
-    } else {
-      selectedVideoSrc = prefersVideo
-        ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
-        : null;
-      selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
-        || null;
+    selectedVideoSrc = prefersVideo
+      ? (shouldForceHdVideo ? hdVideoSrc : standardVideoSrc) || null
+      : null;
+    selectedImageSrc = (!prefersVideo ? (useHdImage ? hdImageSrc : standardImageSrc) : null)
+      || null;
 
-      if (prefersVideo && !selectedVideoSrc) {
-        selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
-      }
-
-      if (!prefersVideo && !selectedImageSrc) {
-        selectedImageSrc = (standardImageSrc || hdImageSrc || null);
-      }
-
-      if (!selectedVideoSrc && !selectedImageSrc && hasDebugMedia) {
-        selectedVideoSrc = debugVideoSrc || null;
-        selectedImageSrc = debugImageSrc || null;
-      }
+    if (prefersVideo && !selectedVideoSrc) {
+      selectedVideoSrc = (standardVideoSrc || hdVideoSrc || null);
     }
 
-    const isUsingDebugAsset = useDebugMedia
-      && ((selectedVideoSrc && selectedVideoSrc === debugVideoSrc)
-        || (selectedImageSrc && selectedImageSrc === debugImageSrc));
+    if (!prefersVideo && !selectedImageSrc) {
+      selectedImageSrc = (standardImageSrc || hdImageSrc || null);
+    }
 
     if (prefersVideo && selectedVideoSrc) {
       return (
@@ -1793,11 +1822,9 @@ export default function Sightings() {
     }
 
     if (selectedImageSrc) {
-      const debugLabel = isUsingDebugAsset ? ' debug' : '';
-      const debugBoxes = useDebugMedia ? resolveEntryDebugBoxes(activeSighting) : [];
-      const shouldOverlay = useDebugMedia
-        && selectedImageSrc === debugImageSrc
-        && debugBoxes.length > 0;
+      const debugLabel = isDebugMode ? ' debug' : '';
+      const debugBoxes = isDebugMode ? resolveEntryDebugBoxes(activeSighting) : [];
+      const shouldOverlay = isDebugMode && debugBoxes.length > 0;
       return (
         shouldOverlay ? (
           <DebugBoundingImage
@@ -2064,9 +2091,6 @@ export default function Sightings() {
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
             const isNew = newSightingIds.has(entry.id);
-            const debugMediaSrc = entry.debugUrl || null;
-            const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
-            const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
             const pickDebugField = (key) => pickEntryDebugValue(entry, key);
             const debugFields = [
               { key: 'bboxArea', value: pickDebugField('bboxArea') },
@@ -2074,7 +2098,7 @@ export default function Sightings() {
               { key: 'conf', value: pickDebugField('conf') },
               { key: 'corrected', value: pickDebugField('corrected') },
               { key: 'createdAt', value: pickDebugField('createdAt') || entry.createdAt },
-              { key: 'debugUrl', value: pickDebugField('debugUrl') || debugMediaSrc },
+              { key: 'debugUrl', value: pickDebugField('debugUrl') },
               { key: 'deletedAt', value: pickDebugField('deletedAt') },
               { key: 'deletedBy', value: pickDebugField('deletedBy') },
               { key: 'entityKinds', value: pickDebugField('entityKinds') },
@@ -2106,7 +2130,7 @@ export default function Sightings() {
             const megadetectorReason = isMegadetectorFailed && typeof megadetectorVerify.reason === 'string'
               ? megadetectorVerify.reason.replace(/_/g, ' ')
               : '';
-            const shouldShowDebugOverlay = isDebugViewEnabled && debugImageSrc && debugBoxes.length > 0;
+            const shouldShowDebugOverlay = isDebugViewEnabled && debugBoxes.length > 0;
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
@@ -2122,18 +2146,17 @@ export default function Sightings() {
                   >
                     {(() => {
                       const hdVideoSrc = entry.mediaType === 'video' ? entry.mediaUrl : null;
-                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc, debugVideoSrc);
+                      const cardVideoSrc = pickFirstSource(entry.videoUrl, hdVideoSrc);
                       const cardImageSrc = pickFirstSource(
                         entry.previewUrl,
                         entry.mediaType !== 'video' ? entry.mediaUrl : null,
-                        debugImageSrc,
                       );
 
-                      if (shouldShowDebugOverlay) {
+                      if (shouldShowDebugOverlay && cardImageSrc) {
                         return (
                           <DebugBoundingImage
-                            src={debugImageSrc}
-                            alt={`${entry.species} debug bounding preview`}
+                            src={cardImageSrc}
+                            alt={`${entry.species} sighting`}
                             boxes={debugBoxes}
                             defaultLabel={entry.species}
                           />
@@ -2565,9 +2588,9 @@ export default function Sightings() {
                     const hasHdImageAlternative = Boolean(
                       !prefersVideo && hdImageSrc && hdImageSrc !== standardImageSrc,
                     );
-                    const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
+                    const hasDebugBoxes = resolveEntryDebugBoxes(activeSighting).length > 0;
                     const isDebugMode = modalViewMode === 'debug';
-                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
+                    const shouldShowToggles = hasHdImageAlternative || hasDebugBoxes;
                     return (
                       <div className="sightingModal__controls">
                         {(shouldShowNav || isAdmin) && (
@@ -2627,7 +2650,7 @@ export default function Sightings() {
                                 {isHdEnabled ? 'Standard Quality' : 'View in HD'}
                               </button>
                             )}
-                            {hasDebugMedia && (
+                            {hasDebugBoxes && (
                               <button
                                 type="button"
                                 className={`sightingModal__toggle${isDebugMode ? ' is-active' : ''}`}
