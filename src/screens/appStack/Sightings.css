@@ -691,6 +691,31 @@
   background: rgba(11, 15, 8, 0.65);
 }
 
+.sightingDebugMediaFrame {
+  position: relative;
+  width: 100%;
+}
+
+.sightingDebugMediaFrame--modal {
+  width: auto;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.sightingDebugMediaOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sightingDebugMediaBox {
+  position: absolute;
+  border: 2px solid rgba(255, 140, 26, 0.95);
+  border-radius: 6px;
+  background: rgba(255, 140, 26, 0.12);
+  box-shadow: 0 0 0 1px rgba(6, 28, 46, 0.45);
+}
+
 .sightingCard__footer {
   display: flex;
   justify-content: flex-start;

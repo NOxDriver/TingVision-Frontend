@@ -210,6 +210,153 @@ const isDebugBlockValue = (value) => {
   return typeof value === 'object';
 };
 
+const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const normalizeDebugBoxValue = (value) => {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const normalizeDebugBox = (box) => {
+  if (!box) {
+    return null;
+  }
+
+  if (Array.isArray(box) && box.length >= 4) {
+    return {
+      x: normalizeDebugBoxValue(box[0]),
+      y: normalizeDebugBoxValue(box[1]),
+      w: normalizeDebugBoxValue(box[2]),
+      h: normalizeDebugBoxValue(box[3]),
+    };
+  }
+
+  if (typeof box === 'object') {
+    if (Array.isArray(box.bbox)) {
+      return normalizeDebugBox(box.bbox);
+    }
+
+    const x = normalizeDebugBoxValue(
+      box.x ?? box.left ?? box.xmin ?? box.x_min ?? box.xMin,
+    );
+    const y = normalizeDebugBoxValue(
+      box.y ?? box.top ?? box.ymin ?? box.y_min ?? box.yMin,
+    );
+    const xmax = normalizeDebugBoxValue(box.xmax ?? box.x_max ?? box.xMax);
+    const ymax = normalizeDebugBoxValue(box.ymax ?? box.y_max ?? box.yMax);
+    const w = normalizeDebugBoxValue(box.w ?? box.width);
+    const h = normalizeDebugBoxValue(box.h ?? box.height);
+
+    return {
+      x,
+      y,
+      w: w ?? (x !== null && xmax !== null ? xmax - x : null),
+      h: h ?? (y !== null && ymax !== null ? ymax - y : null),
+    };
+  }
+
+  return null;
+};
+
+const normalizeBoundingBoxes = (boxes, frameW, frameH) => {
+  const list = Array.isArray(boxes) ? boxes : boxes ? [boxes] : [];
+  if (list.length === 0) {
+    return [];
+  }
+
+  const normalizedFrameW = normalizeNumericValue(frameW);
+  const normalizedFrameH = normalizeNumericValue(frameH);
+
+  return list
+    .map((box) => {
+      const normalized = normalizeDebugBox(box);
+      if (!normalized) {
+        return null;
+      }
+
+      let { x, y, w, h } = normalized;
+      if ([x, y, w, h].some((value) => value === null || value === undefined)) {
+        return null;
+      }
+
+      const maxValue = Math.max(x + w, y + h);
+      if (
+        normalizedFrameW
+        && normalizedFrameH
+        && maxValue > 1
+      ) {
+        x /= normalizedFrameW;
+        w /= normalizedFrameW;
+        y /= normalizedFrameH;
+        h /= normalizedFrameH;
+      } else if (maxValue > 1 && maxValue <= 100) {
+        x /= 100;
+        w /= 100;
+        y /= 100;
+        h /= 100;
+      }
+
+      if (![x, y, w, h].every((value) => Number.isFinite(value))) {
+        return null;
+      }
+
+      if (w <= 0 || h <= 0) {
+        return null;
+      }
+
+      return {
+        left: clampNumber(x, 0, 1),
+        top: clampNumber(y, 0, 1),
+        width: clampNumber(w, 0, 1),
+        height: clampNumber(h, 0, 1),
+      };
+    })
+    .filter(Boolean);
+};
+
+const resolveDebugBoxes = (meta) => {
+  const sources = [meta?.speciesDoc, meta?.parentDoc];
+  const keys = [
+    'topBoxes',
+    'top_boxes',
+    'boxes',
+    'bboxes',
+    'bbox',
+    'boundingBoxes',
+    'bounding_boxes',
+    'debugBoxes',
+  ];
+
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') {
+      continue;
+    }
+    for (const key of keys) {
+      if (source[key]) {
+        return source[key];
+      }
+    }
+  }
+  return null;
+};
+
+const resolveDebugFrameValue = (meta, key) => {
+  if (!meta) {
+    return null;
+  }
+  return normalizeNumericValue(meta?.speciesDoc?.[key])
+    ?? normalizeNumericValue(meta?.parentDoc?.[key])
+    ?? null;
+};
+
 const toDocRef = (path) => {
   const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
   if (segments.length < 2 || segments.length % 2 !== 0) {
@@ -217,6 +364,33 @@ const toDocRef = (path) => {
   }
   return doc(db, ...segments);
 };
+
+const DebugImageWithOverlay = ({
+  src,
+  alt,
+  boxes,
+  frameClassName,
+}) => (
+  <div className={`sightingDebugMediaFrame ${frameClassName || ''}`.trim()}>
+    <img src={src} alt={alt} />
+    {boxes.length > 0 && (
+      <div className="sightingDebugMediaOverlay">
+        {boxes.map((box, index) => (
+          <span
+            key={`${src}-${index}`}
+            className="sightingDebugMediaBox"
+            style={{
+              left: `${box.left * 100}%`,
+              top: `${box.top * 100}%`,
+              width: `${box.width * 100}%`,
+              height: `${box.height * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 const getAutoplayDisabledPreference = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -1534,6 +1708,10 @@ export default function Sightings() {
     const debugMediaSrc = pickFirstSource(activeSighting.debugUrl);
     const debugVideoSrc = isLikelyVideoUrl(debugMediaSrc) ? debugMediaSrc : null;
     const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
+    const debugBoxes = resolveDebugBoxes(activeSighting.meta);
+    const debugFrameW = resolveDebugFrameValue(activeSighting.meta, 'frameW');
+    const debugFrameH = resolveDebugFrameValue(activeSighting.meta, 'frameH');
+    const normalizedDebugBoxes = normalizeBoundingBoxes(debugBoxes, debugFrameW, debugFrameH);
 
     const hasDebugMedia = Boolean(debugMediaSrc);
     const useDebugMedia = isDebugMode && hasDebugMedia;
@@ -1588,11 +1766,14 @@ export default function Sightings() {
 
     if (selectedImageSrc) {
       const debugLabel = isUsingDebugAsset ? ' debug' : '';
+      const overlayBoxes = isDebugMode ? normalizedDebugBoxes : [];
       return (
-        <img
+        <DebugImageWithOverlay
           key={`img-${modalViewMode}-${selectedImageSrc}`}
           src={selectedImageSrc}
           alt={`${activeSighting.species} sighting${debugLabel} enlarged`}
+          boxes={overlayBoxes}
+          frameClassName="sightingDebugMediaFrame--modal"
         />
       );
     }
@@ -1849,6 +2030,10 @@ export default function Sightings() {
             const debugImageSrc = !debugVideoSrc ? debugMediaSrc : null;
             const parentDoc = entry.meta?.parentDoc || null;
             const speciesDoc = entry.meta?.speciesDoc || null;
+            const debugBoxes = resolveDebugBoxes(entry.meta);
+            const debugFrameW = resolveDebugFrameValue(entry.meta, 'frameW');
+            const debugFrameH = resolveDebugFrameValue(entry.meta, 'frameH');
+            const normalizedDebugBoxes = normalizeBoundingBoxes(debugBoxes, debugFrameW, debugFrameH);
             const pickDebugField = (key) => {
               if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
                 return speciesDoc[key];
@@ -2069,9 +2254,10 @@ export default function Sightings() {
                       </div>
                       {debugImageSrc && (
                         <div className="sightingCard__debugMedia">
-                          <img
+                          <DebugImageWithOverlay
                             src={debugImageSrc}
                             alt={`${entry.species} debug bounding preview`}
+                            boxes={normalizedDebugBoxes}
                           />
                         </div>
                       )}
