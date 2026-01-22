@@ -2072,17 +2072,19 @@ export default function Sightings() {
               )}
             </div>
             <div className="sightingsPage__filterGroup">
-              <div className="sightingsPage__field sightingsPage__field--checkbox">
-                <label className="sightingsPage__checkboxLabel" htmlFor="debugViewToggle">
-                  <input
-                    id="debugViewToggle"
-                    type="checkbox"
-                    checked={isDebugViewEnabled}
-                    onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
-                  />
-                  <span>Debug view</span>
-                </label>
-              </div>
+              {isAdmin && (
+                <div className="sightingsPage__field sightingsPage__field--checkbox">
+                  <label className="sightingsPage__checkboxLabel" htmlFor="debugViewToggle">
+                    <input
+                      id="debugViewToggle"
+                      type="checkbox"
+                      checked={isDebugViewEnabled}
+                      onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+                    />
+                    <span>Debug view</span>
+                  </label>
+                </div>
+              )}
               <div className="sightingsPage__field sightingsPage__field--checkbox">
                 <label className="sightingsPage__checkboxLabel" htmlFor="animalBoxesToggle">
                   <input
