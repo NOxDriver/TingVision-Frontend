@@ -2001,8 +2001,8 @@ export default function Sightings() {
     }
 
     if (selectedImageSrc) {
-      const debugBoxes = isDebugMode ? resolveEntryDebugBoxes(activeSighting) : [];
-      const shouldOverlay = isDebugMode && debugBoxes.length > 0;
+      const debugBoxes = resolveEntryDebugBoxes(activeSighting);
+      const shouldOverlay = (isDebugMode || isAnimalBoxesEnabled) && debugBoxes.length > 0;
       return (
         shouldOverlay ? (
           <DebugBoundingImage
@@ -2785,6 +2785,8 @@ export default function Sightings() {
                   <div className="sightingModal__media">{renderModalContent()}</div>
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
+                    const debugBoxes = resolveEntryDebugBoxes(activeSighting);
+                    const hasAnimalBoxes = !prefersVideo && debugBoxes.length > 0;
                     const standardImageSrc = pickFirstSource(activeSighting.previewUrl);
                     const hdImageSrc = pickFirstSource(
                       !prefersVideo ? activeSighting.mediaUrl : null,
@@ -2795,7 +2797,7 @@ export default function Sightings() {
                     );
                     const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
                     const isDebugMode = modalViewMode === 'debug';
-                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
+                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia || hasAnimalBoxes;
                     return (
                       <div className="sightingModal__controls">
                         {(shouldShowNav || isAdmin) && (
@@ -2870,6 +2872,15 @@ export default function Sightings() {
                                 }}
                               >
                                 {isDebugMode ? 'Standard View' : 'Debug'}
+                              </button>
+                            )}
+                            {hasAnimalBoxes && (
+                              <button
+                                type="button"
+                                className={`sightingModal__toggle${isAnimalBoxesEnabled ? ' is-active' : ''}`}
+                                onClick={() => setIsAnimalBoxesEnabled((prev) => !prev)}
+                              >
+                                {isAnimalBoxesEnabled ? 'Hide Animal Boxes' : 'Animal Boxes'}
                               </button>
                             )}
                           </div>
