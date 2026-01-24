@@ -2001,8 +2001,8 @@ export default function Sightings() {
     }
 
     if (selectedImageSrc) {
-      const debugBoxes = isDebugMode ? resolveEntryDebugBoxes(activeSighting) : [];
-      const shouldOverlay = isDebugMode && debugBoxes.length > 0;
+      const debugBoxes = resolveEntryDebugBoxes(activeSighting);
+      const shouldOverlay = (isDebugMode || isAnimalBoxesEnabled) && debugBoxes.length > 0;
       return (
         shouldOverlay ? (
           <DebugBoundingImage
@@ -2795,7 +2795,9 @@ export default function Sightings() {
                     );
                     const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
                     const isDebugMode = modalViewMode === 'debug';
-                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia;
+                    const debugBoxes = resolveEntryDebugBoxes(activeSighting);
+                    const hasAnimalBoxes = !prefersVideo && debugBoxes.length > 0;
+                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia || hasAnimalBoxes;
                     return (
                       <div className="sightingModal__controls">
                         {(shouldShowNav || isAdmin) && (
@@ -2870,6 +2872,23 @@ export default function Sightings() {
                                 }}
                               >
                                 {isDebugMode ? 'Standard View' : 'Debug'}
+                              </button>
+                            )}
+                            {hasAnimalBoxes && (
+                              <button
+                                type="button"
+                                className={`sightingModal__toggle${isAnimalBoxesEnabled ? ' is-active' : ''}`}
+                                onClick={() => {
+                                  const nextValue = !isAnimalBoxesEnabled;
+                                  setIsAnimalBoxesEnabled(nextValue);
+                                  trackButton('sighting_toggle_animal_boxes', {
+                                    enabled: nextValue,
+                                    species: activeSighting?.species,
+                                    location: activeSighting?.locationId,
+                                  });
+                                }}
+                              >
+                                {isAnimalBoxesEnabled ? 'Hide Animal Boxes' : 'Animal Boxes'}
                               </button>
                             )}
                           </div>
