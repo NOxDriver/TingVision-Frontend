@@ -2081,7 +2081,7 @@ export default function Sightings() {
                       checked={isDebugViewEnabled}
                       onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
                     />
-                    <span>Debug view</span>
+                    <span>Debug</span>
                   </label>
                 </div>
               )}
@@ -2093,7 +2093,7 @@ export default function Sightings() {
                     checked={isAnimalBoxesEnabled}
                     onChange={(event) => setIsAnimalBoxesEnabled(event.target.checked)}
                   />
-                  <span>Animal Boxes</span>
+                  <span>Boxes</span>
                 </label>
               </div>
               <div className="sightingsPage__filter">
