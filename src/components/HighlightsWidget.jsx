@@ -57,6 +57,100 @@ const hasMegadetectorFailure = (entry) => {
   return verify.passed === false;
 };
 
+const isFiniteNumber = (value) => typeof value === 'number' && !Number.isNaN(value);
+
+const pickEntryBoxValue = (entry, key) => {
+  const speciesDoc = entry?.meta?.speciesDoc;
+  const parentDoc = entry?.meta?.parentDoc;
+  if (speciesDoc && speciesDoc[key] !== undefined && speciesDoc[key] !== null) {
+    return speciesDoc[key];
+  }
+  if (parentDoc && parentDoc[key] !== undefined && parentDoc[key] !== null) {
+    return parentDoc[key];
+  }
+  return null;
+};
+
+const normalizeBoundingBoxes = (rawBoxes, frameW, frameH, source = 'highlight') => {
+  if (!Array.isArray(rawBoxes)) {
+    return [];
+  }
+
+  const toPercent = (value, dimension) => {
+    if (!isFiniteNumber(value)) {
+      return null;
+    }
+    if (isFiniteNumber(dimension) && dimension > 0 && value > 1.01) {
+      return (value / dimension) * 100;
+    }
+    if (value <= 1.01) {
+      return value * 100;
+    }
+    return value;
+  };
+
+  return rawBoxes
+    .map((box) => {
+      if (!box) {
+        return null;
+      }
+
+      const left = toPercent(box.left ?? box.x ?? box[0], frameW);
+      const top = toPercent(box.top ?? box.y ?? box[1], frameH);
+      const width = toPercent(box.width ?? box.w ?? box[2], frameW);
+      const height = toPercent(box.height ?? box.h ?? box[3], frameH);
+
+      if (![left, top, width, height].every(isFiniteNumber)) {
+        return null;
+      }
+
+      const confidence = isFiniteNumber(box.confidence) ? box.confidence : null;
+      const label =
+        typeof box?.label === 'string'
+        ? box.label
+        : (typeof box?.species === 'string' ? box.species : null);
+
+      return {
+        left: Math.max(0, Math.min(left, 100)),
+        top: Math.max(0, Math.min(top, 100)),
+        width: Math.max(0, Math.min(width, 100)),
+        height: Math.max(0, Math.min(height, 100)),
+        confidence,
+        label,
+        source,
+      };
+    })
+    .filter(Boolean);
+};
+
+const BoundingBoxImage = ({ src, alt, boxes }) => {
+  const hasBoxes = Array.isArray(boxes) && boxes.length > 0;
+
+  return (
+    <div className={`highlightBoundingImage${hasBoxes ? ' highlightBoundingImage--boxed' : ''}`}>
+      <img src={src} alt={alt} className="highlightBoundingImage__img" />
+      {hasBoxes && (
+        <div className="highlightBoundingImage__boxes">
+          {boxes.map((box, index) => (
+            <div
+              key={`${box.left}-${box.top}-${box.width}-${box.height}-${index}`}
+              className="highlightBoundingImage__box"
+              style={{
+                left: `${box.left}%`,
+                top: `${box.top}%`,
+                width: `${box.width}%`,
+                height: `${box.height}%`,
+              }}
+            >
+              {box.label && <span className="highlightBoundingImage__label">{box.label}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function HighlightsWidget() {
   const [highlights, setHighlights] = useState({});
   const [loading, setLoading] = useState(false);
@@ -64,6 +158,7 @@ export default function HighlightsWidget() {
   const [activeEntry, setActiveEntry] = useState(null);
   const [modalViewMode, setModalViewMode] = useState('standard');
   const [isHdEnabled, setIsHdEnabled] = useState(false);
+  const [showAnimalBoxes, setShowAnimalBoxes] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
@@ -99,6 +194,10 @@ export default function HighlightsWidget() {
   useEffect(() => {
     setIsHdEnabled(false);
   }, [activeEntry]);
+
+  useEffect(() => {
+    setShowAnimalBoxes(false);
+  }, [activeEntry, modalViewMode]);
 
   const actorName = useMemo(() => {
     if (!user) {
@@ -362,6 +461,26 @@ export default function HighlightsWidget() {
 
   const isDebugMode = modalViewMode === 'debug';
 
+  const highlightBoxes = useMemo(() => {
+    if (!activeEntry) {
+      return [];
+    }
+
+    const frameW = pickEntryBoxValue(activeEntry, 'frameW');
+    const frameH = pickEntryBoxValue(activeEntry, 'frameH');
+    const rawBoxes =
+      pickEntryBoxValue(activeEntry, 'topBoxes')
+      || pickEntryBoxValue(activeEntry, 'boxes')
+      || pickEntryBoxValue(activeEntry, 'bboxes')
+      || activeEntry?.trigger?.topBoxes
+      || activeEntry?.trigger?.boxes
+      || activeEntry?.trigger?.bboxes
+      || null;
+    return normalizeBoundingBoxes(rawBoxes, frameW, frameH);
+  }, [activeEntry]);
+
+  const hasAnimalBoxes = highlightBoxes.length > 0;
+
   const handleToggleModalMode = () => {
     const nextMode = modalViewMode === 'debug' ? 'standard' : 'debug';
     setModalViewMode(nextMode);
@@ -486,6 +605,15 @@ export default function HighlightsWidget() {
     if (displayImage) {
       const isHdImage = displayImage === hdImage && hdImage;
       const hdLabel = isHdImage ? ' HD' : '';
+      if (!isDebugMode && showAnimalBoxes && hasAnimalBoxes) {
+        return (
+          <BoundingBoxImage
+            src={displayImage}
+            alt={`${activeEntry.species} highlight${hdLabel} enlarged`}
+            boxes={highlightBoxes}
+          />
+        );
+      }
       return (
         <img
           key={`image-${modalViewMode}-${displayImage}`}
@@ -1096,6 +1224,15 @@ export default function HighlightsWidget() {
                     }}
                   >
                     {isHdEnabled ? 'Standard Quality' : 'View in HD'}
+                  </button>
+                )}
+                {!isDebugMode && activeEntry?.mediaType !== 'video' && hasAnimalBoxes && (
+                  <button
+                    type="button"
+                    className={`highlightModal__toggle${showAnimalBoxes ? ' is-active' : ''}`}
+                    onClick={() => setShowAnimalBoxes((prev) => !prev)}
+                  >
+                    {showAnimalBoxes ? 'Hide animal boxes' : 'Animal boxes'}
                   </button>
                 )}
                 {hasDebugMedia && (
