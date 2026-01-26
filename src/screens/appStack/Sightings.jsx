@@ -627,6 +627,56 @@ const formatTriggerDecimal = (value) =>
 
 const formatTriggerInteger = (value) => formatTriggerValue(value, { maximumFractionDigits: 0 });
 
+const buildDebugTrigger = (rawTrigger) => {
+  if (!rawTrigger || typeof rawTrigger !== 'object') {
+    return null;
+  }
+
+  const align = rawTrigger.align && typeof rawTrigger.align === 'object'
+    ? {
+      dy_proc: normalizeNumericValue(rawTrigger.align.dy_proc),
+      dx_proc: normalizeNumericValue(rawTrigger.align.dx_proc),
+    }
+    : null;
+
+  const trigger = {
+    blob_count: normalizeNumericValue(rawTrigger.blob_count),
+    area_th: normalizeNumericValue(rawTrigger.area_th),
+    max_blob_small: normalizeNumericValue(rawTrigger.max_blob_small),
+    dwell_n: normalizeNumericValue(rawTrigger.dwell_n),
+    align,
+    motionmask_overlap_th: normalizeNumericValue(rawTrigger.motionmask_overlap_th),
+    fg_frac_small: normalizeNumericValue(rawTrigger.fg_frac_small),
+    net_move_seen_px: normalizeNumericValue(rawTrigger.net_move_seen_px),
+    green_ratio: normalizeNumericValue(rawTrigger.green_ratio),
+  };
+
+  const cleaned = Object.entries(trigger).reduce((acc, [key, value]) => {
+    if (value === null || value === undefined) {
+      return acc;
+    }
+    if (key === 'align' && value && typeof value === 'object') {
+      const alignValues = Object.entries(value).reduce((alignAcc, [alignKey, alignValue]) => {
+        if (alignValue === null || alignValue === undefined) {
+          return alignAcc;
+        }
+        return { ...alignAcc, [alignKey]: alignValue };
+      }, {});
+      if (Object.keys(alignValues).length === 0) {
+        return acc;
+      }
+      return { ...acc, align: alignValues };
+    }
+    return { ...acc, [key]: value };
+  }, {});
+
+  if (Object.keys(cleaned).length === 0) {
+    return null;
+  }
+
+  return cleaned;
+};
+
 const formatDebugValue = (value) => {
   if (value === null || value === undefined) {
     return '—';
@@ -2360,7 +2410,7 @@ export default function Sightings() {
               { key: 'storagePathDebug', value: pickDebugField('storagePathDebug') },
               { key: 'storagePathMedia', value: pickDebugField('storagePathMedia') },
               { key: 'storagePathPreview', value: pickDebugField('storagePathPreview') },
-              { key: 'trigger', value: pickDebugField('trigger') },
+              { key: 'TRIGGER', value: buildDebugTrigger(pickDebugField('trigger')) },
               { key: 'updatedAt', value: pickDebugField('updatedAt') },
             ];
             const fgMaskUrl = pickFirstSource(pickDebugField('fgMaskUrl'), entry.fgMaskUrl);
