@@ -62,7 +62,7 @@ const formatTimestampLabel = (value) => {
   const todayKey = now.toDateString();
   const valueKey = value.toDateString();
   if (valueKey === todayKey) {
-    return `today at ${timeLabel}`;
+    return `Today at ${timeLabel}`;
   }
 
   const yesterday = new Date(now);
