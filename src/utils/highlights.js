@@ -131,6 +131,7 @@ export function buildHighlightEntry({
     || (parentDoc?.mediaType === 'video' ? mediaUrl : null)
     || null;
   const createdAt = normalizeDate(parentDoc?.createdAt);
+  const spottedAt = normalizeDate(parentDoc?.spottedAt || speciesDoc?.spottedAt);
   const meta = CATEGORY_META[category] || {};
   return {
     id: `${parentDoc?.sightingId || parentDoc?.id || parentDoc?.storagePathMedia || ''}::${category}`,
@@ -142,6 +143,7 @@ export function buildHighlightEntry({
     debugUrl,
     locationId: parentDoc?.locationId || 'Unknown location',
     createdAt,
+    spottedAt,
     count: speciesDoc?.count ?? null,
     maxArea: speciesDoc?.maxArea ?? null,
     maxConf: speciesDoc?.maxConf ?? null,
