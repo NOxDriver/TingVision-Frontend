@@ -62,13 +62,13 @@ const formatTimestampLabel = (value) => {
   const todayKey = now.toDateString();
   const valueKey = value.toDateString();
   if (valueKey === todayKey) {
-    return `Today @ ${timeLabel}`;
+    return `today at ${timeLabel}`;
   }
 
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (valueKey === yesterday.toDateString()) {
-    return `Yesterday @ ${timeLabel}`;
+    return `yesterday at ${timeLabel}`;
   }
 
   const dateLabel = formatDate(value);
@@ -76,10 +76,19 @@ const formatTimestampLabel = (value) => {
     return '';
   }
 
-  return `${dateLabel} @ ${timeLabel}`;
+  return `${dateLabel} at ${timeLabel}`;
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const pickCaptureDate = (entry) =>
+  entry?.captureAt instanceof Date && !Number.isNaN(entry.captureAt.getTime())
+    ? entry.captureAt
+    : entry?.spottedAt instanceof Date && !Number.isNaN(entry.spottedAt.getTime())
+      ? entry.spottedAt
+      : entry?.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
+        ? entry.createdAt
+        : null;
 
 const normalizeMegadetectorVerify = (value) => {
   if (!value || typeof value !== 'object') {
@@ -983,8 +992,8 @@ export default function Sightings() {
         })
         .filter(Boolean)
         .sort((a, b) => {
-          const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-          const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+          const aTime = pickCaptureDate(a)?.getTime() || 0;
+          const bTime = pickCaptureDate(b)?.getTime() || 0;
           return bTime - aTime;
         });
 
@@ -1662,10 +1671,7 @@ export default function Sightings() {
         locationId: entry.locationId,
         gcp_url: mediaSource,
         media_url: mediaSource,
-        timestamp:
-          entry.createdAt instanceof Date && !Number.isNaN(entry.createdAt.getTime())
-            ? entry.createdAt.toISOString()
-            : undefined,
+        timestamp: pickCaptureDate(entry)?.toISOString(),
         species: speciesToSend,
         alertStyle,
       };
@@ -2054,6 +2060,8 @@ export default function Sightings() {
     isStatusError = true;
   }
 
+  const activeCaptureAt = pickCaptureDate(activeSighting);
+
   return (
     <div className="sightingsPage">
       <div className="sightingsPage__inner">
@@ -2296,6 +2304,7 @@ export default function Sightings() {
             const isDeleting = deleteStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
             const isNew = newSightingIds.has(entry.id);
+            const captureAt = pickCaptureDate(entry);
             const pickDebugField = (key) => pickEntryDebugValue(entry, key);
             const debugFields = [
               { key: 'bboxArea', value: pickDebugField('bboxArea') },
@@ -2303,6 +2312,8 @@ export default function Sightings() {
               { key: 'conf', value: pickDebugField('conf') },
               { key: 'corrected', value: pickDebugField('corrected') },
               { key: 'createdAt', value: pickDebugField('createdAt') || entry.createdAt },
+              { key: 'spottedAt', value: pickDebugField('spottedAt') || entry.spottedAt },
+              { key: 'captureAt', value: entry.captureAt },
               { key: 'debugUrl', value: pickDebugField('debugUrl') },
               { key: 'deletedAt', value: pickDebugField('deletedAt') },
               { key: 'deletedBy', value: pickDebugField('deletedBy') },
@@ -2546,11 +2557,11 @@ export default function Sightings() {
                       <span className="sightingCard__footerLabel">Location</span>
                       <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
                     </div>
-                    {entry.createdAt && (
+                    {captureAt && (
                       <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
                         <span className="sightingCard__footerLabel">Captured</span>
-                        <time dateTime={entry.createdAt.toISOString()}>
-                          {formatTimestampLabel(entry.createdAt)}
+                        <time dateTime={captureAt.toISOString()}>
+                          {formatTimestampLabel(captureAt)}
                         </time>
                       </div>
                     )}
@@ -2939,11 +2950,11 @@ export default function Sightings() {
                   <div className="sightingModal__details">
                     <h3>{activeSighting.species}</h3>
                     <div className="sightingModal__meta">
-                      {activeSighting.createdAt && (
+                      {activeCaptureAt && (
                         <div className="sightingModal__metaRow">
                           <span className="sightingModal__metaLabel">Captured</span>
-                          <time dateTime={activeSighting.createdAt.toISOString()}>
-                            {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
+                          <time dateTime={activeCaptureAt.toISOString()}>
+                            {formatTimestampLabel(activeCaptureAt)}
                           </time>
                         </div>
                       )}
