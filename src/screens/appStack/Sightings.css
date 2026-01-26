@@ -1102,6 +1102,16 @@
   background: rgba(255, 140, 26, 0.25);
 }
 
+.sightingModal__mediaStack {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.sightingModal__mediaStack.has-motion {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
 .sightingModal__media {
   display: grid;
   place-items: center;
@@ -1116,8 +1126,13 @@
   background: #050603;
 }
 
+.sightingModal__mediaStack.has-motion .sightingModal__media img,
+.sightingModal__mediaStack.has-motion .sightingModal__media video {
+  max-width: 100%;
+  max-height: 55vh;
+}
+
 .sightingModal__motion {
-  margin-top: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1138,6 +1153,11 @@
   border: 1px solid rgba(203, 146, 74, 0.35);
   object-fit: contain;
   background: rgba(11, 15, 8, 0.65);
+}
+
+.sightingModal__mediaStack.has-motion .sightingModal__motion img {
+  max-width: 100%;
+  max-height: 55vh;
 }
 
 .sightingModal__details {

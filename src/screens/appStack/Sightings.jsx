@@ -2807,13 +2807,15 @@ export default function Sightings() {
                   >
                     Close
                   </button>
-                  <div className="sightingModal__media">{renderModalContent()}</div>
-                  {isAdmin && isMotionMaskEnabled && fgMaskUrl && (
-                    <div className="sightingModal__motion">
-                      <span className="sightingModal__motionLabel">Motion mask</span>
-                      <img src={fgMaskUrl} alt={`${activeSighting.species} motion mask`} />
-                    </div>
-                  )}
+                  <div className={`sightingModal__mediaStack${fgMaskUrl ? ' has-motion' : ''}`}>
+                    <div className="sightingModal__media">{renderModalContent()}</div>
+                    {isAdmin && isMotionMaskEnabled && fgMaskUrl && (
+                      <div className="sightingModal__motion">
+                        <span className="sightingModal__motionLabel">Motion mask</span>
+                        <img src={fgMaskUrl} alt={`${activeSighting.species} motion mask`} />
+                      </div>
+                    )}
+                  </div>
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
                     const debugBoxes = resolveEntryDebugBoxes(activeSighting);
