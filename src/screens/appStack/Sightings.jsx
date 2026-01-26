@@ -79,9 +79,26 @@ const formatTimestampLabel = (value) => {
   return `${dateLabel} at ${timeLabel}`;
 };
 
+const isDateToday = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return false;
+  }
+  const today = new Date();
+  return value.toDateString() === today.toDateString();
+};
+
 const getCaptureTimestamp = (entry) => {
   if (!entry) return null;
   const candidate = entry.spottedAt || entry.createdAt || null;
+  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime())) {
+    return null;
+  }
+  return candidate;
+};
+
+const getCreatedTimestamp = (entry) => {
+  if (!entry) return null;
+  const candidate = entry.createdAt || null;
   if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime())) {
     return null;
   }
@@ -992,10 +1009,10 @@ export default function Sightings() {
         })
         .filter(Boolean)
         .sort((a, b) => {
-          const aCapture = getCaptureTimestamp(a);
-          const bCapture = getCaptureTimestamp(b);
-          const aTime = aCapture ? aCapture.getTime() : 0;
-          const bTime = bCapture ? bCapture.getTime() : 0;
+          const aCreated = getCreatedTimestamp(a);
+          const bCreated = getCreatedTimestamp(b);
+          const aTime = aCreated ? aCreated.getTime() : 0;
+          const bTime = bCreated ? bCreated.getTime() : 0;
           return bTime - aTime;
         });
 
@@ -1664,6 +1681,15 @@ export default function Sightings() {
           : 'Send this sighting to WhatsApp?');
 
       if (typeof window !== 'undefined' && !window.confirm(confirmationMessage)) {
+        return;
+      }
+
+      if (
+        isAlert &&
+        typeof window !== 'undefined' &&
+        !isDateToday(getCaptureTimestamp(entry)) &&
+        !window.confirm('‼️ The sighting was NOT TODAY, are you sure?')
+      ) {
         return;
       }
 
