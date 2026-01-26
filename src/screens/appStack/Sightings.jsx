@@ -62,13 +62,13 @@ const formatTimestampLabel = (value) => {
   const todayKey = now.toDateString();
   const valueKey = value.toDateString();
   if (valueKey === todayKey) {
-    return `Today @ ${timeLabel}`;
+    return `today at ${timeLabel}`;
   }
 
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (valueKey === yesterday.toDateString()) {
-    return `Yesterday @ ${timeLabel}`;
+    return `Yesterday at ${timeLabel}`;
   }
 
   const dateLabel = formatDate(value);
@@ -76,7 +76,16 @@ const formatTimestampLabel = (value) => {
     return '';
   }
 
-  return `${dateLabel} @ ${timeLabel}`;
+  return `${dateLabel} at ${timeLabel}`;
+};
+
+const getCaptureTimestamp = (entry) => {
+  if (!entry) return null;
+  const candidate = entry.spottedAt || entry.createdAt || null;
+  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime())) {
+    return null;
+  }
+  return candidate;
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
@@ -983,8 +992,10 @@ export default function Sightings() {
         })
         .filter(Boolean)
         .sort((a, b) => {
-          const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-          const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+          const aCapture = getCaptureTimestamp(a);
+          const bCapture = getCaptureTimestamp(b);
+          const aTime = aCapture ? aCapture.getTime() : 0;
+          const bTime = bCapture ? bCapture.getTime() : 0;
           return bTime - aTime;
         });
 
@@ -2546,14 +2557,18 @@ export default function Sightings() {
                       <span className="sightingCard__footerLabel">Location</span>
                       <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
                     </div>
-                    {entry.createdAt && (
-                      <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
-                        <span className="sightingCard__footerLabel">Captured</span>
-                        <time dateTime={entry.createdAt.toISOString()}>
-                          {formatTimestampLabel(entry.createdAt)}
-                        </time>
-                      </div>
-                    )}
+                    {(() => {
+                      const captureTimestamp = getCaptureTimestamp(entry);
+                      if (!captureTimestamp) return null;
+                      return (
+                        <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
+                          <span className="sightingCard__footerLabel">Captured</span>
+                          <time dateTime={captureTimestamp.toISOString()}>
+                            {formatTimestampLabel(captureTimestamp)}
+                          </time>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="sightingCard__actions">
                     <div className="sightingCard__actionsRow">
@@ -2939,14 +2954,18 @@ export default function Sightings() {
                   <div className="sightingModal__details">
                     <h3>{activeSighting.species}</h3>
                     <div className="sightingModal__meta">
-                      {activeSighting.createdAt && (
-                        <div className="sightingModal__metaRow">
-                          <span className="sightingModal__metaLabel">Captured</span>
-                          <time dateTime={activeSighting.createdAt.toISOString()}>
-                            {`${formatDate(activeSighting.createdAt)} ${formatTime(activeSighting.createdAt)}`.trim()}
-                          </time>
-                        </div>
-                      )}
+                      {(() => {
+                        const captureTimestamp = getCaptureTimestamp(activeSighting);
+                        if (!captureTimestamp) return null;
+                        return (
+                          <div className="sightingModal__metaRow">
+                            <span className="sightingModal__metaLabel">Captured</span>
+                            <time dateTime={captureTimestamp.toISOString()}>
+                              {formatTimestampLabel(captureTimestamp)}
+                            </time>
+                          </div>
+                        );
+                      })()}
                       {activeSighting.locationId && (
                         <div className="sightingModal__metaRow">
                           <span className="sightingModal__metaLabel">Location</span>
