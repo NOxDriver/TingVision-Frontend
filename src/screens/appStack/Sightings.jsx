@@ -806,6 +806,7 @@ export default function Sightings() {
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const [isAnimalBoxesEnabled, setIsAnimalBoxesEnabled] = useState(false);
+  const [isMotionEnabled, setIsMotionEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -967,10 +968,12 @@ export default function Sightings() {
             speciesDoc,
             parentDoc,
           });
+          const fgMaskUrl = pickFirstSource(speciesDoc?.fgMaskUrl, parentDoc?.fgMaskUrl);
 
           return {
             ...entry,
             id: `${entry.id}::${speciesDoc.id}`,
+            fgMaskUrl,
             trigger,
             meta: {
               parentPath: parentRef.path,
@@ -2085,6 +2088,19 @@ export default function Sightings() {
                   </label>
                 </div>
               )}
+              {isAdmin && (
+                <div className="sightingsPage__field sightingsPage__field--checkbox">
+                  <label className="sightingsPage__checkboxLabel" htmlFor="motionViewToggle">
+                    <input
+                      id="motionViewToggle"
+                      type="checkbox"
+                      checked={isMotionEnabled}
+                      onChange={(event) => setIsMotionEnabled(event.target.checked)}
+                    />
+                    <span>Motion</span>
+                  </label>
+                </div>
+              )}
               <div className="sightingsPage__field sightingsPage__field--checkbox">
                 <label className="sightingsPage__checkboxLabel" htmlFor="animalBoxesToggle">
                   <input
@@ -2391,6 +2407,12 @@ export default function Sightings() {
                     </span>
                   </button>
                 </div>
+                {isAdmin && isMotionEnabled && entry.fgMaskUrl && (
+                  <div className="sightingCard__motion">
+                    <span className="sightingCard__motionLabel">Motion mask</span>
+                    <img src={entry.fgMaskUrl} alt={`${entry.species} motion mask`} />
+                  </div>
+                )}
                 <div className="sightingCard__body">
                   {isAdmin && (
                     <div className="sightingCard__selector">
@@ -2783,6 +2805,15 @@ export default function Sightings() {
                     Close
                   </button>
                   <div className="sightingModal__media">{renderModalContent()}</div>
+                  {isAdmin && isMotionEnabled && activeSighting.fgMaskUrl && (
+                    <div className="sightingModal__motion">
+                      <span className="sightingModal__motionLabel">Motion mask</span>
+                      <img
+                        src={activeSighting.fgMaskUrl}
+                        alt={`${activeSighting.species} motion mask`}
+                      />
+                    </div>
+                  )}
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
                     const debugBoxes = resolveEntryDebugBoxes(activeSighting);
