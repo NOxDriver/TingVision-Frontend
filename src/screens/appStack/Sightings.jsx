@@ -806,7 +806,7 @@ export default function Sightings() {
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const [isAnimalBoxesEnabled, setIsAnimalBoxesEnabled] = useState(false);
-  const [isMotionMaskEnabled, setIsMotionMaskEnabled] = useState(false);
+  const [isMotionMaskEnabled, setIsMotionMaskEnabled] = useState(true);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -2828,7 +2828,7 @@ export default function Sightings() {
                     );
                     const hasDebugMedia = Boolean(pickFirstSource(activeSighting.debugUrl));
                     const isDebugMode = modalViewMode === 'debug';
-                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia || hasAnimalBoxes;
+                    const shouldShowToggles = hasHdImageAlternative || hasDebugMedia || hasAnimalBoxes || isAdmin;
                     return (
                       <div className="sightingModal__controls">
                         {(shouldShowNav || isAdmin) && (
@@ -2912,6 +2912,23 @@ export default function Sightings() {
                                 onClick={() => setIsAnimalBoxesEnabled((prev) => !prev)}
                               >
                                 {isAnimalBoxesEnabled ? 'Hide Animal Boxes' : 'Animal Boxes'}
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className={`sightingModal__toggle${isMotionMaskEnabled ? ' is-active' : ''}`}
+                                onClick={() => {
+                                  const nextValue = !isMotionMaskEnabled;
+                                  setIsMotionMaskEnabled(nextValue);
+                                  trackButton('sighting_toggle_motion', {
+                                    enabled: nextValue,
+                                    species: activeSighting?.species,
+                                    location: activeSighting?.locationId,
+                                  });
+                                }}
+                              >
+                                {isMotionMaskEnabled ? 'Hide Motion' : 'Motion'}
                               </button>
                             )}
                           </div>
