@@ -806,6 +806,7 @@ export default function Sightings() {
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const [isDebugViewEnabled, setIsDebugViewEnabled] = useState(false);
   const [isAnimalBoxesEnabled, setIsAnimalBoxesEnabled] = useState(false);
+  const [isMotionEnabled, setIsMotionEnabled] = useState(false);
   const paginationCursorsRef = useRef([]);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
@@ -834,6 +835,11 @@ export default function Sightings() {
   const isAdmin = role === 'admin';
   const accessReady = !isAccessLoading;
   const noAssignedLocations = accessReady && !isAdmin && allowedLocationSet.size === 0;
+
+  const resolveFgMaskUrl = useCallback((entry) => {
+    const fgMaskUrl = pickEntryDebugValue(entry, 'fgMaskUrl');
+    return pickFirstSource(fgMaskUrl);
+  }, []);
 
   usePageTitle('Sightings');
 
@@ -2085,6 +2091,19 @@ export default function Sightings() {
                   </label>
                 </div>
               )}
+              {isAdmin && (
+                <div className="sightingsPage__field sightingsPage__field--checkbox">
+                  <label className="sightingsPage__checkboxLabel" htmlFor="motionToggle">
+                    <input
+                      id="motionToggle"
+                      type="checkbox"
+                      checked={isMotionEnabled}
+                      onChange={(event) => setIsMotionEnabled(event.target.checked)}
+                    />
+                    <span>Motion</span>
+                  </label>
+                </div>
+              )}
               <div className="sightingsPage__field sightingsPage__field--checkbox">
                 <label className="sightingsPage__checkboxLabel" htmlFor="animalBoxesToggle">
                   <input
@@ -2336,6 +2355,7 @@ export default function Sightings() {
               : '';
             const shouldShowDebugOverlay = (isDebugViewEnabled || isAnimalBoxesEnabled)
               && debugBoxes.length > 0;
+            const fgMaskUrl = resolveFgMaskUrl(entry);
             return (
               <article
                 className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
@@ -2391,6 +2411,17 @@ export default function Sightings() {
                     </span>
                   </button>
                 </div>
+                {isAdmin && isMotionEnabled && fgMaskUrl && (
+                  <div className="sightingCard__motion">
+                    <span className="sightingCard__motionLabel">Motion mask</span>
+                    <img
+                      src={fgMaskUrl}
+                      alt={`Motion mask for ${entry.species}`}
+                      className="sightingCard__motionImage"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
                 <div className="sightingCard__body">
                   {isAdmin && (
                     <div className="sightingCard__selector">
@@ -2772,6 +2803,7 @@ export default function Sightings() {
               const hasPrevious = currentIndex > 0;
               const hasNext = currentIndex !== -1 && currentIndex < filteredSightings.length - 1;
               const shouldShowNav = filteredSightings.length > 1;
+              const motionMaskUrl = resolveFgMaskUrl(activeSighting);
               return (
                 <>
                   <button
@@ -2783,6 +2815,17 @@ export default function Sightings() {
                     Close
                   </button>
                   <div className="sightingModal__media">{renderModalContent()}</div>
+                  {isAdmin && isMotionEnabled && motionMaskUrl && (
+                    <div className="sightingModal__motion">
+                      <span className="sightingModal__motionLabel">Motion mask</span>
+                      <img
+                        src={motionMaskUrl}
+                        alt={`Motion mask for ${activeSighting.species}`}
+                        className="sightingModal__motionImage"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
                   {(() => {
                     const prefersVideo = activeSighting.mediaType === 'video';
                     const debugBoxes = resolveEntryDebugBoxes(activeSighting);

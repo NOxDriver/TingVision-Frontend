@@ -494,6 +494,28 @@
   object-fit: cover;
 }
 
+.sightingCard__motion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.sightingCard__motionLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.sightingCard__motionImage {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: #050603;
+  object-fit: contain;
+}
+
 .sightingCard__placeholder {
   color: var(--color-text-muted);
   font-size: 0.85rem;
@@ -1091,6 +1113,29 @@
   border-radius: 16px;
   border: 1px solid var(--color-border);
   background: #050603;
+}
+
+.sightingModal__motion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.sightingModal__motionLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.sightingModal__motionImage {
+  max-width: min(960px, 80vw);
+  max-height: 45vh;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: #050603;
+  object-fit: contain;
 }
 
 .sightingModal__details {
