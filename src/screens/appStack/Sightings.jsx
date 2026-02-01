@@ -646,7 +646,7 @@ const buildDebugTrigger = (rawTrigger) => {
     dwell_n: normalizeNumericValue(rawTrigger.dwell_n),
     align,
     motionmask_overlap: normalizeNumericValue(rawTrigger.motionmask_overlap),
-    motion_area_scene: normalizeNumericValue(rawTrigger.motion_area_scene),
+    motion_area_seen: normalizeNumericValue(rawTrigger.motion_area_seen),
     fg_frac_small: normalizeNumericValue(rawTrigger.fg_frac_small),
     net_move_seen_px: normalizeNumericValue(rawTrigger.net_move_seen_px),
     green_ratio: normalizeNumericValue(rawTrigger.green_ratio),
