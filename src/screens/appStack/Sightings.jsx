@@ -907,6 +907,7 @@ export default function Sightings() {
   const speciesMenuRef = useRef(null);
   const editSpeciesInputRef = useRef(null);
   const pendingRefreshScrollRef = useRef(false);
+  const defaultUnknownFilterAppliedRef = useRef(false);
 
   const allowedLocationSet = useMemo(() => buildLocationSet(locationIds), [locationIds]);
   const isAdmin = role === 'admin';
@@ -1153,6 +1154,22 @@ export default function Sightings() {
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [sightings]);
+
+  useEffect(() => {
+    if (isAdmin || defaultUnknownFilterAppliedRef.current) {
+      return;
+    }
+    if (selectedSpecies.length > 0 || speciesFilterMode !== 'include') {
+      return;
+    }
+    const hasUnknown = availableSpecies.some((item) => item.value === 'unknown');
+    if (!hasUnknown) {
+      return;
+    }
+    defaultUnknownFilterAppliedRef.current = true;
+    setSpeciesFilterMode('exclude');
+    setSelectedSpecies(['unknown']);
+  }, [availableSpecies, isAdmin, selectedSpecies, speciesFilterMode]);
 
   useEffect(() => {
     if (locationFilter === 'all') {
