@@ -114,23 +114,39 @@ export function buildHighlightEntry({
     }
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
+  const mediaType = parentDoc?.mediaType
+    || speciesDoc?.mediaType
+    || (parentDoc?.videoUrl || speciesDoc?.videoUrl || parentDoc?.rawVideoUrl || speciesDoc?.rawVideoUrl
+      ? 'video'
+      : 'image');
   const mediaUrl = parentDoc?.mediaUrl
+    || speciesDoc?.mediaUrl
     || parentDoc?.rawMediaUrl
+    || speciesDoc?.rawMediaUrl
     || parentDoc?.rawVideoUrl
+    || speciesDoc?.rawVideoUrl
     || null;
   const previewUrl = parentDoc?.previewUrl
+    || speciesDoc?.previewUrl
     || parentDoc?.rawPreviewUrl
+    || speciesDoc?.rawPreviewUrl
     || parentDoc?.debugPreviewUrl
+    || speciesDoc?.debugPreviewUrl
     || null;
   const debugUrl = parentDoc?.debugUrl
+    || speciesDoc?.debugUrl
     || parentDoc?.debugPreviewUrl
+    || speciesDoc?.debugPreviewUrl
     || parentDoc?.debugVideoUrl
+    || speciesDoc?.debugVideoUrl
     || parentDoc?.debugMediaUrl
+    || speciesDoc?.debugMediaUrl
     || null;
   const videoUrl = parentDoc?.videoUrl
-    || (parentDoc?.mediaType === 'video' ? mediaUrl : null)
+    || speciesDoc?.videoUrl
+    || (mediaType === 'video' ? mediaUrl : null)
     || null;
-  const createdAt = normalizeDate(parentDoc?.createdAt);
+  const createdAt = normalizeDate(parentDoc?.createdAt || speciesDoc?.createdAt);
   const spottedAt = normalizeDate(parentDoc?.spottedAt || speciesDoc?.spottedAt);
   const meta = CATEGORY_META[category] || {};
   return {
@@ -138,17 +154,17 @@ export function buildHighlightEntry({
     category,
     label: extra?.label || meta.label || category,
     description: extra?.description || meta.description || '',
-    species: formatSpeciesName(speciesDoc?.species || 'Unknown'),
+    species: formatSpeciesName(speciesDoc?.species || parentDoc?.primarySpecies || parentDoc?.species || 'Unknown'),
     previewUrl,
     debugUrl,
-    locationId: parentDoc?.locationId || 'Unknown location',
+    locationId: parentDoc?.locationId || speciesDoc?.locationId || parentDoc?.location || 'Unknown location',
     createdAt,
     spottedAt,
     count: speciesDoc?.count ?? null,
     maxArea: speciesDoc?.maxArea ?? null,
     maxConf: speciesDoc?.maxConf ?? null,
     bestCenterDist: getBestCenterDist(speciesDoc?.topBoxes),
-    mediaType: parentDoc?.mediaType || 'image',
+    mediaType,
     parentId: parentDoc?.sightingId || parentDoc?.id || null,
     videoUrl,
     mediaUrl,

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   collectionGroup,
-  doc,
   getDoc,
   getDocs,
   limit,
@@ -32,6 +31,9 @@ import {
 
 
 const SIGHTINGS_PAGE_SIZE = 50;
+const SIGHTINGS_PAGE_STORAGE_KEY = 'tingvision:sightings:page';
+const DEFAULT_MOTION_MASK_WIDTH = 872;
+const DEFAULT_MOTION_MASK_HEIGHT = 503;
 const SEND_WHATSAPP_ENDPOINT =
   process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT ||
   'https://send-manual-whatsapp-alert-186628423921.us-central1.run.app';
@@ -96,13 +98,36 @@ const getCaptureTimestamp = (entry) => {
   return candidate;
 };
 
-const getCreatedTimestamp = (entry) => {
-  if (!entry) return null;
-  const candidate = entry.createdAt || null;
-  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime())) {
-    return null;
+const sanitizePageIndex = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return 0;
   }
-  return candidate;
+  return parsed;
+};
+
+const readStoredSightingsPageIndex = () => {
+  if (typeof window === 'undefined') {
+    return 0;
+  }
+
+  try {
+    return sanitizePageIndex(window.sessionStorage.getItem(SIGHTINGS_PAGE_STORAGE_KEY));
+  } catch (error) {
+    return 0;
+  }
+};
+
+const writeStoredSightingsPageIndex = (pageIndex) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(SIGHTINGS_PAGE_STORAGE_KEY, String(sanitizePageIndex(pageIndex)));
+  } catch (error) {
+    // Ignore storage write failures and fall back to page 1 on the next hard refresh.
+  }
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
@@ -571,6 +596,35 @@ const normalizeNumericValue = (value) => {
   return null;
 };
 
+const pickPositiveDimension = (values, fallback) => {
+  for (const value of values) {
+    const normalized = normalizeNumericValue(value);
+    if (typeof normalized === 'number' && normalized > 0) {
+      return Math.round(normalized);
+    }
+  }
+  return fallback;
+};
+
+const resolveMotionMaskDimensions = (entry) => ({
+  width: pickPositiveDimension(
+    [
+      pickEntryDebugValue(entry, 'frameW'),
+      pickEntryDebugValue(entry, 'frameWidth'),
+      pickEntryDebugValue(entry, 'width'),
+    ],
+    DEFAULT_MOTION_MASK_WIDTH,
+  ),
+  height: pickPositiveDimension(
+    [
+      pickEntryDebugValue(entry, 'frameH'),
+      pickEntryDebugValue(entry, 'frameHeight'),
+      pickEntryDebugValue(entry, 'height'),
+    ],
+    DEFAULT_MOTION_MASK_HEIGHT,
+  ),
+});
+
 const normalizeTrigger = (rawTrigger) => {
   if (!rawTrigger || typeof rawTrigger !== 'object') {
     return null;
@@ -718,14 +772,6 @@ const isDebugBlockValue = (value) => {
   }
 
   return typeof value === 'object';
-};
-
-const toDocRef = (path) => {
-  const segments = typeof path === 'string' ? path.split('/').filter(Boolean) : [];
-  if (segments.length < 2 || segments.length % 2 !== 0) {
-    throw new Error('Sighting metadata is missing required references.');
-  }
-  return doc(db, ...segments);
 };
 
 const getAutoplayDisabledPreference = () => {
@@ -943,6 +989,185 @@ export default function Sightings() {
     return typeof user.uid === 'string' && user.uid.length > 0 ? user.uid : 'Admin';
   }, [user]);
 
+  const fetchSightingsPage = useCallback(async (startCursor = null) => {
+    let queryCursor = startCursor;
+    const collectedEntries = [];
+    const seenEntryIds = new Set();
+
+    // Keep pulling batches until we have a full UI page of usable sightings.
+    while (collectedEntries.length < SIGHTINGS_PAGE_SIZE) {
+      const constraints = [orderBy('createdAt', 'desc')];
+
+      if (queryCursor) {
+        constraints.push(startAfter(queryCursor));
+      }
+
+      constraints.push(limit(SIGHTINGS_PAGE_SIZE));
+
+      const sightingsQuery = query(collectionGroup(db, 'perSpecies'), ...constraints);
+      const snapshot = await getDocs(sightingsQuery);
+      if (!isMountedRef.current) {
+        return { aborted: true, entries: [], nextCursor: startCursor, hasMore: false };
+      }
+
+      if (snapshot.empty) {
+        return {
+          aborted: false,
+          entries: collectedEntries,
+          nextCursor: queryCursor,
+          hasMore: false,
+        };
+      }
+
+      const parentRefMap = new Map();
+      snapshot.docs.forEach((docSnap) => {
+        const parentRef = docSnap.ref.parent.parent;
+        if (parentRef && !parentRefMap.has(parentRef.path)) {
+          parentRefMap.set(parentRef.path, parentRef);
+        }
+      });
+
+      const parentSnaps = await Promise.all(
+        Array.from(parentRefMap.values()).map((ref) => getDoc(ref)),
+      );
+      if (!isMountedRef.current) {
+        return { aborted: true, entries: [], nextCursor: startCursor, hasMore: false };
+      }
+
+      const parentDataMap = new Map();
+      parentSnaps.forEach((snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data?.deletedAt) return;
+        parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
+      });
+
+      const visibleItems = snapshot.docs
+        .map((docSnap, rawIndex) => {
+          const speciesDoc = { id: docSnap.id, ...docSnap.data() };
+          if (speciesDoc.deletedAt) return null;
+
+          const parentRef = docSnap.ref.parent.parent;
+          if (!parentRef) return null;
+
+          const parentDoc = parentDataMap.get(parentRef.path);
+          if (!parentDoc || parentDoc.deletedAt) return null;
+
+          const entry = buildHighlightEntry({
+            category: 'sighting',
+            speciesDoc,
+            parentDoc,
+          });
+
+          const normalizedEntry = {
+            ...entry,
+            id: `${entry.id}::${speciesDoc.id}`,
+            trigger: normalizeTrigger(parentDoc?.trigger || speciesDoc?.trigger),
+            meta: {
+              parentPath: parentRef.path,
+              speciesDocPath: docSnap.ref.path,
+              parentDoc,
+              speciesDoc,
+            },
+          };
+
+          if (!isAdmin && !allowedLocationSet.has(normalizeLocationId(normalizedEntry.locationId))) {
+            return null;
+          }
+
+          return {
+            entry: normalizedEntry,
+            rawIndex,
+            cursor: docSnap,
+          };
+        })
+        .filter(Boolean);
+
+      for (const item of visibleItems) {
+        if (seenEntryIds.has(item.entry.id)) {
+          continue;
+        }
+
+        collectedEntries.push(item.entry);
+        seenEntryIds.add(item.entry.id);
+        queryCursor = item.cursor;
+
+        if (collectedEntries.length === SIGHTINGS_PAGE_SIZE) {
+          const hasRemainingRawDocs = item.rawIndex < snapshot.docs.length - 1;
+          return {
+            aborted: false,
+            entries: collectedEntries,
+            nextCursor: item.cursor,
+            hasMore: hasRemainingRawDocs || snapshot.docs.length === SIGHTINGS_PAGE_SIZE,
+          };
+        }
+      }
+
+      if (snapshot.docs.length < SIGHTINGS_PAGE_SIZE) {
+        return {
+          aborted: false,
+          entries: collectedEntries,
+          nextCursor: queryCursor,
+          hasMore: false,
+        };
+      }
+
+      queryCursor = snapshot.docs[snapshot.docs.length - 1] || queryCursor;
+    }
+
+    return {
+      aborted: false,
+      entries: collectedEntries,
+      nextCursor: queryCursor,
+      hasMore: false,
+    };
+  }, [allowedLocationSet, isAdmin]);
+
+  const ensurePageCursor = useCallback(async (pageIndex) => {
+    if (pageIndex <= 0) {
+      return { startCursor: null, resolvedPageIndex: 0 };
+    }
+
+    const existingCursor = paginationCursorsRef.current[pageIndex - 1] || null;
+    if (existingCursor) {
+      return { startCursor: existingCursor, resolvedPageIndex: pageIndex };
+    }
+
+    let rebuildPageIndex = paginationCursorsRef.current.length;
+    let rebuildStartCursor = rebuildPageIndex > 0
+      ? paginationCursorsRef.current[rebuildPageIndex - 1] || null
+      : null;
+
+    while (rebuildPageIndex < pageIndex) {
+      const rebuiltPage = await fetchSightingsPage(rebuildStartCursor);
+      if (rebuiltPage.aborted) {
+        return { aborted: true };
+      }
+
+      paginationCursorsRef.current = [
+        ...paginationCursorsRef.current.slice(0, rebuildPageIndex),
+        rebuiltPage.nextCursor || rebuildStartCursor,
+      ];
+
+      if (!rebuiltPage.hasMore) {
+        return {
+          startCursor: rebuildPageIndex > 0
+            ? paginationCursorsRef.current[rebuildPageIndex - 1] || null
+            : null,
+          resolvedPageIndex: rebuildPageIndex,
+        };
+      }
+
+      rebuildStartCursor = rebuiltPage.nextCursor;
+      rebuildPageIndex += 1;
+    }
+
+    return {
+      startCursor: paginationCursorsRef.current[pageIndex - 1] || null,
+      resolvedPageIndex: pageIndex,
+    };
+  }, [fetchSightingsPage]);
+
   const loadSightings = useCallback(async (options = {}) => {
     const { pageIndex = 0, highlightNew = false } = options;
 
@@ -958,141 +1183,78 @@ export default function Sightings() {
       setLoading(false);
       setPaginationLoading(false);
       setCurrentPage(0);
+      writeStoredSightingsPageIndex(0);
       return;
     }
 
-    const isFirstPage = pageIndex === 0;
-    const startCursor = isFirstPage ? null : paginationCursorsRef.current[pageIndex - 1] || null;
-
-    if (pageIndex > 0 && !startCursor) {
-      setHasMore(false);
-      return;
-    }
-
-    const setBusy = isFirstPage ? setLoading : setPaginationLoading;
+    const requestedPageIndex = sanitizePageIndex(pageIndex);
+    const setBusy = requestedPageIndex === 0 ? setLoading : setPaginationLoading;
     setBusy(true);
 
-    if (isFirstPage) {
-      setError('');
-      setHasMore(false);
-      paginationCursorsRef.current = [];
-    }
-
-    if (!highlightNew) {
-      setNewSightingIds(new Set());
-    }
+    let resolvedPageIndex = requestedPageIndex;
+    let startCursor = null;
+    let isFirstPage = requestedPageIndex === 0;
 
     try {
-      const constraints = [orderBy('createdAt', 'desc')];
-
-      if (startCursor) {
-        constraints.push(startAfter(startCursor));
+      if (resolvedPageIndex > 0) {
+        const cursorState = await ensurePageCursor(resolvedPageIndex);
+        if (cursorState?.aborted) {
+          return;
+        }
+        resolvedPageIndex = cursorState?.resolvedPageIndex ?? resolvedPageIndex;
+        startCursor = cursorState?.startCursor || null;
       }
 
-      constraints.push(limit(SIGHTINGS_PAGE_SIZE));
+      isFirstPage = resolvedPageIndex === 0;
 
-      const sightingsQuery = query(collectionGroup(db, 'perSpecies'), ...constraints);
+      if (isFirstPage) {
+        setError('');
+        setHasMore(false);
+        paginationCursorsRef.current = [];
+      }
 
-      const snapshot = await getDocs(sightingsQuery);
-      if (!isMountedRef.current) {
+      if (!highlightNew) {
+        setNewSightingIds(new Set());
+      }
+
+      const pageData = await fetchSightingsPage(startCursor);
+      if (pageData.aborted || !isMountedRef.current) {
         return;
       }
 
-      if (snapshot.empty && isFirstPage) {
+      if (pageData.entries.length === 0 && isFirstPage) {
         setSightings([]);
         if (highlightNew) {
           setNewSightingIds(new Set());
         }
         setHasMore(false);
         setCurrentPage(0);
+        writeStoredSightingsPageIndex(0);
         return;
       }
 
-      const parentRefMap = new Map();
-      snapshot.docs.forEach((docSnap) => {
-        const parentRef = docSnap.ref.parent.parent;
-        if (parentRef && !parentRefMap.has(parentRef.path)) {
-          parentRefMap.set(parentRef.path, parentRef);
-        }
-      });
-
-      const parentSnaps = await Promise.all(
-        Array.from(parentRefMap.values()).map((ref) => getDoc(ref)),
-      );
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      const parentDataMap = new Map();
-      parentSnaps.forEach((snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-        if (data?.deletedAt) return;
-        parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
-      });
-
-      const entries = snapshot.docs
-        .map((docSnap) => {
-          const speciesDoc = { id: docSnap.id, ...docSnap.data() };
-          if (speciesDoc.deletedAt) return null;
-          const parentRef = docSnap.ref.parent.parent;
-          if (!parentRef) return null;
-          const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc || parentDoc.deletedAt) return null;
-          const trigger = normalizeTrigger(parentDoc?.trigger || speciesDoc?.trigger);
-
-          const entry = buildHighlightEntry({
-            category: 'sighting',
-            speciesDoc,
-            parentDoc,
-          });
-
-          return {
-            ...entry,
-            id: `${entry.id}::${speciesDoc.id}`,
-            trigger,
-            meta: {
-              parentPath: parentRef.path,
-              speciesDocPath: docSnap.ref.path,
-              parentDoc,
-              speciesDoc,
-            },
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => {
-          const aCreated = getCreatedTimestamp(a);
-          const bCreated = getCreatedTimestamp(b);
-          const aTime = aCreated ? aCreated.getTime() : 0;
-          const bTime = bCreated ? bCreated.getTime() : 0;
-          return bTime - aTime;
-        });
-
-      if (snapshot.empty && pageIndex > 0) {
+      if (pageData.entries.length === 0 && resolvedPageIndex > 0) {
         setHasMore(false);
         return;
       }
 
-      const filteredEntries = isAdmin
-        ? entries
-        : entries.filter((entry) => allowedLocationSet.has(normalizeLocationId(entry.locationId)));
-
-      setSightings(filteredEntries);
+      setError('');
+      setSightings(pageData.entries);
       if (highlightNew) {
         const previousIds = new Set(sightingsRef.current.map((entry) => entry.id));
-        const nextIds = filteredEntries
+        const nextIds = pageData.entries
           .filter((entry) => !previousIds.has(entry.id))
           .map((entry) => entry.id);
         setNewSightingIds(new Set(nextIds));
       }
 
-      const nextCursor = snapshot.docs[snapshot.docs.length - 1] || null;
       paginationCursorsRef.current = [
-        ...paginationCursorsRef.current.slice(0, pageIndex),
-        nextCursor,
+        ...paginationCursorsRef.current.slice(0, resolvedPageIndex),
+        pageData.nextCursor || startCursor,
       ];
-      setCurrentPage(pageIndex);
-      setHasMore(snapshot.docs.length === SIGHTINGS_PAGE_SIZE);
+      setCurrentPage(resolvedPageIndex);
+      setHasMore(pageData.hasMore);
+      writeStoredSightingsPageIndex(resolvedPageIndex);
     } catch (err) {
       console.error('Failed to fetch sightings', err);
       if (isMountedRef.current) {
@@ -1108,15 +1270,19 @@ export default function Sightings() {
         setBusy(false);
       }
     }
-  }, [accessReady, isAdmin, allowedLocationSet]);
+  }, [accessReady, ensurePageCursor, fetchSightingsPage, isAdmin, allowedLocationSet]);
 
   useEffect(() => {
     sightingsRef.current = sightings;
   }, [sightings]);
 
   useEffect(() => {
+    writeStoredSightingsPageIndex(currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
     isMountedRef.current = true;
-    loadSightings();
+    loadSightings({ pageIndex: readStoredSightingsPageIndex() });
 
     return () => {
       isMountedRef.current = false;
@@ -2402,6 +2568,7 @@ export default function Sightings() {
             const isSelected = selectedSightings.has(entry.id);
             const isNew = newSightingIds.has(entry.id);
             const pickDebugField = (key) => pickEntryDebugValue(entry, key);
+            const motionMaskDimensions = resolveMotionMaskDimensions(entry);
             const debugFields = [
               { key: 'docid', value: entry.id },
               { key: 'TRIGGER', value: buildDebugTrigger(pickDebugField('trigger')) },
@@ -2489,7 +2656,13 @@ export default function Sightings() {
                 {isAdmin && isMotionMaskEnabled && fgMaskUrl && (
                   <div className="sightingCard__motion">
                     <span className="sightingCard__motionLabel">Motion mask</span>
-                    <img src={fgMaskUrl} alt={`${entry.species} motion mask`} />
+                    <img
+                      src={fgMaskUrl}
+                      alt={`${entry.species} motion mask`}
+                      className="sightingCard__motionImage"
+                      width={motionMaskDimensions.width}
+                      height={motionMaskDimensions.height}
+                    />
                   </div>
                 )}
                 <div className="sightingCard__body">
