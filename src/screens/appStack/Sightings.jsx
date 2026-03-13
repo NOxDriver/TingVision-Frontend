@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  collection,
   collectionGroup,
+  documentId,
   getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   startAfter,
+  where,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import './Sightings.css';
@@ -27,11 +30,13 @@ import {
   describeSpeciesChange,
   buildCorrectionNote,
 } from '../../utils/sightings/corrections';
+import { hydrateCameraDraft, hydrateClientDraft } from '../../utils/adminSettings';
 
 
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SIGHTINGS_PAGE_STORAGE_KEY = 'tingvision:sightings:page';
+const LOOKUP_BATCH_SIZE = 10;
 const DEFAULT_MOTION_MASK_WIDTH = 872;
 const DEFAULT_MOTION_MASK_HEIGHT = 503;
 const SEND_WHATSAPP_ENDPOINT =
@@ -131,6 +136,18 @@ const writeStoredSightingsPageIndex = (pageIndex) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+
+const chunkItems = (items, chunkSize) => {
+  if (!Array.isArray(items) || items.length === 0 || chunkSize <= 0) {
+    return [];
+  }
+
+  const chunks = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+  return chunks;
+};
 
 const normalizeMegadetectorVerify = (value) => {
   if (!value || typeof value !== 'object') {
@@ -914,6 +931,7 @@ const ManagedVideoPreview = ({ videoSrc, posterSrc }) => {
 
 export default function Sightings() {
   const [sightings, setSightings] = useState([]);
+  const [locationLabelMap, setLocationLabelMap] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
@@ -1293,12 +1311,187 @@ export default function Sightings() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
 
-  const availableLocations = useMemo(() => {
-    const ids = sightings
+  const sightingLocationIds = useMemo(() => Array.from(new Set(
+    sightings
       .map((entry) => (typeof entry.locationId === 'string' ? entry.locationId.trim() : ''))
-      .filter((value) => value.length > 0);
-    return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
-  }, [sightings]);
+      .filter((value) => value.length > 0),
+  )), [sightings]);
+
+  useEffect(() => {
+    const missingLocationIds = sightingLocationIds.filter(
+      (locationId) => locationLabelMap[locationId] === undefined,
+    );
+
+    if (missingLocationIds.length === 0) {
+      return undefined;
+    }
+
+    let didCancel = false;
+
+    const loadLocationLabels = async () => {
+      try {
+        const directClientSnapshots = await Promise.all(
+          chunkItems(missingLocationIds, LOOKUP_BATCH_SIZE).map((locationIdBatch) => getDocs(
+            query(
+              collection(db, 'clients'),
+              where(documentId(), 'in', locationIdBatch),
+            ),
+          )),
+        );
+
+        if (didCancel || !isMountedRef.current) {
+          return;
+        }
+
+        const nextLabels = {};
+        const unresolvedLocationIds = [];
+
+        directClientSnapshots.forEach((snapshot) => {
+          snapshot.docs.forEach((docSnap) => {
+            const client = hydrateClientDraft({ ...docSnap.data(), id: docSnap.id });
+            nextLabels[docSnap.id] = client.name || docSnap.id;
+          });
+        });
+
+        missingLocationIds.forEach((locationId) => {
+          if (nextLabels[locationId] === undefined) {
+            unresolvedLocationIds.push(locationId);
+          }
+        });
+
+        if (unresolvedLocationIds.length === 0) {
+          setLocationLabelMap((current) => {
+            let hasChanges = false;
+            const merged = { ...current };
+
+            Object.entries(nextLabels).forEach(([locationId, label]) => {
+              if (merged[locationId] !== label) {
+                merged[locationId] = label;
+                hasChanges = true;
+              }
+            });
+
+            return hasChanges ? merged : current;
+          });
+          return;
+        }
+
+        const cameraSnapshots = await Promise.all(
+          chunkItems(unresolvedLocationIds, LOOKUP_BATCH_SIZE).map((cameraIdBatch) => getDocs(
+            query(
+              collection(db, 'cameras'),
+              where(documentId(), 'in', cameraIdBatch),
+            ),
+          )),
+        );
+
+        if (didCancel || !isMountedRef.current) {
+          return;
+        }
+
+        const cameraClientMap = new Map();
+        const foundCameraIds = new Set();
+
+        cameraSnapshots.forEach((snapshot) => {
+          snapshot.docs.forEach((docSnap) => {
+            foundCameraIds.add(docSnap.id);
+            const camera = hydrateCameraDraft({ ...docSnap.data(), id: docSnap.id });
+            cameraClientMap.set(docSnap.id, camera.clientId || '');
+          });
+        });
+
+        const clientIds = Array.from(new Set(
+          Array.from(cameraClientMap.values()).filter(
+            (clientId) => typeof clientId === 'string' && clientId.trim().length > 0,
+          ),
+        ));
+
+        const clientSnapshots = await Promise.all(
+          chunkItems(clientIds, LOOKUP_BATCH_SIZE).map((clientIdBatch) => getDocs(
+            query(
+              collection(db, 'clients'),
+              where(documentId(), 'in', clientIdBatch),
+            ),
+          )),
+        );
+
+        if (didCancel || !isMountedRef.current) {
+          return;
+        }
+
+        const clientNameMap = new Map();
+        clientSnapshots.forEach((snapshot) => {
+          snapshot.docs.forEach((docSnap) => {
+            const client = hydrateClientDraft({ ...docSnap.data(), id: docSnap.id });
+            clientNameMap.set(docSnap.id, client.name || docSnap.id);
+          });
+        });
+
+        unresolvedLocationIds.forEach((cameraId) => {
+          if (!foundCameraIds.has(cameraId)) {
+            nextLabels[cameraId] = cameraId;
+            return;
+          }
+
+          const clientId = cameraClientMap.get(cameraId) || '';
+          nextLabels[cameraId] = clientNameMap.get(clientId) || clientId || cameraId;
+        });
+
+        setLocationLabelMap((current) => {
+          let hasChanges = false;
+          const merged = { ...current };
+
+          Object.entries(nextLabels).forEach(([cameraId, label]) => {
+            if (merged[cameraId] !== label) {
+              merged[cameraId] = label;
+              hasChanges = true;
+            }
+          });
+
+          return hasChanges ? merged : current;
+        });
+      } catch (lookupError) {
+        console.error('Failed to load location labels', lookupError);
+      }
+    };
+
+    loadLocationLabels();
+
+    return () => {
+      didCancel = true;
+    };
+  }, [locationLabelMap, sightingLocationIds]);
+
+  const getLocationLabel = useCallback((locationId) => {
+    const normalizedLocationId = typeof locationId === 'string' ? locationId.trim() : '';
+    if (!normalizedLocationId) {
+      return 'Unknown location';
+    }
+    return locationLabelMap[normalizedLocationId] || normalizedLocationId;
+  }, [locationLabelMap]);
+
+  const availableLocations = useMemo(
+    () => [...sightingLocationIds].sort((a, b) => a.localeCompare(b)),
+    [sightingLocationIds],
+  );
+
+  const availableLocationOptions = useMemo(() => availableLocations
+    .map((locationId) => ({
+      value: locationId,
+      label: getLocationLabel(locationId),
+    }))
+    .sort((left, right) => {
+      const labelComparison = left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
+      if (labelComparison !== 0) {
+        return labelComparison;
+      }
+      return left.value.localeCompare(right.value, undefined, { sensitivity: 'base' });
+    }), [availableLocations, getLocationLabel]);
+
+  const activeSightingLocationLabel = useMemo(
+    () => getLocationLabel(activeSighting?.locationId),
+    [activeSighting?.locationId, getLocationLabel],
+  );
 
   const availableSpecies = useMemo(() => {
     const speciesMap = new Map();
@@ -2458,9 +2651,9 @@ export default function Sightings() {
                   onChange={handleLocationFilterChange}
                 >
                   <option value="all">All locations</option>
-                  {availableLocations.map((locationId) => (
-                    <option key={locationId} value={locationId}>
-                      {locationId}
+                  {availableLocationOptions.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label}
                     </option>
                   ))}
                 </select>
@@ -2797,7 +2990,9 @@ export default function Sightings() {
                   <div className="sightingCard__footer">
                     <div className="sightingCard__footerGroup">
                       <span className="sightingCard__footerLabel">Location</span>
-                      <span className="sightingCard__location" title={entry.locationId}>{entry.locationId}</span>
+                      <span className="sightingCard__location" title={entry.locationId}>
+                        {getLocationLabel(entry.locationId)}
+                      </span>
                     </div>
                     {(() => {
                       const captureTimestamp = getCaptureTimestamp(entry);
@@ -3211,7 +3406,9 @@ export default function Sightings() {
                       {activeSighting.locationId && (
                         <div className="sightingModal__metaRow">
                           <span className="sightingModal__metaLabel">Location</span>
-                          <span className="sightingModal__location">{activeSighting.locationId}</span>
+                          <span className="sightingModal__location" title={activeSighting.locationId}>
+                            {activeSightingLocationLabel}
+                          </span>
                         </div>
                       )}
                     </div>

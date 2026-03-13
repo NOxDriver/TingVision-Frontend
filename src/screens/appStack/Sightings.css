@@ -774,11 +774,10 @@
 }
 
 .sightingCard__footer {
-  display: flex;
-  justify-content: flex-start;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(max-content, auto);
+  align-items: start;
+  gap: 12px 18px;
   font-size: 0.9rem;
   color: var(--color-text-primary);
 }
@@ -789,6 +788,10 @@
   gap: 3px;
   min-width: 0;
   flex: 1 1 160px;
+}
+
+.sightingCard__footerGroup--time {
+  min-width: fit-content;
 }
 
 .sightingCard__footerGroup--time time {
@@ -809,9 +812,11 @@
 
 .sightingCard__location {
   max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .sightingCard__media video {
@@ -1394,5 +1399,17 @@
 
   .sightingsPage__list {
     grid-template-columns: 1fr;
+  }
+
+  .sightingCard__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .sightingCard__footerGroup--time {
+    min-width: 0;
+  }
+
+  .sightingCard__footerGroup--time time {
+    white-space: normal;
   }
 }

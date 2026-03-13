@@ -287,11 +287,17 @@ export const applySightingCorrection = async ({
     nextSpeciesDocPath = newSpeciesRef.path;
 
     const clonedSpeciesData = stripClientFields(speciesDocData);
+    delete clonedSpeciesData.locationId;
 
-    const locationId =
-      (typeof clonedSpeciesData.locationId === 'string' && clonedSpeciesData.locationId.trim()) ||
+    const clientId =
+      (typeof clonedSpeciesData.clientId === 'string' && clonedSpeciesData.clientId.trim()) ||
       (typeof entry.locationId === 'string' && entry.locationId.trim()) ||
+      (typeof parentDocData.clientId === 'string' && parentDocData.clientId.trim()) ||
       (typeof parentDocData.locationId === 'string' && parentDocData.locationId.trim()) ||
+      null;
+    const cameraId =
+      (typeof clonedSpeciesData.cameraId === 'string' && clonedSpeciesData.cameraId.trim()) ||
+      (typeof parentDocData.cameraId === 'string' && parentDocData.cameraId.trim()) ||
       null;
 
     const newSpeciesDocData = {
@@ -300,7 +306,8 @@ export const applySightingCorrection = async ({
       corrected: true,
       correctedBy: actor || null,
       updatedAt: serverTimestamp(),
-      ...(locationId ? { locationId } : {}),
+      ...(clientId ? { clientId } : {}),
+      ...(cameraId ? { cameraId } : {}),
       ...(!clonedSpeciesData.createdAt && parentDocData.createdAt ? { createdAt: parentDocData.createdAt } : {}),
     };
 

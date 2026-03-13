@@ -191,6 +191,7 @@ export default function HighlightsWidget() {
             const normalizedLocation = normalizeLocationId(
               resolveAccessLocationId(
                 parentDoc?.cameraId,
+                parentDoc?.clientId,
                 parentDoc?.locationId,
                 parentDoc?.location,
               ),

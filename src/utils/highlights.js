@@ -151,6 +151,24 @@ export function buildHighlightEntry({
   const createdAt = normalizeDate(parentDoc?.createdAt || speciesDoc?.createdAt);
   const spottedAt = normalizeDate(parentDoc?.spottedAt || speciesDoc?.spottedAt);
   const meta = CATEGORY_META[category] || {};
+  const displayLocationId =
+    resolveAccessLocationId(
+      parentDoc?.clientId,
+      speciesDoc?.clientId,
+      parentDoc?.locationId,
+      speciesDoc?.locationId,
+      parentDoc?.location,
+    ) || 'Unknown location';
+  const accessId =
+    resolveAccessLocationId(
+      parentDoc?.cameraId,
+      speciesDoc?.cameraId,
+      parentDoc?.clientId,
+      speciesDoc?.clientId,
+      parentDoc?.locationId,
+      speciesDoc?.locationId,
+      parentDoc?.location,
+    ) || displayLocationId;
   return {
     id: `${parentDoc?.sightingId || parentDoc?.id || parentDoc?.storagePathMedia || ''}::${category}`,
     category,
@@ -159,14 +177,8 @@ export function buildHighlightEntry({
     species: formatSpeciesName(speciesDoc?.species || parentDoc?.primarySpecies || parentDoc?.species || 'Unknown'),
     previewUrl,
     debugUrl,
-    locationId:
-      resolveAccessLocationId(
-        parentDoc?.cameraId,
-        speciesDoc?.cameraId,
-        parentDoc?.locationId,
-        speciesDoc?.locationId,
-        parentDoc?.location,
-      ) || 'Unknown location',
+    locationId: displayLocationId,
+    accessId,
     createdAt,
     spottedAt,
     count: speciesDoc?.count ?? null,

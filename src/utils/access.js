@@ -53,10 +53,12 @@ export const readUserAccessFields = (data = {}) => {
   const cameraIds = uniqueIds(data?.cameraIds);
   const clientIds = uniqueIds(data?.clientIds);
   const legacyLocationIds = uniqueIds(data?.locationIds);
-  const locationIds = buildLegacyLocationIds({
-    cameraIds,
-    extraLocationIds: legacyLocationIds,
-  });
+  // Keep older client/location-slug sightings visible while newer docs move to cameraId.
+  const locationIds = uniqueIds([
+    ...cameraIds,
+    ...clientIds,
+    ...legacyLocationIds,
+  ]);
 
   return {
     role,
