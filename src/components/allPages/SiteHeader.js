@@ -1,13 +1,16 @@
 import React from "react";
 import "./SiteHeader.css";
 import useAuthStore from "../../stores/authStore";
-import { useNavigate } from 'react-router-dom';
-import { FiHome, FiVideo, FiLogIn, FiUserPlus, FiLogOut } from "react-icons/fi";
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FiHome, FiVideo, FiLogIn, FiUserPlus, FiLogOut, FiSettings } from "react-icons/fi";
 
 const SiteHeader = ({ mode = 'light' }) => {
     const user = useAuthStore(state => state.user);
+    const role = useAuthStore(state => state.role);
     const logout = useAuthStore(state => state.logout);
     const navigate = useNavigate();
+    const location = useLocation();
+    const isAdmin = role === 'admin';
 
     return (
         <header className={`site-header ${mode}`}>
@@ -19,14 +22,29 @@ const SiteHeader = ({ mode = 'light' }) => {
                 <nav className="header-nav">
                     {user && (
                         <div className="nav-links">
-                            <button className="nav-link" onClick={() => navigate('/')}>
+                            <button
+                                className={`nav-link${location.pathname === '/' ? ' nav-link--active' : ''}`}
+                                onClick={() => navigate('/')}
+                            >
                                 <FiHome className="nav-icon" />
                                 <span>Home</span>
                             </button>
-                            <button className="nav-link" onClick={() => navigate('/sightings')}>
+                            <button
+                                className={`nav-link${location.pathname === '/sightings' ? ' nav-link--active' : ''}`}
+                                onClick={() => navigate('/sightings')}
+                            >
                                 <FiVideo className="nav-icon" />
                                 <span>Sightings</span>
                             </button>
+                            {isAdmin && (
+                                <button
+                                    className={`nav-link${location.pathname === '/settings' ? ' nav-link--active' : ''}`}
+                                    onClick={() => navigate('/settings')}
+                                >
+                                    <FiSettings className="nav-icon" />
+                                    <span>Settings</span>
+                                </button>
+                            )}
                         </div>
                     )}
 

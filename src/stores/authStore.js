@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { readUserAccessFields } from '../utils/access';
 
 
 
@@ -13,19 +14,12 @@ const defaultState = {
     user: null,
     profile: null,
     role: 'guest',
+    clientIds: [],
+    cameraIds: [],
     locationIds: [],
     pageAccessTokens: {},
     isAccessLoading: false,
     accessError: '',
-};
-
-const normalizeLocationIds = (input) => {
-    if (!Array.isArray(input)) {
-        return [];
-    }
-    return input
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter((value) => value.length > 0);
 };
 
 const useAuthStore = create((set) => ({
@@ -46,6 +40,8 @@ const useAuthStore = create((set) => ({
     clearAccess: () => set({
         profile: null,
         role: 'guest',
+        clientIds: [],
+        cameraIds: [],
         locationIds: [],
         isAccessLoading: false,
         accessError: '',
@@ -56,6 +52,8 @@ const useAuthStore = create((set) => ({
             set({
                 profile: null,
                 role: 'guest',
+                clientIds: [],
+                cameraIds: [],
                 locationIds: [],
                 isAccessLoading: false,
                 accessError: '',
@@ -70,7 +68,7 @@ const useAuthStore = create((set) => ({
 
             let data = {};
             if (!snapshot.exists()) {
-                data = { role: 'client', locationIds: [] };
+                data = { role: 'client', clientIds: [], cameraIds: [], locationIds: [] };
                 await setDoc(userRef, {
                     ...data,
                     createdAt: serverTimestamp(),
@@ -80,21 +78,27 @@ const useAuthStore = create((set) => ({
                 data = snapshot.data() || {};
             }
 
-            const role = data.role === 'admin' ? 'admin' : 'client';
-            const locationIds = role === 'admin'
-                ? normalizeLocationIds(data.locationIds)
-                : normalizeLocationIds(data.locationIds);
+            const {
+                role,
+                clientIds,
+                cameraIds,
+                locationIds,
+            } = readUserAccessFields(data);
 
             const profile = {
                 id: uid,
                 ...data,
                 role,
+                clientIds,
+                cameraIds,
                 locationIds,
             };
 
             set({
                 profile,
                 role,
+                clientIds,
+                cameraIds,
                 locationIds,
                 isAccessLoading: false,
                 accessError: '',
@@ -106,6 +110,8 @@ const useAuthStore = create((set) => ({
             set({
                 profile: null,
                 role: 'client',
+                clientIds: [],
+                cameraIds: [],
                 locationIds: [],
                 isAccessLoading: false,
                 accessError: error?.message || 'Unable to load access permissions',
@@ -130,6 +136,8 @@ const useAuthStore = create((set) => ({
                 phoneNumber,
                 fullName: `${firstName} ${lastName}`.trim(),
                 role: 'client',
+                clientIds: [],
+                cameraIds: [],
                 locationIds: [],
                 locationRequested: trimmedLocationRequested,
                 createdAt: serverTimestamp(),

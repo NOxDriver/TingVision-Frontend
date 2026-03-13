@@ -1,3 +1,5 @@
+import { resolveAccessLocationId } from './access';
+
 export const CATEGORY_META = {
   biggestBoundingBox: {
     key: 'biggestBoundingBox',
@@ -157,7 +159,14 @@ export function buildHighlightEntry({
     species: formatSpeciesName(speciesDoc?.species || parentDoc?.primarySpecies || parentDoc?.species || 'Unknown'),
     previewUrl,
     debugUrl,
-    locationId: parentDoc?.locationId || speciesDoc?.locationId || parentDoc?.location || 'Unknown location',
+    locationId:
+      resolveAccessLocationId(
+        parentDoc?.cameraId,
+        speciesDoc?.cameraId,
+        parentDoc?.locationId,
+        speciesDoc?.locationId,
+        parentDoc?.location,
+      ) || 'Unknown location',
     createdAt,
     spottedAt,
     count: speciesDoc?.count ?? null,

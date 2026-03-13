@@ -68,6 +68,12 @@
   color: var(--color-text-primary);
 }
 
+.nav-link--active {
+  background: rgba(255, 140, 26, 0.16);
+  border-color: rgba(255, 140, 26, 0.38);
+  color: var(--color-text-primary);
+}
+
 .nav-icon {
   font-size: 1.1rem;
 }

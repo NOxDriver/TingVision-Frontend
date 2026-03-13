@@ -1,0 +1,1255 @@
+.adminSettings {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px clamp(16px, 4vw, 48px) 56px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.adminSettings__hero,
+.settingsCard,
+.adminSettings__emptyState {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+}
+
+.adminSettings__hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+}
+
+.adminSettings__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  color: #ffd5a7;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adminSettings__hero h1,
+.adminSettings__emptyState h1 {
+  margin: 14px 0 10px;
+  font-size: clamp(1.7rem, 3vw, 2.6rem);
+  line-height: 1.1;
+}
+
+.adminSettings__hero p,
+.adminSettings__emptyState p,
+.settingsCard__header p,
+.adminSettings__statHint,
+.settingsField__hint,
+.settingsInlineMeta,
+.settingsEmptyText,
+.settingsToggle small,
+.settingsChecklist__item small,
+.settingsList__item span {
+  color: var(--color-text-secondary);
+}
+
+.adminSettings__heroActions {
+  display: flex;
+  align-items: flex-start;
+}
+
+.adminSettings__stats {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.adminSettings__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--color-bg-elevated);
+  border: 1px solid rgba(203, 146, 74, 0.18);
+}
+
+.adminSettings__statLabel {
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.adminSettings__statValue {
+  font-size: 2rem;
+}
+
+.adminSettings__banner {
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.22);
+  background: var(--color-bg-elevated);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.adminSettings__banner--closing {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.adminSettings__banner--success {
+  border-color: rgba(126, 200, 80, 0.35);
+  background: rgba(38, 66, 25, 0.55);
+}
+
+.adminSettings__banner--error {
+  border-color: rgba(255, 111, 111, 0.35);
+  background: rgba(93, 26, 26, 0.4);
+  color: #ffd6d6;
+}
+
+.adminSettings__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.adminSettings__tab,
+.settingsButton,
+.settingsButton--ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(203, 146, 74, 0.25);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.adminSettings__tab:hover,
+.adminSettings__tab:focus-visible,
+.settingsButton:hover,
+.settingsButton:focus-visible,
+.settingsButton--ghost:hover,
+.settingsButton--ghost:focus-visible {
+  border-color: rgba(255, 140, 26, 0.45);
+  background: rgba(255, 140, 26, 0.08);
+}
+
+.adminSettings__tab--active {
+  background: rgba(255, 140, 26, 0.18);
+  border-color: rgba(255, 140, 26, 0.45);
+}
+
+.settingsButton--attention:not(:disabled) {
+  border-color: rgba(255, 170, 68, 0.96);
+  background: #ff9d2b;
+  color: #1b1203;
+  animation: settingsSaveFlash 0.95s ease-in-out infinite;
+  box-shadow:
+    0 0 0 0 rgba(255, 157, 43, 0.45),
+    0 14px 30px rgba(255, 140, 26, 0.32);
+}
+
+.settingsButton--attention:not(:disabled) svg,
+.settingsButton--attention:not(:disabled) span {
+  color: inherit;
+}
+
+.settingsButton:disabled,
+.settingsButton--ghost:disabled,
+.adminSettings__tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.adminSettings__layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.adminSettings__layout--camera {
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.adminSettings__rail,
+.adminSettings__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settingsCard__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 20px 0;
+}
+
+.settingsCard__header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.settingsCard__header p {
+  margin: 8px 0 0;
+  max-width: 68ch;
+}
+
+.settingsCard__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settingsCard__actions--sticky {
+  position: sticky;
+  top: 16px;
+  z-index: 5;
+  align-self: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: rgba(8, 17, 8, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.settingsCard__body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+}
+
+.settingsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settingsList__item {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.settingsList__item strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.98rem;
+}
+
+.settingsList__item:hover,
+.settingsList__item:focus-visible {
+  border-color: rgba(255, 140, 26, 0.4);
+  background: rgba(255, 140, 26, 0.05);
+}
+
+.settingsList__item--active {
+  background: rgba(255, 140, 26, 0.1);
+  border-color: rgba(255, 140, 26, 0.42);
+}
+
+.settingsGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.settingsGrid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settingsGrid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settingsGrid--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.settingsField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settingsField__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.settingsField__hint {
+  font-size: 0.84rem;
+}
+
+.settingsInput,
+.settingsTextarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(203, 146, 74, 0.22);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.settingsTextarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.settingsInput:focus,
+.settingsTextarea:focus {
+  outline: none;
+  border-color: rgba(255, 140, 26, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 140, 26, 0.15);
+}
+
+.settingsStaticField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(203, 146, 74, 0.18);
+}
+
+.settingsStaticField__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settingsStaticField__status {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.settingsStaticField__value {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 1rem;
+}
+
+.settingsToggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: var(--color-bg-primary);
+}
+
+.settingsToggle input {
+  margin-top: 4px;
+  accent-color: var(--color-accent);
+}
+
+.settingsToggle strong,
+.settingsChecklist__item strong {
+  display: block;
+}
+
+.settingsActionField {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settingsExtraFieldList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.settingsCreateFieldCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 140, 26, 0.3);
+  background: rgba(255, 140, 26, 0.07);
+}
+
+.settingsCreateFieldCard__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsCreateFieldCard__header strong {
+  font-size: 0.95rem;
+}
+
+.settingsCreateFieldCard__header span {
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+}
+
+.settingsExtraFieldHeader {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(110px, 140px) minmax(180px, 1fr) auto;
+  margin-bottom: 10px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settingsExtraFieldRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(110px, 140px) minmax(180px, 1fr) auto;
+  align-items: end;
+}
+
+.settingsExtraFieldCell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settingsExtraFieldName {
+  padding: 12px 14px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  border-radius: 10px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.settingsExtraFieldCell--action {
+  align-self: stretch;
+  justify-content: flex-end;
+}
+
+.settingsQuickSaveBar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 140, 26, 0.26);
+  background: rgba(8, 17, 8, 0.96);
+}
+
+.settingsQuickSaveBar__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsQuickSaveBar__text strong {
+  font-size: 0.94rem;
+}
+
+.settingsQuickSaveBar__text span {
+  font-size: 0.86rem;
+  color: var(--color-text-muted);
+}
+
+.settingsFloatingSaveDock {
+  position: fixed;
+  right: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+  pointer-events: none;
+}
+
+.settingsFloatingSaveDock__panel {
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 170, 68, 0.34);
+  background: rgba(8, 17, 8, 0.96);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.settingsFloatingSaveDock__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settingsFloatingSaveDock__header strong {
+  font-size: 0.96rem;
+  color: var(--color-text-primary);
+}
+
+.settingsFloatingSaveDock__header span {
+  font-size: 0.84rem;
+  color: var(--color-text-muted);
+}
+
+.settingsFloatingSaveDock__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settingsButton--floating {
+  width: 100%;
+  justify-content: center;
+}
+
+.settingsActionRow {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settingsActionRow--sticky {
+  position: sticky;
+  bottom: 16px;
+  z-index: 3;
+  align-self: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: rgba(8, 17, 8, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.settingsQuickControls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settingsQuickControls__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settingsQuickControls__card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid rgba(203, 146, 74, 0.16);
+}
+
+.settingsQuickControls__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.settingsSectionDivider {
+  height: 1px;
+  background: rgba(203, 146, 74, 0.18);
+}
+
+.settingsSubheading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.settingsInlineError {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 111, 111, 0.32);
+  background: rgba(93, 26, 26, 0.35);
+  color: #ffd6d6;
+}
+
+.settingsInlineMeta,
+.settingsEmptyText {
+  font-size: 0.92rem;
+}
+
+.settingsPresetLayout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.settingsPresetList {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.settingsPresetEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  overflow: visible;
+  max-height: none;
+  padding-right: 0;
+}
+
+.settingsBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settingsBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 140, 26, 0.1);
+  border: 1px solid rgba(255, 140, 26, 0.26);
+  color: #ffd9af;
+  font-size: 0.88rem;
+}
+
+.settingsButton--ghost.settingsButton--active {
+  background: rgba(255, 140, 26, 0.16);
+  border-color: rgba(255, 140, 26, 0.45);
+}
+
+.settingsButton--small {
+  padding: 9px 12px;
+  font-size: 0.88rem;
+}
+
+.settingsUserRailControls {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.settingsUserRailSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 0.88rem;
+  color: var(--color-text-muted);
+}
+
+.settingsUserList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 340px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.settingsUserListItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.settingsUserListItem:hover,
+.settingsUserListItem:focus-visible {
+  border-color: rgba(255, 140, 26, 0.4);
+  background: rgba(255, 140, 26, 0.06);
+  transform: translateY(-1px);
+}
+
+.settingsUserListItem--active {
+  border-color: rgba(255, 140, 26, 0.48);
+  background: rgba(255, 140, 26, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 140, 26, 0.18);
+}
+
+.settingsUserListItem__avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 140, 26, 0.14);
+  border: 1px solid rgba(255, 140, 26, 0.24);
+  color: #ffd6ad;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.settingsUserListItem__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settingsUserListItem__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settingsUserListItem__top strong {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.settingsUserListItem__secondary,
+.settingsUserListItem__meta {
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+}
+
+.settingsRoleBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 146, 74, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.settingsRoleBadge--admin {
+  border-color: rgba(126, 200, 80, 0.34);
+  background: rgba(53, 96, 38, 0.4);
+  color: #dff2d3;
+}
+
+.settingsRoleBadge--client {
+  border-color: rgba(255, 140, 26, 0.28);
+  background: rgba(255, 140, 26, 0.12);
+  color: #ffd9af;
+}
+
+.settingsUserIdentityCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: linear-gradient(180deg, rgba(255, 140, 26, 0.08), rgba(255, 140, 26, 0.03));
+}
+
+.settingsUserIdentityCard__main,
+.settingsUserIdentityCard__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settingsUserIdentityCard__main strong {
+  font-size: 1.02rem;
+}
+
+.settingsUserIdentityCard__main span,
+.settingsUserIdentityCard__id {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.settingsUserIdentityCard__meta {
+  align-items: flex-end;
+}
+
+.settingsAccessSummaryGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.settingsAccessSummaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: var(--color-bg-primary);
+}
+
+.settingsAccessSummaryCard--accent {
+  border-color: rgba(255, 140, 26, 0.28);
+  background: rgba(255, 140, 26, 0.1);
+}
+
+.settingsAccessSummaryCard span {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.settingsAccessSummaryCard strong {
+  font-size: 1.15rem;
+}
+
+.settingsAccessSummaryCard small {
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+.settingsUserAccessSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.settingsUserAccessFilters {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+  margin-bottom: 12px;
+}
+
+.settingsUserCameraRow__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 140, 26, 0.08);
+  border: 1px solid rgba(255, 140, 26, 0.18);
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.settingsSelectedCameraPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settingsSelectedCameraPanel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settingsSelectedCameraPanel__header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsSelectedCameraPanel__header span {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+}
+
+.settingsSelectedCameraList {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settingsSelectedCameraChip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.settingsSelectedCameraChip:hover,
+.settingsSelectedCameraChip:focus-visible {
+  border-color: rgba(255, 140, 26, 0.38);
+  background: rgba(255, 140, 26, 0.06);
+}
+
+.settingsSelectedCameraChip span {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.settingsAdminAutoAccessNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 140, 26, 0.26);
+  background: linear-gradient(180deg, rgba(255, 140, 26, 0.12), rgba(255, 140, 26, 0.05));
+}
+
+.settingsAdminAutoAccessNotice strong {
+  font-size: 1rem;
+}
+
+.settingsAdminAutoAccessNotice p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.settingsUserCameraGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settingsUserCameraGroup {
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.16);
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.settingsUserCameraGroup__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settingsUserCameraGroup__summary::-webkit-details-marker {
+  display: none;
+}
+
+.settingsUserCameraGroup__summary::after {
+  content: "+";
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.settingsUserCameraGroup[open] .settingsUserCameraGroup__summary::after {
+  content: "-";
+}
+
+.settingsUserCameraGroup__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settingsUserCameraGroup__title span {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.settingsUserCameraGroup__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 16px 14px;
+}
+
+.settingsUserCameraList {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  padding: 0 16px 16px;
+}
+
+.settingsUserCameraRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settingsUserCameraRow--selected {
+  border-color: rgba(255, 140, 26, 0.34);
+  background: rgba(255, 140, 26, 0.08);
+}
+
+.settingsUserCameraRow input {
+  margin-top: 4px;
+  accent-color: var(--color-accent);
+}
+
+.settingsUserCameraRow__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settingsUserCameraRow__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settingsUserCameraRow__title strong {
+  display: block;
+}
+
+.settingsUserCameraRow__meta {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  word-break: break-word;
+}
+
+.settingsGroupedChecklist {
+  display: grid;
+  gap: 16px;
+}
+
+.settingsChecklistGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid rgba(203, 146, 74, 0.16);
+}
+
+.settingsChecklistGroup > span {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.settingsChecklist {
+  display: grid;
+  gap: 10px;
+}
+
+.settingsChecklist__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(203, 146, 74, 0.12);
+}
+
+.settingsChecklist__item input {
+  margin-top: 4px;
+  accent-color: var(--color-accent);
+}
+
+.adminSettings__emptyState {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 64px 24px;
+  min-height: 320px;
+}
+
+.adminSettings__emptyIcon {
+  font-size: 2.5rem;
+  color: var(--color-accent);
+}
+
+@keyframes settingsSaveFlash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 140, 26, 0.16);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 140, 26, 0);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 1200px) {
+  .settingsQuickControls__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settingsGrid--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settingsGrid--three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .adminSettings__layout,
+  .adminSettings__layout--camera,
+  .settingsPresetLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsExtraFieldHeader {
+    display: none;
+  }
+
+  .settingsExtraFieldRow {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsExtraFieldCell::before {
+    content: attr(data-label);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+  }
+
+  .settingsQuickSaveBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settingsFloatingSaveDock {
+    left: 16px;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .settingsFloatingSaveDock__panel {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .settingsPresetList,
+  .settingsPresetEditor {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    position: static;
+    top: auto;
+  }
+
+  .adminSettings__hero {
+    flex-direction: column;
+  }
+
+  .settingsUserRailControls,
+  .settingsUserAccessFilters,
+  .settingsAccessSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsUserList {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .settingsUserIdentityCard,
+  .settingsSelectedCameraPanel__header,
+  .settingsUserCameraGroup__summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settingsUserIdentityCard__meta {
+    align-items: flex-start;
+  }
+
+  .settingsUserCameraGroup__summary::after {
+    display: none;
+  }
+
+}
+
+@media (max-width: 720px) {
+  .adminSettings {
+    padding: 24px 16px 48px;
+  }
+
+  .settingsQuickControls__grid,
+  .settingsGrid--two,
+  .settingsGrid--three,
+  .settingsGrid--four {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsCard__header {
+    flex-direction: column;
+  }
+
+  .settingsUserListItem {
+    padding: 12px;
+  }
+
+  .settingsSelectedCameraList,
+  .settingsUserCameraList {
+    grid-template-columns: 1fr;
+  }
+}

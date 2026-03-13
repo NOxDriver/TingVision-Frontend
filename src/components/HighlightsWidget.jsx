@@ -22,6 +22,7 @@ import {
   normalizeDate,
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
+import { resolveAccessLocationId } from '../utils/access';
 import { trackButton, trackEvent } from '../utils/analytics';
 import { isLikelyVideoUrl } from '../utils/media';
 import { FiEdit2 } from 'react-icons/fi';
@@ -187,7 +188,13 @@ export default function HighlightsWidget() {
           if (!parentDoc || parentDoc.deletedAt) return;
 
           if (!isAdmin) {
-            const normalizedLocation = normalizeLocationId(parentDoc.locationId);
+            const normalizedLocation = normalizeLocationId(
+              resolveAccessLocationId(
+                parentDoc?.cameraId,
+                parentDoc?.locationId,
+                parentDoc?.location,
+              ),
+            );
             if (!allowedLocationSet.has(normalizedLocation)) {
               return;
             }
