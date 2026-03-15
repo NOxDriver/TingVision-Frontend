@@ -3369,7 +3369,6 @@ export default function AdminSettings({ mode = 'settings' }) {
             <StatCard label="MRR" value={formatZarAmount(totalMonthlyRevenueZar)} hint="Enabled client revenue per month" />
             <StatCard label="Cameras" value={cameras.length} hint="Actual camera devices" />
             <StatCard label="Users" value={users.length} hint="Accounts with permissions" />
-            <StatCard label="Presets" value={presets.length} hint={selectedCameraId ? `For ${selectedCameraId}` : 'Select a camera'} />
           </div>
 
           <div className="adminSettings__tabs">
