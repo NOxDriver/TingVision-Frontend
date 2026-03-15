@@ -26,12 +26,35 @@ const IR_DEFAULT_LEVELS = {
   medium: [50, 50],
   near: [0, 100],
 };
+const DEFAULT_GLOBAL_DEST_BUCKET = "ting-vision.firebasestorage.app";
+const DEFAULT_GLOBAL_LATEST_LOGO_PATH = "/logos/Latest_Sightings.png";
 
 function createHttpsError(code, message) {
   return new functions.https.HttpsError(code, message);
 }
 
-async function requireAdminUser(context) {
+function normalizeAccessIds(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const seen = new Set();
+  const next = [];
+
+  values.forEach((value) => {
+    const cleaned = String(value || "").trim();
+    if (!cleaned || seen.has(cleaned)) {
+      return;
+    }
+
+    seen.add(cleaned);
+    next.push(cleaned);
+  });
+
+  return next;
+}
+
+async function getAuthenticatedUserDoc(context) {
   if (!context.auth || !context.auth.uid) {
     throw createHttpsError(
         "unauthenticated",
@@ -44,7 +67,12 @@ async function requireAdminUser(context) {
       .doc(context.auth.uid)
       .get();
 
-  const role = userSnap.exists ? userSnap.data().role : "";
+  return userSnap.exists ? userSnap.data() || {} : {};
+}
+
+async function requireAdminUser(context) {
+  const userData = await getAuthenticatedUserDoc(context);
+  const role = userData.role;
   if (role !== "admin") {
     throw createHttpsError(
         "permission-denied",
@@ -52,7 +80,285 @@ async function requireAdminUser(context) {
     );
   }
 
-  return userSnap.data() || {};
+  return userData;
+}
+
+async function requireCameraAccessUser(context, cameraId) {
+  const userData = await getAuthenticatedUserDoc(context);
+  if (userData.role === "admin") {
+    return userData;
+  }
+
+  const normalizedCameraId = String(cameraId || "").trim();
+  if (!normalizedCameraId) {
+    throw createHttpsError("invalid-argument", "cameraId is required.");
+  }
+
+  const cameraIds = new Set(normalizeAccessIds(userData.cameraIds));
+  const clientIds = new Set(normalizeAccessIds(userData.clientIds));
+  const legacyLocationIds = new Set(normalizeAccessIds(userData.locationIds));
+
+  if (cameraIds.has(normalizedCameraId) || legacyLocationIds.has(normalizedCameraId)) {
+    return userData;
+  }
+
+  const cameraSnap = await admin.firestore()
+      .collection("cameras")
+      .doc(normalizedCameraId)
+      .get();
+
+  if (!cameraSnap.exists) {
+    throw createHttpsError(
+        "not-found",
+        "Camera \"" + normalizedCameraId + "\" was not found.",
+    );
+  }
+
+  const cameraData = cameraSnap.data() || {};
+  const cameraClientId = String(
+      cameraData.client_id ||
+      cameraData.clientId ||
+      "",
+  ).trim();
+
+  if (
+    cameraClientId &&
+    (clientIds.has(cameraClientId) || legacyLocationIds.has(cameraClientId))
+  ) {
+    return userData;
+  }
+
+  throw createHttpsError(
+      "permission-denied",
+      "You do not have access to that camera.",
+  );
+}
+
+async function requireClientAccessUser(context, clientId) {
+  const userData = await getAuthenticatedUserDoc(context);
+  if (userData.role === "admin") {
+    return userData;
+  }
+
+  const normalizedClientId = String(clientId || "").trim();
+  if (!normalizedClientId) {
+    throw createHttpsError("invalid-argument", "clientId is required.");
+  }
+
+  const clientIds = new Set(normalizeAccessIds(userData.clientIds));
+  const legacyLocationIds = new Set(normalizeAccessIds(userData.locationIds));
+
+  if (clientIds.has(normalizedClientId) || legacyLocationIds.has(normalizedClientId)) {
+    return userData;
+  }
+
+  throw createHttpsError(
+      "permission-denied",
+      "You do not have access to that location.",
+  );
+}
+
+function normalizeWhatsAppGroups(values) {
+  const rawValues = Array.isArray(values) ?
+    values :
+    (typeof values === "string" ? values.split(/[\n,]/) : []);
+
+  const seen = new Set();
+  const next = [];
+
+  rawValues.forEach((value) => {
+    const normalizedValue = value &&
+      typeof value === "object" &&
+      !Array.isArray(value) ?
+      value :
+      {id: value};
+    const id = String(
+        normalizedValue.id ||
+        normalizedValue.groupId ||
+        normalizedValue.group_id ||
+        normalizedValue.value ||
+        "",
+    ).trim();
+    const name = String(
+        normalizedValue.name ||
+        normalizedValue.label ||
+        "",
+    ).trim();
+
+    if (!id || seen.has(id)) {
+      return;
+    }
+
+    seen.add(id);
+    next.push({
+      name: name || "Group " + (next.length + 1),
+      id: id,
+    });
+  });
+
+  return next;
+}
+
+function normalizeAlertCooldowns(rawValue) {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return {};
+  }
+
+  const next = {};
+  Object.entries(rawValue).forEach(([speciesName, minutes]) => {
+    const cleanedSpecies = String(speciesName || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+    if (!cleanedSpecies) {
+      return;
+    }
+
+    if (minutes === null || minutes === undefined) {
+      next[cleanedSpecies] = null;
+      return;
+    }
+
+    if (typeof minutes === "string") {
+      const normalizedMinutes = minutes.trim().toLowerCase();
+      if (!normalizedMinutes || normalizedMinutes === "never" || normalizedMinutes === "none") {
+        next[cleanedSpecies] = null;
+        return;
+      }
+    }
+
+    const parsedMinutes = Number(minutes);
+    if (!Number.isFinite(parsedMinutes)) {
+      return;
+    }
+
+    next[cleanedSpecies] = Math.max(0, Math.round(parsedMinutes));
+  });
+
+  return next;
+}
+
+function normalizeRareAnimals(rawValue) {
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+
+  const seen = new Set();
+  const next = [];
+
+  rawValue.forEach((speciesName) => {
+    const cleanedSpecies = String(speciesName || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+    if (!cleanedSpecies || seen.has(cleanedSpecies)) {
+      return;
+    }
+
+    seen.add(cleanedSpecies);
+    next.push(cleanedSpecies);
+  });
+
+  return next;
+}
+
+function normalizeStoragePath(rawValue) {
+  const cleanedValue = String(rawValue || "").trim();
+  if (!cleanedValue) {
+    return "";
+  }
+
+  return "/" + cleanedValue.replace(/^\/+/, "");
+}
+
+function normalizeBucketName(rawValue) {
+  const cleanedValue = String(rawValue || "").trim();
+  if (!cleanedValue) {
+    return "";
+  }
+
+  if (cleanedValue.includes("/") || /\s/.test(cleanedValue)) {
+    throw createHttpsError(
+        "invalid-argument",
+        "Enter a valid storage bucket name.",
+    );
+  }
+
+  return cleanedValue;
+}
+
+function getGlobalSettingsDocRef() {
+  return admin.firestore().collection("settings").doc("global");
+}
+
+function buildGlobalSettingsResponse(rawData) {
+  const data = rawData && typeof rawData === "object" ? rawData : {};
+  const alerts = data.alerts && typeof data.alerts === "object" &&
+    !Array.isArray(data.alerts) ? data.alerts : {};
+  const storage = data.storage && typeof data.storage === "object" &&
+    !Array.isArray(data.storage) ? data.storage : {};
+  const branding = data.branding && typeof data.branding === "object" &&
+    !Array.isArray(data.branding) ? data.branding : {};
+
+  return {
+    alerts: {
+      defaultAdminWhatsappGroups: normalizeWhatsAppGroups(
+          alerts.defaultAdminWhatsappGroups,
+      ),
+    },
+    storage: {
+      destBucket: String(storage.destBucket || "").trim() || null,
+    },
+    branding: {
+      latestLogoPath: normalizeStoragePath(
+          branding.latestLogoPath,
+      ) || null,
+    },
+  };
+}
+
+async function getEffectiveGlobalDestBucket() {
+  const globalSettingsRef = getGlobalSettingsDocRef();
+  const currentSnapshot = await ensureGlobalSettingsDocExists(globalSettingsRef);
+  const currentSettings = buildGlobalSettingsResponse(
+      currentSnapshot.exists ? currentSnapshot.data() || {} : {},
+  );
+
+  return currentSettings.storage.destBucket ||
+    admin.app().options.storageBucket ||
+    DEFAULT_GLOBAL_DEST_BUCKET;
+}
+
+async function ensureGlobalSettingsDocExists(globalSettingsRef) {
+  const currentSnapshot = await globalSettingsRef.get();
+  if (currentSnapshot.exists) {
+    return currentSnapshot;
+  }
+
+  await globalSettingsRef.set({
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return globalSettingsRef.get();
+}
+
+function buildUpdatedByFields(context, userData) {
+  const updatedByFields = {};
+  const updatedByEmail = String(
+      context?.auth?.token?.email ||
+      userData?.email ||
+      "",
+  ).trim();
+
+  if (context?.auth?.uid) {
+    updatedByFields.updatedByUid = context.auth.uid;
+  }
+
+  if (updatedByEmail) {
+    updatedByFields.updatedByEmail = updatedByEmail;
+  }
+
+  return updatedByFields;
 }
 
 function resolveProjectId() {
@@ -1434,8 +1740,6 @@ exports.renameCameraPreset = functions.https.onCall(
 
 exports.cameraQuickControl = functions.https.onCall(
     async (data, context) => {
-      await requireAdminUser(context);
-
       const cameraId = String(data && data.cameraId || "").trim();
       const control = String(data && data.control || "")
           .trim()
@@ -1454,6 +1758,8 @@ exports.cameraQuickControl = functions.https.onCall(
             "control is required.",
         );
       }
+
+      await requireCameraAccessUser(context, cameraId);
 
       const cameraRef = admin.firestore().collection("cameras").doc(cameraId);
       const cameraSnap = await cameraRef.get();
@@ -1546,5 +1852,329 @@ exports.cameraQuickControl = functions.https.onCall(
               "Unable to run the camera quick control.",
         );
       }
+    },
+);
+
+exports.saveClientAlertSettings = functions.https.onCall(
+    async (data, context) => {
+      const clientId = String(data && data.clientId || "").trim();
+      if (!clientId) {
+        throw createHttpsError(
+            "invalid-argument",
+            "clientId is required.",
+        );
+      }
+
+      const userData = await requireClientAccessUser(context, clientId);
+
+      const clientUpdates = {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      const livestreamUrl = String(
+          data && data.livestreamUrl || "",
+      ).trim();
+      if (livestreamUrl) {
+        clientUpdates["alerts.livestreamUrl"] = livestreamUrl;
+      } else {
+        clientUpdates["alerts.livestreamUrl"] = admin.firestore.FieldValue.delete();
+      }
+
+      clientUpdates["alerts.includePresetDirections"] = data &&
+        Object.prototype.hasOwnProperty.call(data, "includePresetDirections") ?
+        Boolean(data.includePresetDirections) :
+        true;
+
+      const lodgeWhatsappGroups = normalizeWhatsAppGroups(
+          data && data.lodgeWhatsappGroups,
+      );
+      if (lodgeWhatsappGroups.length > 0) {
+        clientUpdates["alerts.lodgeWhatsappGroups"] = lodgeWhatsappGroups;
+      } else {
+        clientUpdates["alerts.lodgeWhatsappGroups"] = admin.firestore.FieldValue.delete();
+      }
+
+      const alertCooldowns = normalizeAlertCooldowns(
+          data && data.alertCooldowns,
+      );
+      if (Object.keys(alertCooldowns).length > 0) {
+        clientUpdates["alerts.alertCooldowns"] = alertCooldowns;
+      } else {
+        clientUpdates["alerts.alertCooldowns"] = admin.firestore.FieldValue.delete();
+      }
+
+      const clientRef = admin.firestore().collection("clients").doc(clientId);
+      const currentClientSnap = await clientRef.get();
+      const currentAlerts = currentClientSnap.exists &&
+        currentClientSnap.data() &&
+        typeof currentClientSnap.data().alerts === "object" &&
+        !Array.isArray(currentClientSnap.data().alerts) ?
+        currentClientSnap.data().alerts :
+        {};
+      const currentLodgeLogoPath = normalizeStoragePath(
+          currentAlerts.lodgeLogoPath,
+      ) || null;
+
+      let rareAnimals = Array.isArray(currentAlerts.rareAnimals) ?
+        normalizeRareAnimals(currentAlerts.rareAnimals) :
+        [];
+      if (
+        userData.role === "admin" &&
+        data &&
+        Object.prototype.hasOwnProperty.call(data, "rareAnimals")
+      ) {
+        rareAnimals = normalizeRareAnimals(data.rareAnimals);
+        clientUpdates["alerts.rareAnimals"] = rareAnimals;
+      }
+
+      const effectiveBucket = await getEffectiveGlobalDestBucket();
+      await clientRef.update(clientUpdates);
+
+      return {
+        clientId: clientId,
+        alerts: {
+          livestreamUrl: livestreamUrl || null,
+          lodgeLogoPath: currentLodgeLogoPath,
+          includePresetDirections: clientUpdates["alerts.includePresetDirections"],
+          lodgeWhatsappGroups: lodgeWhatsappGroups,
+          alertCooldowns: alertCooldowns,
+          rareAnimals: rareAnimals,
+        },
+        storage: {
+          destBucket: effectiveBucket,
+        },
+      };
+    },
+);
+
+exports.saveGlobalSettings = functions.https.onCall(
+    async (data, context) => {
+      const userData = await requireAdminUser(context);
+      const globalSettingsRef = getGlobalSettingsDocRef();
+      const currentSnapshot = await ensureGlobalSettingsDocExists(globalSettingsRef);
+      const currentSettings = buildGlobalSettingsResponse(
+          currentSnapshot.exists ? currentSnapshot.data() || {} : {},
+      );
+
+      const defaultAdminWhatsappGroups = normalizeWhatsAppGroups(
+          data && data.defaultAdminWhatsappGroups,
+      );
+      const destBucket = normalizeBucketName(
+          data && data.destBucket,
+      );
+
+      const updates = {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...buildUpdatedByFields(context, userData),
+      };
+
+      if (defaultAdminWhatsappGroups.length > 0) {
+        updates["alerts.defaultAdminWhatsappGroups"] = defaultAdminWhatsappGroups;
+      } else {
+        updates["alerts.defaultAdminWhatsappGroups"] = admin.firestore.FieldValue.delete();
+      }
+
+      if (destBucket) {
+        updates["storage.destBucket"] = destBucket;
+      } else {
+        updates["storage.destBucket"] = admin.firestore.FieldValue.delete();
+      }
+
+      await globalSettingsRef.update(updates);
+
+      return {
+        settings: {
+          alerts: {
+            defaultAdminWhatsappGroups: defaultAdminWhatsappGroups,
+          },
+          storage: {
+            destBucket: destBucket || null,
+          },
+          branding: {
+            latestLogoPath: currentSettings.branding.latestLogoPath || null,
+          },
+        },
+      };
+    },
+);
+
+exports.uploadGlobalLatestLogo = functions.https.onCall(
+    async (data, context) => {
+      const userData = await requireAdminUser(context);
+      const rawDataUrl = String(data && data.dataUrl || "").trim();
+      if (!rawDataUrl) {
+        throw createHttpsError(
+            "invalid-argument",
+            "dataUrl is required.",
+        );
+      }
+
+      const match = rawDataUrl.match(
+          /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\n\r]+)$/,
+      );
+      if (!match) {
+        throw createHttpsError(
+            "invalid-argument",
+            "Upload a PNG, JPEG, or WebP image.",
+        );
+      }
+
+      const contentType = match[1];
+      const base64Payload = match[2].replace(/\s+/g, "");
+      const imageBuffer = Buffer.from(base64Payload, "base64");
+      if (!imageBuffer.length) {
+        throw createHttpsError(
+            "invalid-argument",
+            "The uploaded image was empty.",
+        );
+      }
+
+      if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw createHttpsError(
+            "invalid-argument",
+            "Keep the uploaded image under 5 MB.",
+        );
+      }
+
+      const globalSettingsRef = getGlobalSettingsDocRef();
+      const currentSnapshot = await ensureGlobalSettingsDocExists(globalSettingsRef);
+      const currentSettings = buildGlobalSettingsResponse(
+          currentSnapshot.exists ? currentSnapshot.data() || {} : {},
+      );
+      const requestedBucket = normalizeBucketName(
+          data && data.destBucket,
+      );
+      const effectiveBucket = requestedBucket ||
+        currentSettings.storage.destBucket ||
+        admin.app().options.storageBucket ||
+        DEFAULT_GLOBAL_DEST_BUCKET;
+
+      const extension = ({
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+      })[contentType] || "png";
+      const storagePath = "logos/global/latest-sightings-" + Date.now() + "." + extension;
+
+      await admin.storage().bucket(effectiveBucket).file(storagePath).save(
+          imageBuffer,
+          {
+            resumable: false,
+            metadata: {
+              contentType: contentType,
+              cacheControl: "public,max-age=3600",
+            },
+          },
+      );
+
+      const latestLogoPath = "/" + storagePath;
+      const updates = {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...buildUpdatedByFields(context, userData),
+        "branding.latestLogoPath": latestLogoPath,
+        "storage.destBucket": effectiveBucket,
+      };
+
+      await globalSettingsRef.update(updates);
+
+      return {
+        settings: {
+          alerts: {
+            defaultAdminWhatsappGroups: currentSettings.alerts.defaultAdminWhatsappGroups,
+          },
+          storage: {
+            destBucket: effectiveBucket,
+          },
+          branding: {
+            latestLogoPath: latestLogoPath,
+          },
+        },
+      };
+    },
+);
+
+exports.uploadClientLodgeLogo = functions.https.onCall(
+    async (data, context) => {
+      const clientId = String(data && data.clientId || "").trim();
+      if (!clientId) {
+        throw createHttpsError(
+            "invalid-argument",
+            "clientId is required.",
+        );
+      }
+
+      const userData = await requireClientAccessUser(context, clientId);
+      const rawDataUrl = String(data && data.dataUrl || "").trim();
+      if (!rawDataUrl) {
+        throw createHttpsError(
+            "invalid-argument",
+            "dataUrl is required.",
+        );
+      }
+
+      const match = rawDataUrl.match(
+          /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\n\r]+)$/,
+      );
+      if (!match) {
+        throw createHttpsError(
+            "invalid-argument",
+            "Upload a PNG, JPEG, or WebP image.",
+        );
+      }
+
+      const contentType = match[1];
+      const base64Payload = match[2].replace(/\s+/g, "");
+      const imageBuffer = Buffer.from(base64Payload, "base64");
+      if (!imageBuffer.length) {
+        throw createHttpsError(
+            "invalid-argument",
+            "The uploaded image was empty.",
+        );
+      }
+
+      if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw createHttpsError(
+            "invalid-argument",
+            "Keep the uploaded image under 5 MB.",
+        );
+      }
+
+      const effectiveBucket = await getEffectiveGlobalDestBucket();
+      const extension = ({
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+      })[contentType] || "png";
+      const storagePath = "logo/" + clientId + "." + extension;
+
+      await admin.storage().bucket(effectiveBucket).file(storagePath).save(
+          imageBuffer,
+          {
+            resumable: false,
+            metadata: {
+              contentType: contentType,
+              // The path is stable now, so avoid long-lived stale logo caching.
+              cacheControl: "no-cache",
+            },
+          },
+      );
+
+      const lodgeLogoPath = "/" + storagePath;
+      const clientRef = admin.firestore().collection("clients").doc(clientId);
+      await clientRef.update({
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...buildUpdatedByFields(context, userData),
+        "alerts.lodgeLogoPath": lodgeLogoPath,
+      });
+
+      return {
+        clientId: clientId,
+        alerts: {
+          lodgeLogoPath: lodgeLogoPath,
+        },
+        storage: {
+          destBucket: effectiveBucket,
+        },
+      };
     },
 );

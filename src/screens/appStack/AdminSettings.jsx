@@ -6,18 +6,31 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import {
   FiCamera,
+  FiGlobe,
   FiPlusCircle,
   FiRefreshCw,
   FiSave,
   FiSettings,
   FiShield,
+  FiUploadCloud,
   FiUsers,
 } from 'react-icons/fi';
-import { db, functions as firebaseFunctions } from '../../firebase';
+import { db, functions as firebaseFunctions, storage } from '../../firebase';
 import useAuthStore from '../../stores/authStore';
 import usePageTitle from '../../hooks/usePageTitle';
 import {
@@ -59,10 +72,56 @@ const DEFAULT_USER_DRAFT = {
 const TAB_OPTIONS = [
   { id: 'cameras', label: 'Cameras', icon: FiCamera },
   { id: 'clients', label: 'Clients', icon: FiSettings },
+  { id: 'global', label: 'Global', icon: FiGlobe },
   { id: 'users', label: 'User Access', icon: FiUsers },
 ];
 
 const MAX_VISIBLE_USERS = 20;
+const ID_QUERY_BATCH_SIZE = 10;
+const EMPTY_WHATSAPP_GROUP_DRAFT = {
+  name: '',
+  id: '',
+};
+const DEFAULT_GLOBAL_DEST_BUCKET = 'ting-vision.firebasestorage.app';
+const DEFAULT_GLOBAL_LATEST_LOGO_PATH = '/logos/Latest_Sightings.png';
+const DEFAULT_GLOBAL_ADMIN_WHATSAPP_GROUPS = [
+  { name: 'Admins', id: '120363404393118610' },
+];
+const DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES = 60;
+const DEFAULT_RARE_ALERT_ANIMALS = [
+  'leopard',
+  'lion',
+  'cheetah',
+  'wild_dog',
+  'spotted_hyena',
+  'impala',
+  'bushbuck',
+];
+const ALERT_COOLDOWN_SPECIES = [
+  { name: 'leopard', defaultMinutes: 15 },
+  { name: 'lion', defaultMinutes: 15 },
+  { name: 'cheetah', defaultMinutes: 15 },
+  { name: 'wild_dog', defaultMinutes: 15 },
+  { name: 'spotted_hyena', defaultMinutes: 15 },
+  { name: 'elephant', defaultMinutes: 90 },
+  { name: 'buffalo', defaultMinutes: 90 },
+  { name: 'burchells_zebra', defaultMinutes: null },
+  { name: 'giraffe', defaultMinutes: 60 },
+  { name: 'impala', defaultMinutes: 600 },
+  { name: 'waterbuck', defaultMinutes: 600 },
+  { name: 'brown_hyena', defaultMinutes: null },
+  { name: 'warthog', defaultMinutes: 400 },
+  { name: 'hippopotamus', defaultMinutes: 600 },
+  { name: 'wildebeest', defaultMinutes: 600 },
+  { name: 'chacma_baboon', defaultMinutes: null },
+  { name: 'kudu', defaultMinutes: 600 },
+  { name: 'vervet_monkey', defaultMinutes: null },
+  { name: 'bushbuck', defaultMinutes: null },
+];
+const ALERT_COOLDOWN_MODE_OPTIONS = [
+  { value: 'minutes', label: 'Minutes' },
+  { value: 'never', label: 'Never' },
+];
 
 const sortByLabel = (left, right, getLabel) =>
   getLabel(left).localeCompare(getLabel(right), undefined, { sensitivity: 'base' });
@@ -121,12 +180,320 @@ const getSaveButtonClassName = (needsAttention) => (
   `settingsButton${needsAttention ? ' settingsButton--attention' : ''}`
 );
 
+const chunkItems = (items = [], size = ID_QUERY_BATCH_SIZE) => {
+  const next = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    next.push(items.slice(index, index + size));
+  }
+
+  return next;
+};
+
 const parseIdList = (value) => uniqueIds(
   String(value || '')
     .split(/[\n,]/)
     .map((entry) => entry.trim())
     .filter(Boolean),
 );
+
+const buildDefaultWhatsAppGroupName = (index) => `Group ${index + 1}`;
+
+const normalizeNamedWhatsAppGroups = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set();
+  const next = [];
+
+  value.forEach((entry) => {
+    const nextIndex = next.length;
+    const normalizedEntry = entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? entry
+      : { id: entry };
+    const id = String(
+      normalizedEntry?.id ??
+      normalizedEntry?.groupId ??
+      normalizedEntry?.group_id ??
+      normalizedEntry?.value ??
+      '',
+    ).trim();
+    const name = String(
+      normalizedEntry?.name ??
+      normalizedEntry?.label ??
+      '',
+    ).trim();
+
+    if (!id || seen.has(id)) {
+      return;
+    }
+
+    seen.add(id);
+    next.push({
+      name: name || buildDefaultWhatsAppGroupName(nextIndex),
+      id,
+    });
+  });
+
+  return next;
+};
+
+const buildAlertCooldownSpeciesLabel = (speciesName = '') => String(speciesName || '')
+  .trim()
+  .split('_')
+  .filter(Boolean)
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(' ');
+
+const normalizeAlertCooldownSpeciesName = (speciesName = '') => String(speciesName || '')
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, '_');
+
+const normalizeRareAnimalList = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set();
+  const next = [];
+
+  value.forEach((speciesName) => {
+    const normalizedSpeciesName = normalizeAlertCooldownSpeciesName(speciesName);
+    if (!normalizedSpeciesName || seen.has(normalizedSpeciesName)) {
+      return;
+    }
+
+    seen.add(normalizedSpeciesName);
+    next.push(normalizedSpeciesName);
+  });
+
+  return next;
+};
+
+const normalizeAlertCooldownValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const normalizedValue = value.trim().toLowerCase();
+    if (!normalizedValue || normalizedValue === 'never' || normalizedValue === 'none') {
+      return null;
+    }
+  }
+
+  const parsedMinutes = Number(value);
+  if (!Number.isFinite(parsedMinutes) || parsedMinutes < 0) {
+    return undefined;
+  }
+
+  return Math.round(parsedMinutes);
+};
+
+const createAlertCooldownDraftEntry = (
+  value,
+  fallbackMinutes = DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES,
+  rare = false,
+) => {
+  const normalizedValue = normalizeAlertCooldownValue(value);
+  const safeFallbackMinutes = Number.isFinite(Number(fallbackMinutes)) && Number(fallbackMinutes) >= 0
+    ? String(Math.round(Number(fallbackMinutes)))
+    : String(DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES);
+
+  if (normalizedValue === null) {
+    return {
+      mode: 'never',
+      minutes: safeFallbackMinutes,
+      rare: Boolean(rare),
+    };
+  }
+
+  if (normalizedValue === undefined) {
+    return {
+      mode: 'minutes',
+      minutes: safeFallbackMinutes,
+      rare: Boolean(rare),
+    };
+  }
+
+  return {
+    mode: 'minutes',
+    minutes: String(normalizedValue),
+    rare: Boolean(rare),
+  };
+};
+
+const buildDefaultAlertCooldownDraft = (rareAnimals = DEFAULT_RARE_ALERT_ANIMALS) => {
+  const rareAnimalSet = new Set(normalizeRareAnimalList(rareAnimals));
+
+  return ALERT_COOLDOWN_SPECIES.reduce((next, entry) => {
+    next[entry.name] = createAlertCooldownDraftEntry(
+      entry.defaultMinutes,
+      entry.defaultMinutes ?? DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES,
+      rareAnimalSet.has(entry.name),
+    );
+    return next;
+  }, {});
+};
+
+const normalizeAlertCooldownDraft = (
+  value,
+  rareAnimals = DEFAULT_RARE_ALERT_ANIMALS,
+) => {
+  const normalizedRareAnimals = normalizeRareAnimalList(rareAnimals);
+  const rareAnimalSet = new Set(normalizedRareAnimals);
+  const next = buildDefaultAlertCooldownDraft(normalizedRareAnimals);
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return next;
+  }
+
+  Object.entries(value).forEach(([speciesName, minutes]) => {
+    const normalizedSpeciesName = normalizeAlertCooldownSpeciesName(speciesName);
+    if (!normalizedSpeciesName) {
+      return;
+    }
+
+    const fallbackMinutes = ALERT_COOLDOWN_SPECIES.find(
+      (entry) => entry.name === normalizedSpeciesName,
+    )?.defaultMinutes ?? DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES;
+
+    const normalizedEntry = minutes && typeof minutes === 'object' && !Array.isArray(minutes)
+      ? minutes
+      : null;
+    const nextEntry = createAlertCooldownDraftEntry(
+      normalizedEntry?.minutes ?? normalizedEntry?.cooldown ?? minutes,
+      fallbackMinutes ?? DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES,
+      rareAnimalSet.has(normalizedSpeciesName),
+    );
+
+    if (normalizedEntry && Object.prototype.hasOwnProperty.call(normalizedEntry, 'rare')) {
+      nextEntry.rare = Boolean(normalizedEntry.rare);
+    }
+
+    next[normalizedSpeciesName] = nextEntry;
+  });
+
+  return next;
+};
+
+const serializeAlertCooldownDraft = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {};
+  const next = {};
+
+  Object.entries(source).forEach(([speciesName, entry]) => {
+    const normalizedSpeciesName = normalizeAlertCooldownSpeciesName(speciesName);
+    if (!normalizedSpeciesName) {
+      return;
+    }
+
+    const normalizedEntry = entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? entry
+      : createAlertCooldownDraftEntry(entry);
+
+    if (normalizedEntry.mode === 'never') {
+      next[normalizedSpeciesName] = null;
+      return;
+    }
+
+    const parsedMinutes = normalizeAlertCooldownValue(normalizedEntry.minutes);
+    if (parsedMinutes === undefined || parsedMinutes === null) {
+      throw new Error(
+        `Enter a valid cooldown in minutes for ${buildAlertCooldownSpeciesLabel(normalizedSpeciesName)}.`,
+      );
+    }
+
+    next[normalizedSpeciesName] = parsedMinutes;
+  });
+
+  return next;
+};
+
+const serializeRareAnimalDraft = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {};
+
+  return Object.entries(source).reduce((next, [speciesName, entry]) => {
+    const normalizedSpeciesName = normalizeAlertCooldownSpeciesName(speciesName);
+    if (!normalizedSpeciesName) {
+      return next;
+    }
+
+    if (entry && typeof entry === 'object' && !Array.isArray(entry) && entry.rare) {
+      next.push(normalizedSpeciesName);
+    }
+
+    return next;
+  }, []);
+};
+
+const createEmptyClientAlertDraft = () => ({
+  livestreamUrl: '',
+  lodgeLogoPath: '',
+  includePresetDirections: true,
+  lodgeWhatsappGroups: [],
+  alertCooldowns: buildDefaultAlertCooldownDraft(),
+});
+
+const createEmptyGlobalSettingsDraft = () => ({
+  defaultAdminWhatsappGroups: normalizeNamedWhatsAppGroups(DEFAULT_GLOBAL_ADMIN_WHATSAPP_GROUPS),
+  destBucket: DEFAULT_GLOBAL_DEST_BUCKET,
+  latestLogoPath: DEFAULT_GLOBAL_LATEST_LOGO_PATH,
+});
+
+const hydrateGlobalSettingsDraft = (settings = {}) => {
+  const alerts = settings?.alerts && typeof settings.alerts === 'object' && !Array.isArray(settings.alerts)
+    ? settings.alerts
+    : {};
+  const storageSettings = settings?.storage && typeof settings.storage === 'object' && !Array.isArray(settings.storage)
+    ? settings.storage
+    : {};
+  const branding = settings?.branding && typeof settings.branding === 'object' && !Array.isArray(settings.branding)
+    ? settings.branding
+    : {};
+  const normalizedAdminGroups = normalizeNamedWhatsAppGroups(
+    alerts.defaultAdminWhatsappGroups,
+  );
+
+  return {
+    defaultAdminWhatsappGroups: normalizedAdminGroups.length > 0
+      ? normalizedAdminGroups
+      : normalizeNamedWhatsAppGroups(DEFAULT_GLOBAL_ADMIN_WHATSAPP_GROUPS),
+    destBucket: String(storageSettings.destBucket || DEFAULT_GLOBAL_DEST_BUCKET).trim(),
+    latestLogoPath: String(branding.latestLogoPath || DEFAULT_GLOBAL_LATEST_LOGO_PATH).trim(),
+  };
+};
+
+const hydrateClientAlertDraft = (client = {}) => {
+  const alerts = client?.alerts && typeof client.alerts === 'object' && !Array.isArray(client.alerts)
+    ? client.alerts
+    : {};
+
+  return {
+    livestreamUrl: String(alerts.livestreamUrl || '').trim(),
+    lodgeLogoPath: String(alerts.lodgeLogoPath || '').trim(),
+    includePresetDirections: alerts.includePresetDirections !== false,
+    lodgeWhatsappGroups: normalizeNamedWhatsAppGroups(alerts.lodgeWhatsappGroups),
+    alertCooldowns: normalizeAlertCooldownDraft(alerts.alertCooldowns, alerts.rareAnimals),
+  };
+};
+
+const buildLivestreamPlaceholder = (clientName = '') => {
+  const handle = String(clientName || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9-]+/g, '');
+
+  if (!handle) {
+    return 'https://www.youtube.com/@{clientname}/live';
+  }
+
+  return `https://www.youtube.com/@${handle}/live`;
+};
 
 const PRESET_ACTIVE_OPTIONS = [
   { value: 'Day', label: 'day' },
@@ -230,6 +597,19 @@ const buildTimeZoneOptions = (selectedValue = '') => {
   }));
 };
 
+const formatZarAmount = (value) => {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
+
+  if (typeof Intl !== 'undefined' && typeof Intl.NumberFormat === 'function') {
+    return `R${new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 0,
+    }).format(safeValue)}`;
+  }
+
+  return `R${safeValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+};
+
 function StatCard({ label, value, hint }) {
   return (
     <article className="adminSettings__stat">
@@ -292,6 +672,179 @@ function TextAreaInput({ label, hint, value, onChange, rows = 4, ...props }) {
         onChange={(event) => onChange(event.target.value)}
         {...props}
       />
+    </Field>
+  );
+}
+
+function NamedWhatsAppGroupInput({
+  label,
+  hint,
+  values,
+  onChange,
+  namePlaceholder = 'Guests group',
+  idPlaceholder = '120363421255773787',
+  addLabel = 'Add group',
+}) {
+  const rows = Array.isArray(values) && values.length > 0 ? values : [EMPTY_WHATSAPP_GROUP_DRAFT];
+
+  const updateValue = (index, field, nextValue) => {
+    onChange(rows.map((value, currentIndex) => (
+      currentIndex === index
+        ? { ...value, [field]: nextValue }
+        : value
+    )));
+  };
+
+  const removeValue = (index) => {
+    onChange(rows.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  return (
+    <Field label={label} hint={hint}>
+      <div className="settingsArrayField">
+        {rows.map((value, index) => (
+          <div key={`${index}-${value?.id || value?.name || 'blank'}`} className="settingsNamedGroupField__row">
+            <input
+              className="settingsInput"
+              value={value?.name ?? ''}
+              onChange={(event) => updateValue(index, 'name', event.target.value)}
+              placeholder={namePlaceholder}
+            />
+            <input
+              className="settingsInput"
+              value={value?.id ?? ''}
+              onChange={(event) => updateValue(index, 'id', event.target.value)}
+              placeholder={idPlaceholder}
+            />
+            <button
+              type="button"
+              className="settingsButton settingsButton--ghost settingsButton--small"
+              onClick={() => removeValue(index)}
+              disabled={rows.length === 1 && !String(value?.name || '').trim() && !String(value?.id || '').trim()}
+            >
+              <span>Remove</span>
+            </button>
+          </div>
+        ))}
+
+        <div className="settingsActionRow">
+          <button
+            type="button"
+            className="settingsButton settingsButton--ghost settingsButton--small"
+            onClick={() => onChange([...rows, { ...EMPTY_WHATSAPP_GROUP_DRAFT }])}
+          >
+            <FiPlusCircle />
+            <span>{addLabel}</span>
+          </button>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+function AlertCooldownInput({
+  label,
+  hint,
+  values,
+  onChange,
+  showRareColumn = false,
+}) {
+  const source = values && typeof values === 'object' && !Array.isArray(values)
+    ? values
+    : buildDefaultAlertCooldownDraft();
+
+  const updateEntry = (speciesName, nextEntry) => {
+    onChange({
+      ...source,
+      [speciesName]: {
+        ...(source[speciesName] || createAlertCooldownDraftEntry(undefined)),
+        ...nextEntry,
+      },
+    });
+  };
+
+  return (
+    <Field label={label} hint={hint}>
+      <div className="settingsCooldownField">
+        {showRareColumn ? (
+          <div className="settingsCooldownField__header">
+            <span className="settingsCooldownField__headerLabel settingsCooldownField__headerLabel--species">
+              Species
+            </span>
+            <span className="settingsCooldownField__headerLabel">Cooldown</span>
+            <span className="settingsCooldownField__headerLabel settingsCooldownField__headerLabel--center">
+              Rare
+            </span>
+          </div>
+        ) : null}
+
+        {ALERT_COOLDOWN_SPECIES.map(({ name, defaultMinutes }) => {
+          const entry = source[name] || createAlertCooldownDraftEntry(defaultMinutes);
+          const isNever = entry?.mode === 'never';
+          const defaultLabel = defaultMinutes === null ? 'Never' : `${defaultMinutes} min`;
+
+          return (
+            <div
+              key={name}
+              className={`settingsCooldownField__row${showRareColumn ? ' settingsCooldownField__row--withRare' : ''}`}
+            >
+              <div className="settingsCooldownField__species">
+                <strong>{buildAlertCooldownSpeciesLabel(name)}</strong>
+                <span className="settingsInlineMeta">Default: {defaultLabel}</span>
+              </div>
+
+              <div className="settingsCooldownField__controls">
+                <select
+                  className="settingsInput"
+                  value={isNever ? 'never' : 'minutes'}
+                  onChange={(event) => {
+                    const nextMode = event.target.value;
+                    updateEntry(name, {
+                      mode: nextMode,
+                      minutes: nextMode === 'never'
+                        ? (entry?.minutes || String(DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES))
+                        : (entry?.minutes || String(defaultMinutes ?? DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES)),
+                    });
+                  }}
+                >
+                  {ALERT_COOLDOWN_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="settingsInput"
+                  value={isNever ? '' : entry?.minutes ?? ''}
+                  onChange={(event) => updateEntry(name, {
+                    mode: 'minutes',
+                    minutes: event.target.value,
+                  })}
+                  disabled={isNever}
+                  placeholder={String(defaultMinutes ?? DEFAULT_CUSTOM_ALERT_COOLDOWN_MINUTES)}
+                />
+
+                <span className="settingsCooldownField__suffix">minutes</span>
+              </div>
+
+              {showRareColumn ? (
+                <label className="settingsCooldownField__rareToggle">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(entry?.rare)}
+                    onChange={(event) => updateEntry(name, { rare: event.target.checked })}
+                  />
+                  <span>Rare</span>
+                </label>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </Field>
   );
 }
@@ -509,11 +1062,15 @@ function UserAccessListItem({ active, user, onClick, allCameraCount, allClientCo
   );
 }
 
-export default function AdminSettings() {
-  usePageTitle('Admin Settings');
+export default function AdminSettings({ mode = 'settings' }) {
+  usePageTitle(mode === 'admin' ? 'Admin' : 'Settings');
 
   const role = useAuthStore((state) => state.role);
+  const allowedClientIds = useAuthStore((state) => state.clientIds);
+  const allowedCameraIds = useAuthStore((state) => state.cameraIds);
   const isAccessLoading = useAuthStore((state) => state.isAccessLoading);
+  const isAdmin = role === 'admin';
+  const workspaceTab = mode === 'admin' ? 'admin' : 'settings';
 
   const [activeTab, setActiveTab] = useState('cameras');
   const [loading, setLoading] = useState(true);
@@ -568,12 +1125,27 @@ export default function AdminSettings() {
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userCameraSearchText, setUserCameraSearchText] = useState('');
   const [showSelectedCamerasOnly, setShowSelectedCamerasOnly] = useState(false);
+  const [clientAlertDraft, setClientAlertDraft] = useState(() => createEmptyClientAlertDraft());
+  const [clientAlertSaving, setClientAlertSaving] = useState(false);
+  const [clientLogoUploading, setClientLogoUploading] = useState(false);
+  const [clientLogoPreviewUrl, setClientLogoPreviewUrl] = useState('');
+  const [clientLogoPreviewError, setClientLogoPreviewError] = useState('');
+  const [globalSettings, setGlobalSettings] = useState(() => createEmptyGlobalSettingsDraft());
+  const [globalSettingsDraft, setGlobalSettingsDraft] = useState(() => createEmptyGlobalSettingsDraft());
+  const [globalSettingsSaving, setGlobalSettingsSaving] = useState(false);
+  const [globalLogoUploading, setGlobalLogoUploading] = useState(false);
+  const [globalLogoPreviewUrl, setGlobalLogoPreviewUrl] = useState('');
+  const [globalLogoPreviewError, setGlobalLogoPreviewError] = useState('');
 
   const autoImportedPresetCameraIds = useRef(new Set());
   const presetEditorRef = useRef(null);
+  const clientLogoFileInputRef = useRef(null);
+  const globalLogoFileInputRef = useRef(null);
 
   const deferredUserSearchText = useDeferredValue(userSearchText);
   const deferredUserCameraSearchText = useDeferredValue(userCameraSearchText);
+  const permittedClientIds = useMemo(() => uniqueIds(allowedClientIds), [allowedClientIds]);
+  const permittedCameraIds = useMemo(() => uniqueIds(allowedCameraIds), [allowedCameraIds]);
 
   const cameraLookup = useMemo(
     () => new Map(cameras.map((camera) => [camera.id, camera])),
@@ -639,6 +1211,29 @@ export default function AdminSettings() {
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) || null,
     [clients, selectedClientId],
+  );
+  const livestreamUrlPlaceholder = useMemo(
+    () => buildLivestreamPlaceholder(selectedClient?.name || selectedClientId),
+    [selectedClient, selectedClientId],
+  );
+  const clientAlertSavedDraft = useMemo(
+    () => hydrateClientAlertDraft(selectedClient),
+    [selectedClient],
+  );
+  const totalMonthlyRevenueZar = useMemo(
+    () => clients.reduce((sum, client) => {
+      if (client?.enabled === false) {
+        return sum;
+      }
+
+      const price = Number(client?.monthlyPriceZar);
+      return Number.isFinite(price) && price > 0 ? sum + price : sum;
+    }, 0),
+    [clients],
+  );
+  const globalSettingsSavedDraft = useMemo(
+    () => hydrateGlobalSettingsDraft(globalSettings),
+    [globalSettings],
   );
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.id === selectedPresetId) || null,
@@ -856,6 +1451,24 @@ export default function AdminSettings() {
     [cameraDraft],
   );
 
+  const fetchDocumentsByIds = useCallback(async (collectionName, ids) => {
+    const uniqueDocIds = uniqueIds(ids);
+    if (uniqueDocIds.length === 0) {
+      return [];
+    }
+
+    const snapshots = await Promise.all(
+      chunkItems(uniqueDocIds, ID_QUERY_BATCH_SIZE).map((idBatch) => getDocs(
+        query(
+          collection(db, collectionName),
+          where(documentId(), 'in', idBatch),
+        ),
+      )),
+    );
+
+    return snapshots.flatMap((snapshot) => snapshot.docs);
+  }, []);
+
   const refreshAllData = useCallback(async ({ showLoading = true } = {}) => {
     if (showLoading) {
       setLoading(true);
@@ -863,13 +1476,39 @@ export default function AdminSettings() {
     }
 
     try {
-      const [clientSnap, cameraSnap, userSnap] = await Promise.all([
-        getDocs(collection(db, 'clients')),
-        getDocs(collection(db, 'cameras')),
-        getDocs(collection(db, 'users')),
-      ]);
+      let clientDocs = [];
+      let cameraDocs = [];
+      let userDocs = [];
+      let nextGlobalSettings = createEmptyGlobalSettingsDraft();
 
-      const nextClients = clientSnap.docs
+      if (isAdmin) {
+        const [clientSnap, cameraSnap, userSnap, globalSettingsSnap] = await Promise.all([
+          getDocs(collection(db, 'clients')),
+          getDocs(collection(db, 'cameras')),
+          getDocs(collection(db, 'users')),
+          getDoc(doc(db, 'settings', 'global')),
+        ]);
+
+        clientDocs = clientSnap.docs;
+        cameraDocs = cameraSnap.docs;
+        userDocs = userSnap.docs;
+        nextGlobalSettings = hydrateGlobalSettingsDraft(
+          globalSettingsSnap.exists() ? globalSettingsSnap.data() : {},
+        );
+      } else {
+        cameraDocs = await fetchDocumentsByIds('cameras', permittedCameraIds);
+        const derivedClientIds = uniqueIds([
+          ...permittedClientIds,
+          ...cameraDocs.map((docSnap) => (
+            docSnap.data()?.clientId ||
+            docSnap.data()?.client_id ||
+            ''
+          )),
+        ]);
+        clientDocs = await fetchDocumentsByIds('clients', derivedClientIds);
+      }
+
+      const nextClients = clientDocs
         .map((docSnap) => ({
           ...hydrateClientDraft({ ...docSnap.data(), id: docSnap.id }),
           createdAt: docSnap.data()?.createdAt,
@@ -877,7 +1516,7 @@ export default function AdminSettings() {
         }))
         .sort((left, right) => sortByLabel(left, right, (client) => client.name || client.id));
 
-      const nextCameras = cameraSnap.docs
+      const nextCameras = cameraDocs
         .map((docSnap) => ({
           ...hydrateCameraDraft({ ...docSnap.data(), id: docSnap.id }),
           createdAt: docSnap.data()?.createdAt,
@@ -889,13 +1528,21 @@ export default function AdminSettings() {
           (camera) => camera.displayName || camera.id,
         ));
 
-      const nextUsers = userSnap.docs
+      const nextUsers = userDocs
         .map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }))
         .sort((left, right) => sortByLabel(left, right, formatUserLabel));
 
       setClients(nextClients);
       setCameras(nextCameras);
       setUsers(nextUsers);
+      if (isAdmin) {
+        setGlobalSettings(nextGlobalSettings);
+        setGlobalSettingsDraft((current) => (
+          showLoading
+            ? nextGlobalSettings
+            : current
+        ));
+      }
     } catch (error) {
       console.error('Failed to load admin settings data', error);
       if (showLoading) {
@@ -906,7 +1553,7 @@ export default function AdminSettings() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [fetchDocumentsByIds, isAdmin, permittedCameraIds, permittedClientIds]);
 
   const refreshPresets = useCallback(async (cameraId, { showLoading = true } = {}) => {
     if (!cameraId) {
@@ -1001,6 +1648,14 @@ export default function AdminSettings() {
     return currentId !== savedId
       || stringifyComparable(serializeClientDocument(clientDraft)) !== stringifyComparable(clientSavedPayload);
   }, [clientDraft, clientDraftId, clientMode, clientSavedPayload, selectedClientId]);
+  const clientAlertHasUnsavedChanges = useMemo(() => (
+    Boolean(selectedClientId)
+      && stringifyComparable(clientAlertDraft) !== stringifyComparable(clientAlertSavedDraft)
+  ), [clientAlertDraft, clientAlertSavedDraft, selectedClientId]);
+  const settingsHasUnsavedChanges = clientAlertHasUnsavedChanges;
+  const globalSettingsHasUnsavedChanges = useMemo(() => (
+    stringifyComparable(globalSettingsDraft) !== stringifyComparable(globalSettingsSavedDraft)
+  ), [globalSettingsDraft, globalSettingsSavedDraft]);
 
   const presetSavedPayload = useMemo(
     () => serializePresetDocument(presetMode === 'new'
@@ -1153,16 +1808,16 @@ export default function AdminSettings() {
   }, [cameraLookup]);
 
   useEffect(() => {
-    if (role !== 'admin') {
+    if (role === 'guest' || (workspaceTab === 'admin' && !isAdmin)) {
       setLoading(false);
       return;
     }
 
     refreshAllData();
-  }, [refreshAllData, role]);
+  }, [isAdmin, refreshAllData, role, workspaceTab]);
 
   useEffect(() => {
-    if (role !== 'admin' || loading || clientMode === 'new') {
+    if (!isAdmin || workspaceTab !== 'admin' || loading || clientMode === 'new') {
       return;
     }
 
@@ -1175,7 +1830,25 @@ export default function AdminSettings() {
     if (!selected) {
       loadClientEditor(clients[0]);
     }
-  }, [clientMode, clients, loading, loadClientEditor, role, selectedClientId, startNewClient]);
+  }, [clientMode, clients, isAdmin, loading, loadClientEditor, selectedClientId, startNewClient, workspaceTab]);
+
+  useEffect(() => {
+    if (loading || (isAdmin && workspaceTab === 'admin')) {
+      return;
+    }
+
+    if (clients.length === 0) {
+      setSelectedClientId('');
+      setClientDraftId('');
+      setClientDraft(createEmptyClientDraft());
+      return;
+    }
+
+    const selected = clients.find((client) => client.id === selectedClientId);
+    if (!selected) {
+      loadClientEditor(clients[0]);
+    }
+  }, [clients, isAdmin, loading, loadClientEditor, selectedClientId, workspaceTab]);
 
   useEffect(() => {
     if (!notice.text || notice.type === 'error') {
@@ -1206,7 +1879,7 @@ export default function AdminSettings() {
   }, [notice]);
 
   useEffect(() => {
-    if (role !== 'admin' || loading || cameraMode === 'new') {
+    if (!isAdmin || workspaceTab !== 'admin' || loading || cameraMode === 'new') {
       return;
     }
 
@@ -1222,16 +1895,49 @@ export default function AdminSettings() {
   }, [
     cameraMode,
     cameras,
+    isAdmin,
     loading,
     loadCameraEditor,
-    role,
     selectedCameraId,
     selectedClientId,
     startNewCamera,
+    workspaceTab,
+  ]);
+
+  const settingsAvailableCameras = useMemo(() => {
+    if (!selectedClientId) {
+      return cameras;
+    }
+
+    return cameras.filter((camera) => camera.clientId === selectedClientId);
+  }, [cameras, selectedClientId]);
+
+  useEffect(() => {
+    if (loading || (isAdmin && workspaceTab === 'admin')) {
+      return;
+    }
+
+    if (settingsAvailableCameras.length === 0) {
+      setSelectedCameraId('');
+      setCameraDraftId('');
+      return;
+    }
+
+    const selected = settingsAvailableCameras.find((camera) => camera.id === selectedCameraId);
+    if (!selected) {
+      loadCameraEditor(settingsAvailableCameras[0]);
+    }
+  }, [
+    isAdmin,
+    loadCameraEditor,
+    loading,
+    selectedCameraId,
+    settingsAvailableCameras,
+    workspaceTab,
   ]);
 
   useEffect(() => {
-    if (role !== 'admin' || loading) {
+    if (!isAdmin || loading) {
       return;
     }
 
@@ -1246,10 +1952,10 @@ export default function AdminSettings() {
     if (!selected) {
       loadUserEditor(users[0]);
     }
-  }, [loadUserEditor, loading, role, selectedUserId, users]);
+  }, [isAdmin, loadUserEditor, loading, selectedUserId, users]);
 
   useEffect(() => {
-    if (role !== 'admin' || loading || !exactEmailMatchedUser) {
+    if (!isAdmin || loading || !exactEmailMatchedUser) {
       return;
     }
 
@@ -1265,15 +1971,15 @@ export default function AdminSettings() {
     loadUserEditor(exactEmailMatchedUser);
   }, [
     exactEmailMatchedUser,
+    isAdmin,
     loadUserEditor,
     loading,
-    role,
     selectedUserId,
     userRoleFilter,
   ]);
 
   useEffect(() => {
-    if (role !== 'admin') {
+    if (!isAdmin || workspaceTab !== 'admin') {
       return;
     }
 
@@ -1284,7 +1990,11 @@ export default function AdminSettings() {
     }
 
     refreshPresets(selectedCameraId);
-  }, [cameraMode, refreshPresets, role, selectedCameraId, startNewPreset]);
+  }, [cameraMode, isAdmin, refreshPresets, selectedCameraId, startNewPreset, workspaceTab]);
+
+  useEffect(() => {
+    setClientAlertDraft(hydrateClientAlertDraft(selectedClient));
+  }, [selectedClient]);
 
   useEffect(() => {
     if (cameraMode === 'new' || presetMode === 'new') {
@@ -1304,7 +2014,7 @@ export default function AdminSettings() {
 
   const handleRefresh = async () => {
     await refreshAllData();
-    if (selectedCameraId && cameraMode !== 'new') {
+    if (isAdmin && workspaceTab === 'admin' && selectedCameraId && cameraMode !== 'new') {
       await refreshPresets(selectedCameraId);
     }
   };
@@ -1582,6 +2292,265 @@ export default function AdminSettings() {
       setClientSaving(false);
     }
   };
+
+  const saveClientAlertSettings = useCallback(async () => {
+    if (!selectedClientId) {
+      setNotice({ type: 'error', text: 'Pick a location before saving settings.' });
+      return;
+    }
+
+    let alertCooldowns;
+    let rareAnimals;
+    try {
+      alertCooldowns = serializeAlertCooldownDraft(clientAlertDraft.alertCooldowns);
+      rareAnimals = serializeRareAnimalDraft(clientAlertDraft.alertCooldowns);
+    } catch (error) {
+      setNotice({ type: 'error', text: error?.message || 'Alert cooldowns are invalid.' });
+      return;
+    }
+
+    setClientAlertSaving(true);
+    setNotice({ type: '', text: '' });
+
+    try {
+      const saveSettings = httpsCallable(firebaseFunctions, 'saveClientAlertSettings');
+      const payload = {
+        clientId: selectedClientId,
+        livestreamUrl: clientAlertDraft.livestreamUrl,
+        includePresetDirections: clientAlertDraft.includePresetDirections,
+        lodgeWhatsappGroups: normalizeNamedWhatsAppGroups(clientAlertDraft.lodgeWhatsappGroups),
+        alertCooldowns,
+      };
+
+      if (isAdmin) {
+        payload.rareAnimals = rareAnimals;
+      }
+
+      const response = await saveSettings(payload);
+
+      const savedAlerts = response?.data?.alerts || {};
+      const savedStorage = response?.data?.storage || {};
+      const nextAlerts = {
+        includePresetDirections: savedAlerts.includePresetDirections !== false,
+      };
+
+      if (savedAlerts.livestreamUrl) {
+        nextAlerts.livestreamUrl = savedAlerts.livestreamUrl;
+      }
+
+      if (savedAlerts.lodgeLogoPath) {
+        nextAlerts.lodgeLogoPath = savedAlerts.lodgeLogoPath;
+      }
+
+      if (Array.isArray(savedAlerts.lodgeWhatsappGroups) && savedAlerts.lodgeWhatsappGroups.length > 0) {
+        nextAlerts.lodgeWhatsappGroups = savedAlerts.lodgeWhatsappGroups;
+      }
+
+      if (savedAlerts.alertCooldowns && Object.keys(savedAlerts.alertCooldowns).length > 0) {
+        nextAlerts.alertCooldowns = savedAlerts.alertCooldowns;
+      }
+
+      if (Array.isArray(savedAlerts.rareAnimals)) {
+        nextAlerts.rareAnimals = savedAlerts.rareAnimals;
+      }
+
+      setClients((current) => current.map((client) => (
+        client.id === selectedClientId
+          ? { ...client, alerts: nextAlerts }
+          : client
+      )));
+      setClientDraft((current) => ({ ...current, alerts: nextAlerts }));
+      setClientAlertDraft(hydrateClientAlertDraft({ alerts: savedAlerts }));
+      if (savedStorage.destBucket) {
+        setGlobalSettingsDraft((current) => ({
+          ...current,
+          destBucket: savedStorage.destBucket,
+        }));
+      }
+      setNotice({ type: 'success', text: `Saved settings for ${selectedClientId}.` });
+      void refreshAllData({ showLoading: false });
+    } catch (error) {
+      console.error('Failed to save client alert settings', error);
+      setNotice({
+        type: 'error',
+        text: error?.details || error?.message || 'Unable to save settings.',
+      });
+    } finally {
+      setClientAlertSaving(false);
+    }
+  }, [
+    clientAlertDraft,
+    isAdmin,
+    refreshAllData,
+    selectedClientId,
+  ]);
+
+  const uploadClientLodgeLogo = useCallback(async (file) => {
+    if (!selectedClientId) {
+      setNotice({ type: 'error', text: 'Pick a location before uploading an image.' });
+      return;
+    }
+
+    if (!file) {
+      return;
+    }
+
+    setClientLogoUploading(true);
+    setNotice({ type: '', text: '' });
+
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Unable to read that image file.'));
+        reader.readAsDataURL(file);
+      });
+
+      const uploadLogo = httpsCallable(firebaseFunctions, 'uploadClientLodgeLogo');
+      const response = await uploadLogo({
+        clientId: selectedClientId,
+        dataUrl,
+      });
+      const savedAlerts = response?.data?.alerts || {};
+      const savedStorage = response?.data?.storage || {};
+      const nextClientAlertDraft = hydrateClientAlertDraft({ alerts: savedAlerts });
+
+      setClients((current) => current.map((client) => (
+        client.id === selectedClientId
+          ? { ...client, alerts: { ...(client.alerts || {}), ...savedAlerts } }
+          : client
+      )));
+      setClientDraft((current) => ({
+        ...current,
+        alerts: { ...(current.alerts || {}), ...savedAlerts },
+      }));
+      setClientAlertDraft((current) => ({
+        ...current,
+        lodgeLogoPath: nextClientAlertDraft.lodgeLogoPath,
+      }));
+      if (savedStorage.destBucket) {
+        setGlobalSettingsDraft((current) => ({
+          ...current,
+          destBucket: savedStorage.destBucket,
+        }));
+      }
+      setNotice({ type: 'success', text: `Uploaded ${file.name}.` });
+    } catch (error) {
+      console.error('Failed to upload location image', error);
+      setNotice({
+        type: 'error',
+        text: error?.details || error?.message || 'Unable to upload the location image.',
+      });
+    } finally {
+      setClientLogoUploading(false);
+      if (clientLogoFileInputRef.current) {
+        clientLogoFileInputRef.current.value = '';
+      }
+    }
+  }, [selectedClientId]);
+
+  const handleClientLogoFileChange = useCallback((event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      return;
+    }
+
+    void uploadClientLodgeLogo(file);
+  }, [uploadClientLodgeLogo]);
+
+  const saveGlobalSettings = useCallback(async () => {
+    if (!isAdmin) {
+      setNotice({ type: 'error', text: 'Admin access is required.' });
+      return;
+    }
+
+    setGlobalSettingsSaving(true);
+    setNotice({ type: '', text: '' });
+
+    try {
+      const saveSettings = httpsCallable(firebaseFunctions, 'saveGlobalSettings');
+      const response = await saveSettings({
+        defaultAdminWhatsappGroups: normalizeNamedWhatsAppGroups(
+          globalSettingsDraft.defaultAdminWhatsappGroups,
+        ),
+        destBucket: String(globalSettingsDraft.destBucket || '').trim(),
+      });
+
+      const nextGlobalSettings = hydrateGlobalSettingsDraft(response?.data?.settings || {});
+      setGlobalSettings(nextGlobalSettings);
+      setGlobalSettingsDraft(nextGlobalSettings);
+      setNotice({ type: 'success', text: 'Saved global defaults.' });
+    } catch (error) {
+      console.error('Failed to save global settings', error);
+      setNotice({
+        type: 'error',
+        text: error?.details || error?.message || 'Unable to save global defaults.',
+      });
+    } finally {
+      setGlobalSettingsSaving(false);
+    }
+  }, [globalSettingsDraft, isAdmin]);
+
+  const uploadGlobalLatestLogo = useCallback(async (file) => {
+    if (!isAdmin) {
+      setNotice({ type: 'error', text: 'Admin access is required.' });
+      return;
+    }
+
+    if (!file) {
+      return;
+    }
+
+    setGlobalLogoUploading(true);
+    setNotice({ type: '', text: '' });
+
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Unable to read that image file.'));
+        reader.readAsDataURL(file);
+      });
+
+      const uploadLogo = httpsCallable(firebaseFunctions, 'uploadGlobalLatestLogo');
+      const response = await uploadLogo({
+        dataUrl,
+        destBucket: String(globalSettingsDraft.destBucket || '').trim(),
+      });
+      const savedSettings = hydrateGlobalSettingsDraft(response?.data?.settings || {});
+
+      setGlobalSettings((current) => ({
+        ...current,
+        ...savedSettings,
+      }));
+      setGlobalSettingsDraft((current) => ({
+        ...current,
+        latestLogoPath: savedSettings.latestLogoPath,
+        destBucket: savedSettings.destBucket || current.destBucket,
+      }));
+      setNotice({ type: 'success', text: `Uploaded ${file.name}.` });
+    } catch (error) {
+      console.error('Failed to upload global latest logo', error);
+      setNotice({
+        type: 'error',
+        text: error?.details || error?.message || 'Unable to upload the latest logo.',
+      });
+    } finally {
+      setGlobalLogoUploading(false);
+      if (globalLogoFileInputRef.current) {
+        globalLogoFileInputRef.current.value = '';
+      }
+    }
+  }, [globalSettingsDraft.destBucket, isAdmin]);
+
+  const handleGlobalLogoFileChange = useCallback((event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      return;
+    }
+
+    void uploadGlobalLatestLogo(file);
+  }, [uploadGlobalLatestLogo]);
 
   const saveCamera = async () => {
     const parsedDraft = getCameraDraftFromJson();
@@ -1915,7 +2884,7 @@ export default function AdminSettings() {
   }, [updateUserCameraSelection]);
 
   useEffect(() => {
-    if (role !== 'admin' || cameraMode === 'new' || !selectedCameraId) {
+    if (!isAdmin || workspaceTab !== 'admin' || cameraMode === 'new' || !selectedCameraId) {
       return;
     }
 
@@ -1934,13 +2903,14 @@ export default function AdminSettings() {
     void importCameraPresets({ automatic: true });
   }, [
     cameraMode,
+    isAdmin,
     importCameraPresets,
     loadedPresetCameraId,
     presetImporting,
     presets.length,
     presetsLoading,
-    role,
     selectedCameraId,
+    workspaceTab,
   ]);
 
   useEffect(() => {
@@ -1957,43 +2927,139 @@ export default function AdminSettings() {
     presetEditorRef.current.scrollTop = 0;
   }, [presetMode, selectedCameraId, selectedPresetId]);
 
+  useEffect(() => {
+    const storagePath = String(clientAlertDraft.lodgeLogoPath || '')
+      .trim()
+      .replace(/^\/+/, '');
+    const bucketName = String(globalSettingsDraft.destBucket || DEFAULT_GLOBAL_DEST_BUCKET).trim();
+
+    if (!storagePath) {
+      setClientLogoPreviewUrl('');
+      setClientLogoPreviewError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setClientLogoPreviewError('');
+
+    const logoRef = bucketName
+      ? storageRef(storage, `gs://${bucketName}/${storagePath}`)
+      : storageRef(storage, storagePath);
+
+    getDownloadURL(logoRef)
+      .then((downloadUrl) => {
+        if (!cancelled) {
+          setClientLogoPreviewUrl(downloadUrl);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to load location image preview', error);
+          setClientLogoPreviewUrl('');
+          setClientLogoPreviewError('Preview unavailable for the current location image.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientAlertDraft.lodgeLogoPath, globalSettingsDraft.destBucket]);
+
+  useEffect(() => {
+    const storagePath = String(globalSettingsDraft.latestLogoPath || '')
+      .trim()
+      .replace(/^\/+/, '');
+    const bucketName = String(globalSettingsDraft.destBucket || DEFAULT_GLOBAL_DEST_BUCKET).trim();
+
+    if (!storagePath) {
+      setGlobalLogoPreviewUrl('');
+      setGlobalLogoPreviewError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setGlobalLogoPreviewError('');
+
+    const logoRef = bucketName
+      ? storageRef(storage, `gs://${bucketName}/${storagePath}`)
+      : storageRef(storage, storagePath);
+
+    getDownloadURL(logoRef)
+      .then((downloadUrl) => {
+        if (!cancelled) {
+          setGlobalLogoPreviewUrl(downloadUrl);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to load global logo preview', error);
+          setGlobalLogoPreviewUrl('');
+          setGlobalLogoPreviewError('Preview unavailable for the current logo path.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [globalSettingsDraft.destBucket, globalSettingsDraft.latestLogoPath]);
+
   const floatingSaveActions = [];
 
-  if (activeTab === 'cameras') {
-    if (presetHasUnsavedChanges || presetSaving) {
+  if (workspaceTab === 'admin') {
+    if (activeTab === 'cameras') {
+      if (presetHasUnsavedChanges || presetSaving) {
+        floatingSaveActions.push({
+          key: 'preset',
+          label: presetSaving ? 'Saving preset…' : 'Save Preset',
+          onClick: savePreset,
+          disabled: presetSaving,
+        });
+      }
+
+      if (cameraHasUnsavedChanges || cameraSaving) {
+        floatingSaveActions.push({
+          key: 'camera',
+          label: cameraSaving ? 'Saving camera…' : 'Save Camera',
+          onClick: saveCamera,
+          disabled: cameraSaving,
+        });
+      }
+    }
+
+    if (activeTab === 'clients' && (clientHasUnsavedChanges || clientSaving)) {
       floatingSaveActions.push({
-        key: 'preset',
-        label: presetSaving ? 'Saving preset…' : 'Save Preset',
-        onClick: savePreset,
-        disabled: presetSaving,
+        key: 'client',
+        label: clientSaving ? 'Saving client…' : 'Save Client',
+        onClick: saveClient,
+        disabled: clientSaving,
       });
     }
 
-    if (cameraHasUnsavedChanges || cameraSaving) {
+    if (activeTab === 'users' && (userHasUnsavedChanges || userSaving)) {
       floatingSaveActions.push({
-        key: 'camera',
-        label: cameraSaving ? 'Saving camera…' : 'Save Camera',
-        onClick: saveCamera,
-        disabled: cameraSaving,
+        key: 'access',
+        label: userSaving ? 'Saving access…' : 'Save Access',
+        onClick: saveUserAccess,
+        disabled: !selectedUserId || userSaving,
+      });
+    }
+
+    if (activeTab === 'global' && (globalSettingsHasUnsavedChanges || globalSettingsSaving)) {
+      floatingSaveActions.push({
+        key: 'global-settings',
+        label: globalSettingsSaving ? 'Saving global defaults…' : 'Save Global Defaults',
+        onClick: saveGlobalSettings,
+        disabled: globalSettingsSaving || globalLogoUploading,
       });
     }
   }
 
-  if (activeTab === 'clients' && (clientHasUnsavedChanges || clientSaving)) {
+  if (workspaceTab === 'settings' && (settingsHasUnsavedChanges || clientAlertSaving)) {
     floatingSaveActions.push({
-      key: 'client',
-      label: clientSaving ? 'Saving client…' : 'Save Client',
-      onClick: saveClient,
-      disabled: clientSaving,
-    });
-  }
-
-  if (activeTab === 'users' && (userHasUnsavedChanges || userSaving)) {
-    floatingSaveActions.push({
-      key: 'access',
-      label: userSaving ? 'Saving access…' : 'Save Access',
-      onClick: saveUserAccess,
-      disabled: !selectedUserId || userSaving,
+      key: 'client-alerts',
+      label: clientAlertSaving ? 'Saving settings…' : 'Save Settings',
+      onClick: saveClientAlertSettings,
+      disabled: !selectedClientId || clientAlertSaving || clientLogoUploading,
     });
   }
 
@@ -2008,7 +3074,7 @@ export default function AdminSettings() {
     );
   }
 
-  if (role !== 'admin') {
+  if (workspaceTab === 'admin' && !isAdmin) {
     return (
       <div className="adminSettings">
         <section className="adminSettings__emptyState">
@@ -2024,9 +3090,17 @@ export default function AdminSettings() {
     <div className="adminSettings">
       <section className="adminSettings__hero">
         <div>
-          <span className="adminSettings__eyebrow">Admin Settings</span>
-          <h1>Manage clients, cameras, presets, and user access</h1>
-          <p>Manage the Firestore records for clients, cameras, presets, and user access.</p>
+          <span className="adminSettings__eyebrow">{workspaceTab === 'admin' && isAdmin ? 'Admin' : 'Settings'}</span>
+          <h1>
+            {workspaceTab === 'admin' && isAdmin
+              ? 'Manage clients, cameras, presets, and user access'
+              : 'Quick controls and settings'}
+          </h1>
+          <p>
+            {workspaceTab === 'admin' && isAdmin
+              ? 'Manage the Firestore records for clients, cameras, presets, and user access.'
+              : 'Use safe day-to-day controls without opening the full admin toolbox.'}
+          </p>
         </div>
         <div className="adminSettings__heroActions">
           <button type="button" className="settingsButton settingsButton--ghost" onClick={handleRefresh}>
@@ -2035,13 +3109,6 @@ export default function AdminSettings() {
           </button>
         </div>
       </section>
-
-      <div className="adminSettings__stats">
-        <StatCard label="Clients" value={clients.length} hint="Business accounts / lodges" />
-        <StatCard label="Cameras" value={cameras.length} hint="Actual camera devices" />
-        <StatCard label="Users" value={users.length} hint="Accounts with permissions" />
-        <StatCard label="Presets" value={presets.length} hint={selectedCameraId ? `For ${selectedCameraId}` : 'Select a camera'} />
-      </div>
 
       {notice.text ? (
         <div className={`adminSettings__banner adminSettings__banner--${notice.type || 'info'}${noticeClosing ? ' adminSettings__banner--closing' : ''}`}>
@@ -2055,22 +3122,272 @@ export default function AdminSettings() {
         </div>
       ) : null}
 
-      <div className="adminSettings__tabs">
-        {TAB_OPTIONS.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`adminSettings__tab${activeTab === tab.id ? ' adminSettings__tab--active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {workspaceTab === 'settings' ? (
+        <>
+          <div className="adminSettings__layout">
+            <div className="adminSettings__rail">
+              <SectionCard
+                title={isAdmin ? 'Locations' : 'Your locations'}
+                description="Pick a location to change alert settings."
+              >
+                <div className="settingsList">
+                  {clients.length === 0 ? (
+                    <div className="settingsEmptyText">No locations are available for this account yet.</div>
+                  ) : clients.map((client) => (
+                    <ListButton
+                      key={client.id}
+                      active={selectedClientId === client.id}
+                      title={client.name || client.id}
+                      meta={client.id}
+                      onClick={() => loadClientEditor(client)}
+                    />
+                  ))}
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                title={isAdmin ? 'Cameras' : 'Your cameras'}
+                description="Pick a camera to use the quick buttons."
+              >
+                <div className="settingsList">
+                  {settingsAvailableCameras.length === 0 ? (
+                    <div className="settingsEmptyText">No cameras are available for the selected location.</div>
+                  ) : settingsAvailableCameras.map((camera) => (
+                    <ListButton
+                      key={camera.id}
+                      active={selectedCameraId === camera.id}
+                      title={camera.displayName || camera.id}
+                      meta={clientLookup.get(camera.clientId)?.name || camera.clientId || 'No location'}
+                      onClick={() => loadCameraEditor(camera)}
+                    />
+                  ))}
+                </div>
+              </SectionCard>
+            </div>
+
+            <div className="adminSettings__detail">
+              <SectionCard
+                title={selectedCameraId ? `Quick buttons for ${selectedCamera?.displayName || selectedCameraId}` : 'Quick buttons'}
+                description="These are safe camera actions for everyday use."
+              >
+                {!selectedCameraId ? (
+                  <div className="settingsEmptyText">Pick a camera first.</div>
+                ) : (
+                  <div className="settingsQuickControls">
+                    <div className="settingsQuickControls__grid">
+                      <div className="settingsQuickControls__card">
+                        <div className="settingsQuickControls__title">Wipe lense</div>
+                        <div className="settingsInlineMeta">
+                          Turn on the wiper once to clean the lense
+                        </div>
+                        <div className="settingsActionRow">
+                          <button
+                            type="button"
+                            className="settingsButton"
+                            onClick={() => runCameraQuickControl(
+                              'wiper',
+                              {},
+                              `Ran one wipe for ${selectedCameraId}.`,
+                            )}
+                            disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
+                          >
+                            <span>{cameraQuickAction === 'wiper' ? 'Working…' : 'Wipe lense'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="settingsQuickControls__card">
+                        <SelectInput
+                          label="Select Camera Settings"
+                          hint="Select to change the camera's exposure and colour settings"
+                          value={cameraQuickProfile}
+                          onChange={setCameraQuickProfile}
+                          options={QUICK_PROFILE_OPTIONS}
+                        />
+                        <div className="settingsActionRow">
+                          <button
+                            type="button"
+                            className="settingsButton"
+                            onClick={() => runCameraQuickControl(
+                              'profile',
+                              { profile: cameraQuickProfile },
+                              `Applied camera settings ${cameraQuickProfile} to ${selectedCameraId}.`,
+                            )}
+                            disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
+                          >
+                            <span>{cameraQuickAction === 'profile' ? 'Working…' : 'Apply settings'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="settingsQuickControls__card">
+                        <TextInput
+                          label="Adjust IR"
+                          hint="Change the infrared strength and focus. Use values like 70, far100, medium50, near80, or zoom30."
+                          value={cameraQuickIrValue}
+                          onChange={setCameraQuickIrValue}
+                          placeholder="far100"
+                        />
+                        <div className="settingsActionRow">
+                          <button
+                            type="button"
+                            className="settingsButton"
+                            onClick={() => runCameraQuickControl(
+                              'ir',
+                              { irValue: cameraQuickIrValue },
+                              `Applied IR setting ${cameraQuickIrValue} to ${selectedCameraId}.`,
+                            )}
+                            disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
+                          >
+                            <span>{cameraQuickAction === 'ir' ? 'Working…' : 'Apply IR'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard
+                title={selectedClientId ? `Alert settings for ${selectedClient?.name || selectedClientId}` : 'Alert settings'}
+                description="These settings save to the location record and apply to all cameras in this location's portfolio."
+                stickyActions
+                actions={(
+                  <button
+                    type="button"
+                    className={getSaveButtonClassName(
+                      settingsHasUnsavedChanges && !clientAlertSaving,
+                    )}
+                    onClick={saveClientAlertSettings}
+                    disabled={!selectedClientId || clientAlertSaving || clientLogoUploading}
+                  >
+                    <FiSave />
+                    <span>{clientAlertSaving ? 'Saving…' : 'Save Settings'}</span>
+                  </button>
+                )}
+              >
+                {!selectedClientId ? (
+                  <div className="settingsEmptyText">Pick a location first.</div>
+                ) : (
+                  <>
+                    <div className="settingsGlobalLogoCard">
+                      <div className="settingsGlobalLogoCard__preview">
+                        {clientLogoPreviewUrl ? (
+                          <img
+                            src={clientLogoPreviewUrl}
+                            alt={`${selectedClient?.name || selectedClientId} preview`}
+                            className="settingsGlobalLogoCard__image"
+                          />
+                        ) : (
+                          <div className="settingsGlobalLogoCard__empty">
+                            <span>No location preview yet</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="settingsGlobalLogoCard__content">
+                        <div className="settingsGlobalLogoCard__header">
+                          <strong>Location</strong>
+                        </div>
+
+                        <div className="settingsInlineMeta">
+                          This image is added to the alert image for this location.
+                        </div>
+
+                        {clientLogoPreviewError ? (
+                          <div className="settingsInlineMeta settingsGlobalLogoCard__warning">
+                            {clientLogoPreviewError}
+                          </div>
+                        ) : null}
+
+                        <input
+                          ref={clientLogoFileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="settingsGlobalLogoCard__fileInput"
+                          onChange={handleClientLogoFileChange}
+                        />
+
+                        <div className="settingsActionRow">
+                          <button
+                            type="button"
+                            className="settingsButton settingsButton--ghost"
+                            onClick={() => clientLogoFileInputRef.current?.click()}
+                            disabled={clientLogoUploading}
+                          >
+                            <FiUploadCloud />
+                            <span>{clientLogoUploading ? 'Uploading…' : 'Upload Image'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <TextInput
+                      label="Livestream URL"
+                      hint="Optional link included in alerts when this location wants viewers to jump to the live feed."
+                      value={clientAlertDraft.livestreamUrl}
+                      onChange={(value) => setClientAlertDraft((current) => ({ ...current, livestreamUrl: value }))}
+                      placeholder={livestreamUrlPlaceholder}
+                    />
+
+                    <ToggleInput
+                      label="Include preset directions"
+                      hint="Adds preset direction details into alert messages when they are available."
+                      checked={clientAlertDraft.includePresetDirections}
+                      onChange={(value) => setClientAlertDraft((current) => ({ ...current, includePresetDirections: value }))}
+                    />
+
+                    <NamedWhatsAppGroupInput
+                      label="WhatsApp Groups"
+                      hint="Give each location WhatsApp group a name and its group ID."
+                      values={clientAlertDraft.lodgeWhatsappGroups}
+                      onChange={(value) => setClientAlertDraft((current) => ({ ...current, lodgeWhatsappGroups: value }))}
+                      namePlaceholder="Guests group"
+                      idPlaceholder="120363421255773787"
+                      addLabel="Add Group"
+                    />
+
+                    <AlertCooldownInput
+                      label="Alert cooldowns"
+                      hint="'Never' means that species will never trigger a WhatsApp alert."
+                      values={clientAlertDraft.alertCooldowns}
+                      onChange={(value) => setClientAlertDraft((current) => ({ ...current, alertCooldowns: value }))}
+                      showRareColumn={isAdmin}
+                    />
+                  </>
+                )}
+              </SectionCard>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {workspaceTab === 'admin' && isAdmin ? (
+        <>
+          <div className="adminSettings__stats">
+            <StatCard label="Clients" value={clients.length} hint="Business accounts / locations" />
+            <StatCard label="MRR" value={formatZarAmount(totalMonthlyRevenueZar)} hint="Enabled client revenue per month" />
+            <StatCard label="Cameras" value={cameras.length} hint="Actual camera devices" />
+            <StatCard label="Users" value={users.length} hint="Accounts with permissions" />
+            <StatCard label="Presets" value={presets.length} hint={selectedCameraId ? `For ${selectedCameraId}` : 'Select a camera'} />
+          </div>
+
+          <div className="adminSettings__tabs">
+            {TAB_OPTIONS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`adminSettings__tab${activeTab === tab.id ? ' adminSettings__tab--active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
       {activeTab === 'cameras' ? (
         <div className="adminSettings__layout adminSettings__layout--camera">
@@ -2137,85 +3454,6 @@ export default function AdminSettings() {
                 </button>
               )}
             >
-              <div className="settingsQuickControls">
-                <div>
-                  <h3 className="settingsSubheading">Quick buttons</h3>
-                </div>
-
-                <div className="settingsQuickControls__grid">
-                  <div className="settingsQuickControls__card">
-                    <div className="settingsQuickControls__title">Wipe lense</div>
-                    <div className="settingsInlineMeta">
-                      Turn on the wiper once to clean the lense
-                    </div>
-                    <div className="settingsActionRow">
-                      <button
-                        type="button"
-                        className="settingsButton"
-                        onClick={() => runCameraQuickControl(
-                          'wiper',
-                          {},
-                          `Ran one wipe for ${selectedCameraId}.`,
-                        )}
-                        disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
-                      >
-                        <span>{cameraQuickAction === 'wiper' ? 'Working…' : 'Wipe lense'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="settingsQuickControls__card">
-                    <SelectInput
-                      label="Select Camera Settings"
-                      hint="Select to change the camera's exposure and colour settings"
-                      value={cameraQuickProfile}
-                      onChange={setCameraQuickProfile}
-                      options={QUICK_PROFILE_OPTIONS}
-                    />
-                    <div className="settingsActionRow">
-                      <button
-                        type="button"
-                        className="settingsButton"
-                        onClick={() => runCameraQuickControl(
-                          'profile',
-                          { profile: cameraQuickProfile },
-                          `Applied camera settings ${cameraQuickProfile} to ${selectedCameraId}.`,
-                        )}
-                        disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
-                      >
-                        <span>{cameraQuickAction === 'profile' ? 'Working…' : 'Apply settings'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="settingsQuickControls__card">
-                    <TextInput
-                      label="Adjust IR"
-                      hint="Change the infrared strength and focus. Use values like 70, far100, medium50, near80, or zoom30."
-                      value={cameraQuickIrValue}
-                      onChange={setCameraQuickIrValue}
-                      placeholder="far100"
-                    />
-                    <div className="settingsActionRow">
-                      <button
-                        type="button"
-                        className="settingsButton"
-                        onClick={() => runCameraQuickControl(
-                          'ir',
-                          { irValue: cameraQuickIrValue },
-                          `Applied IR setting ${cameraQuickIrValue} to ${selectedCameraId}.`,
-                        )}
-                        disabled={cameraQuickControlsDisabled || cameraQuickAction !== ''}
-                      >
-                        <span>{cameraQuickAction === 'ir' ? 'Working…' : 'Apply IR'}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="settingsSectionDivider" />
-
               <ImmutableIdField
                 label="cameraId"
                 hint="Stable system ID. Keep it boring and permanent."
@@ -2775,13 +4013,36 @@ export default function AdminSettings() {
                   label="Client name"
                   value={clientDraft.name || ''}
                   onChange={(value) => setClientDraft((current) => ({ ...current, name: value }))}
-                  placeholder="River House Lodge"
+                  placeholder="River House"
                 />
                 <SelectInput
                   label="Timezone"
                   value={clientDraft.timezone || ''}
                   onChange={(value) => setClientDraft((current) => ({ ...current, timezone: value }))}
                   options={clientTimeZoneOptions}
+                />
+              </div>
+
+              <div className="settingsGrid settingsGrid--two">
+                <SelectInput
+                  label="Client type"
+                  hint="Choose whether this location is a lodge or a private property."
+                  value={clientDraft.clientType || 'lodge'}
+                  onChange={(value) => setClientDraft((current) => ({ ...current, clientType: value }))}
+                  options={[
+                    { value: 'lodge', label: 'Lodge' },
+                    { value: 'private', label: 'Private' },
+                  ]}
+                />
+                <TextInput
+                  label="Monthly price (Rands)"
+                  hint="Saved as a Rand amount on the client record."
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={clientDraft.monthlyPriceZar ?? ''}
+                  onChange={(value) => setClientDraft((current) => ({ ...current, monthlyPriceZar: value }))}
+                  placeholder="15000"
                 />
               </div>
 
@@ -2823,6 +4084,134 @@ export default function AdminSettings() {
                 Cameras currently linked to this client: {
                   cameras.filter((camera) => camera.clientId === (clientMode === 'new' ? clientDraftId || suggestedClientId : selectedClientId)).length
                 }
+              </div>
+            </SectionCard>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === 'global' ? (
+        <div className="adminSettings__layout">
+          <div className="adminSettings__rail">
+            <SectionCard
+              title="Global Defaults"
+              description="These settings apply across every location unless a location-specific override takes over."
+            >
+              <div className="settingsInlineMeta">
+                In plain English: this is the master control panel for shared admin WhatsApp groups,
+                the shared destination bucket, and the shared Latest Sightings logo.
+              </div>
+
+              <div className="settingsBadges">
+                <span className="settingsBadge">All locations</span>
+                <span className="settingsBadge">Admin only</span>
+                <span className="settingsBadge">Firestore-backed</span>
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="adminSettings__detail">
+            <SectionCard
+              title="Global Defaults"
+              description="Change the shared defaults here, then the detector will pick them up from Firestore."
+              stickyActions
+              actions={(
+                <button
+                  type="button"
+                  className={getSaveButtonClassName(globalSettingsHasUnsavedChanges && !globalSettingsSaving)}
+                  onClick={saveGlobalSettings}
+                  disabled={globalSettingsSaving || globalLogoUploading}
+                >
+                  <FiSave />
+                  <span>{globalSettingsSaving ? 'Saving…' : 'Save Global Defaults'}</span>
+                </button>
+              )}
+            >
+              <NamedWhatsAppGroupInput
+                label="Default Admin WhatsApp Groups"
+                hint="These groups are used for admin-only routing across the whole platform unless an environment override wins."
+                values={globalSettingsDraft.defaultAdminWhatsappGroups}
+                onChange={(value) => setGlobalSettingsDraft((current) => ({
+                  ...current,
+                  defaultAdminWhatsappGroups: value,
+                }))}
+                namePlaceholder="Admins"
+                idPlaceholder="120363404393118610"
+                addLabel="Add Admin Group"
+              />
+
+                <div className="settingsGrid settingsGrid--two">
+                  <TextInput
+                    label="Destination Bucket"
+                    hint="Shared storage bucket for processed media and the global Latest Sightings logo."
+                    value={globalSettingsDraft.destBucket}
+                    onChange={(value) => setGlobalSettingsDraft((current) => ({ ...current, destBucket: value }))}
+                    placeholder={DEFAULT_GLOBAL_DEST_BUCKET}
+                  />
+                  <div className="settingsStaticField">
+                    <div className="settingsStaticField__header">
+                      <span className="settingsField__label">Latest Logo Path</span>
+                    </div>
+                    <span className="settingsField__hint">
+                      Storage path inside the destination bucket. Uploading a new logo updates this automatically.
+                    </span>
+                    <div className="settingsStaticField__value">
+                      {globalSettingsDraft.latestLogoPath || DEFAULT_GLOBAL_LATEST_LOGO_PATH}
+                    </div>
+                  </div>
+                </div>
+
+              <div className="settingsGlobalLogoCard">
+                <div className="settingsGlobalLogoCard__preview">
+                  {globalLogoPreviewUrl ? (
+                    <img
+                      src={globalLogoPreviewUrl}
+                      alt="Latest Sightings logo preview"
+                      className="settingsGlobalLogoCard__image"
+                    />
+                  ) : (
+                    <div className="settingsGlobalLogoCard__empty">
+                      <span>Preview unavailable</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="settingsGlobalLogoCard__content">
+                  <div className="settingsGlobalLogoCard__header">
+                    <strong>Latest Sightings logo</strong>
+                    <span>{globalSettingsDraft.latestLogoPath || DEFAULT_GLOBAL_LATEST_LOGO_PATH}</span>
+                  </div>
+
+                  <div className="settingsInlineMeta">
+                    Upload a replacement image here to update the shared logo used across every location.
+                  </div>
+
+                  {globalLogoPreviewError ? (
+                    <div className="settingsInlineMeta settingsGlobalLogoCard__warning">
+                      {globalLogoPreviewError}
+                    </div>
+                  ) : null}
+
+                  <input
+                    ref={globalLogoFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="settingsGlobalLogoCard__fileInput"
+                    onChange={handleGlobalLogoFileChange}
+                  />
+
+                  <div className="settingsActionRow">
+                    <button
+                      type="button"
+                      className="settingsButton settingsButton--ghost"
+                      onClick={() => globalLogoFileInputRef.current?.click()}
+                      disabled={globalLogoUploading}
+                    >
+                      <FiUploadCloud />
+                      <span>{globalLogoUploading ? 'Uploading…' : 'Upload New Logo'}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </SectionCard>
           </div>
@@ -3014,7 +4403,7 @@ export default function AdminSettings() {
                             hint="Search by client name."
                             value={userCameraSearchText}
                             onChange={setUserCameraSearchText}
-                            placeholder="Ting Vision Lodge"
+                            placeholder="Ting Vision Location"
                           />
                         </div>
 
@@ -3156,6 +4545,8 @@ export default function AdminSettings() {
             </SectionCard>
           </div>
         </div>
+      ) : null}
+        </>
       ) : null}
 
       {floatingSaveActions.length > 0 ? (

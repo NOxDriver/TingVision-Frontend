@@ -101,6 +101,8 @@ const isScalarFieldValue = (value) => (
 export const createEmptyClientDraft = () => ({
   name: '',
   address: '',
+  clientType: 'lodge',
+  monthlyPriceZar: '',
   geo: {
     lat: '',
     lon: '',
@@ -258,7 +260,19 @@ const mergeDraft = (defaults, data = {}) => {
   return next;
 };
 
-export const hydrateClientDraft = (data = {}) => mergeDraft(createEmptyClientDraft(), data);
+export const hydrateClientDraft = (data = {}) => {
+  const next = mergeDraft(createEmptyClientDraft(), data);
+
+  next.clientType = trimString(
+    firstDefined(data?.clientType, next?.clientType),
+  ) || 'lodge';
+  next.monthlyPriceZar = firstDefined(
+    data?.monthlyPriceZar,
+    next?.monthlyPriceZar,
+  ) ?? '';
+
+  return next;
+};
 export const hydrateCameraDraft = (data = {}) => {
   const next = mergeDraft(createEmptyCameraDraft(), data);
   const presetObjects = Array.isArray(firstDefined(data?.PTZ_PRESETS, next?.PTZ_PRESETS))
@@ -640,6 +654,8 @@ export const serializeClientDocument = (draft = {}) => {
     ...deepCloneValue(draft),
     name: trimString(draft?.name) || '',
     address: trimString(draft?.address) || '',
+    clientType: trimString(draft?.clientType) || 'lodge',
+    monthlyPriceZar: toNumberOrUndefined(draft?.monthlyPriceZar),
     geo: {
       ...draft?.geo,
       lat: toNumberOrUndefined(draft?.geo?.lat),

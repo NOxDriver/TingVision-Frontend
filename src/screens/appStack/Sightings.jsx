@@ -1089,7 +1089,7 @@ export default function Sightings() {
             },
           };
 
-          if (!isAdmin && !allowedLocationSet.has(normalizeLocationId(normalizedEntry.locationId))) {
+          if (!isAdmin && !allowedLocationSet.has(normalizeLocationId(normalizedEntry.accessId || normalizedEntry.locationId))) {
             return null;
           }
 

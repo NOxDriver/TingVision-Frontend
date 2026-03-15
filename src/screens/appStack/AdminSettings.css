@@ -321,6 +321,98 @@
   box-shadow: 0 0 0 3px rgba(255, 140, 26, 0.15);
 }
 
+.settingsArrayField {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settingsNamedGroupField__row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.settingsCooldownField {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 840px);
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.settingsCooldownField__header {
+  display: grid;
+  gap: 10px 16px;
+  grid-template-columns: minmax(160px, 220px) minmax(320px, 470px) 88px;
+  padding: 0 12px;
+}
+
+.settingsCooldownField__headerLabel {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settingsCooldownField__headerLabel--center {
+  text-align: center;
+}
+
+.settingsCooldownField__row {
+  display: grid;
+  gap: 10px 16px;
+  grid-template-columns: minmax(160px, 220px) minmax(320px, 470px);
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.settingsCooldownField__row--withRare {
+  grid-template-columns: minmax(160px, 220px) minmax(320px, 470px) 88px;
+}
+
+.settingsCooldownField__species {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsCooldownField__controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 130px 110px auto;
+  align-items: center;
+  justify-content: start;
+}
+
+.settingsCooldownField__suffix {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.settingsCooldownField__rareToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.settingsCooldownField__rareToggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
 .settingsStaticField {
   display: flex;
   flex-direction: column;
@@ -648,6 +740,79 @@
   border: 1px solid rgba(255, 140, 26, 0.26);
   color: #ffd9af;
   font-size: 0.88rem;
+}
+
+.settingsGlobalLogoCard {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background: rgba(8, 17, 8, 0.44);
+}
+
+.settingsGlobalLogoCard__preview {
+  min-height: 200px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 146, 74, 0.18);
+  background:
+    linear-gradient(145deg, rgba(255, 140, 26, 0.08), rgba(255, 140, 26, 0.02)),
+    rgba(4, 10, 4, 0.92);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settingsGlobalLogoCard__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: rgba(4, 10, 4, 0.92);
+}
+
+.settingsGlobalLogoCard__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+  padding: 24px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.settingsGlobalLogoCard__content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settingsGlobalLogoCard__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settingsGlobalLogoCard__header strong {
+  font-size: 1rem;
+}
+
+.settingsGlobalLogoCard__header span,
+.settingsGlobalLogoCard__warning {
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
+.settingsGlobalLogoCard__warning {
+  color: #ffd6d6;
+}
+
+.settingsGlobalLogoCard__fileInput {
+  display: none;
 }
 
 .settingsButton--ghost.settingsButton--active {
@@ -1226,6 +1391,10 @@
     display: none;
   }
 
+  .settingsGlobalLogoCard {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 @media (max-width: 720px) {
@@ -1246,6 +1415,31 @@
 
   .settingsUserListItem {
     padding: 12px;
+  }
+
+  .settingsNamedGroupField__row {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsCooldownField__row,
+  .settingsCooldownField__controls {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsCooldownField__header {
+    display: none;
+  }
+
+  .settingsCooldownField__row--withRare {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsCooldownField__rareToggle {
+    justify-content: flex-start;
+  }
+
+  .settingsCooldownField__suffix {
+    display: none;
   }
 
   .settingsSelectedCameraList,

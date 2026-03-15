@@ -2,7 +2,7 @@ import React from "react";
 import "./SiteHeader.css";
 import useAuthStore from "../../stores/authStore";
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FiHome, FiVideo, FiLogIn, FiUserPlus, FiLogOut, FiSettings } from "react-icons/fi";
+import { FiHome, FiVideo, FiLogIn, FiUserPlus, FiLogOut, FiSettings, FiShield } from "react-icons/fi";
 
 const SiteHeader = ({ mode = 'light' }) => {
     const user = useAuthStore(state => state.user);
@@ -36,13 +36,20 @@ const SiteHeader = ({ mode = 'light' }) => {
                                 <FiVideo className="nav-icon" />
                                 <span>Sightings</span>
                             </button>
+                            <button
+                                className={`nav-link${location.pathname === '/settings' ? ' nav-link--active' : ''}`}
+                                onClick={() => navigate('/settings')}
+                            >
+                                <FiSettings className="nav-icon" />
+                                <span>Settings</span>
+                            </button>
                             {isAdmin && (
                                 <button
-                                    className={`nav-link${location.pathname === '/settings' ? ' nav-link--active' : ''}`}
-                                    onClick={() => navigate('/settings')}
+                                    className={`nav-link${location.pathname === '/admin' ? ' nav-link--active' : ''}`}
+                                    onClick={() => navigate('/admin')}
                                 >
-                                    <FiSettings className="nav-icon" />
-                                    <span>Settings</span>
+                                    <FiShield className="nav-icon" />
+                                    <span>Admin</span>
                                 </button>
                             )}
                         </div>

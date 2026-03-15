@@ -64,7 +64,9 @@ function App() {
         <Route path="/sightings" element={
           <ProtectedRoute><Sightings /></ProtectedRoute>} />
         <Route path="/settings" element={
-          <ProtectedRoute><AdminSettings /></ProtectedRoute>} />
+          <ProtectedRoute><AdminSettings mode="settings" /></ProtectedRoute>} />
+        <Route path="/admin" element={
+          <ProtectedRoute><AdminSettings mode="admin" /></ProtectedRoute>} />
        
         {/* Individual ting */}
         {/* <Route path="/edit-video/:videoId" element={
