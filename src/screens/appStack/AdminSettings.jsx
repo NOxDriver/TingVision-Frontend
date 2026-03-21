@@ -33,6 +33,7 @@ import {
 import { db, functions as firebaseFunctions, storage } from '../../firebase';
 import useAuthStore from '../../stores/authStore';
 import usePageTitle from '../../hooks/usePageTitle';
+import { trackButton, trackEvent } from '../../utils/analytics';
 import {
   buildUserAccessDraft,
   coerceSimpleFieldValue,
@@ -179,6 +180,7 @@ const stringifyComparable = (value) => JSON.stringify(value ?? null);
 const getSaveButtonClassName = (needsAttention) => (
   `settingsButton${needsAttention ? ' settingsButton--attention' : ''}`
 );
+const toAnalyticsError = (value) => String(value || '').slice(0, 120);
 
 const chunkItems = (items = [], size = ID_QUERY_BATCH_SIZE) => {
   const next = [];
@@ -681,6 +683,7 @@ function NamedWhatsAppGroupInput({
   hint,
   values,
   onChange,
+  onTrackAction,
   namePlaceholder = 'Guests group',
   idPlaceholder = '120363421255773787',
   addLabel = 'Add group',
@@ -696,6 +699,10 @@ function NamedWhatsAppGroupInput({
   };
 
   const removeValue = (index) => {
+    onTrackAction?.('remove', {
+      index,
+      remainingCount: Math.max(rows.length - 1, 0),
+    });
     onChange(rows.filter((_, currentIndex) => currentIndex !== index));
   };
 
@@ -731,7 +738,12 @@ function NamedWhatsAppGroupInput({
           <button
             type="button"
             className="settingsButton settingsButton--ghost settingsButton--small"
-            onClick={() => onChange([...rows, { ...EMPTY_WHATSAPP_GROUP_DRAFT }])}
+            onClick={() => {
+              onTrackAction?.('add', {
+                nextCount: rows.length + 1,
+              });
+              onChange([...rows, { ...EMPTY_WHATSAPP_GROUP_DRAFT }]);
+            }}
           >
             <FiPlusCircle />
             <span>{addLabel}</span>
@@ -1141,6 +1153,23 @@ export default function AdminSettings({ mode = 'settings' }) {
   const presetEditorRef = useRef(null);
   const clientLogoFileInputRef = useRef(null);
   const globalLogoFileInputRef = useRef(null);
+
+  const analyticsSection = workspaceTab === 'admin' ? activeTab : 'settings';
+  const trackSettingsButton = useCallback((name, params = {}) => {
+    trackButton(name, {
+      workspace: workspaceTab,
+      section: analyticsSection,
+      ...params,
+    });
+  }, [analyticsSection, workspaceTab]);
+
+  const trackSettingsEvent = useCallback((name, params = {}) => {
+    trackEvent(name, {
+      workspace: workspaceTab,
+      section: analyticsSection,
+      ...params,
+    });
+  }, [analyticsSection, workspaceTab]);
 
   const deferredUserSearchText = useDeferredValue(userSearchText);
   const deferredUserCameraSearchText = useDeferredValue(userCameraSearchText);
@@ -1742,21 +1771,33 @@ export default function AdminSettings({ mode = 'settings' }) {
     setCameraJsonError('');
   }, [buildCameraJsonText]);
 
-  const loadClientEditor = useCallback((client) => {
+  const loadClientEditor = useCallback((client, options = {}) => {
+    const { source = 'auto' } = options;
     setClientMode('existing');
     setSelectedClientId(client.id);
     setClientDraftId(client.id);
     setClientDraft(hydrateClientDraft(client));
-  }, []);
+    if (source !== 'auto') {
+      trackSettingsButton(workspaceTab === 'admin' ? 'admin_client_select' : 'settings_client_select', {
+        source,
+        clientId: client.id,
+      });
+    }
+  }, [trackSettingsButton, workspaceTab]);
 
-  const startNewClient = useCallback(() => {
+  const startNewClient = useCallback((options = {}) => {
+    const { source = 'auto' } = options;
     setClientMode('new');
     setSelectedClientId('');
     setClientDraftId('');
     setClientDraft(createEmptyClientDraft());
-  }, []);
+    if (source !== 'auto') {
+      trackSettingsButton('admin_client_new', { source });
+    }
+  }, [trackSettingsButton]);
 
-  const loadCameraEditor = useCallback((camera) => {
+  const loadCameraEditor = useCallback((camera, options = {}) => {
+    const { source = 'auto' } = options;
     setCameraMode('existing');
     setSelectedCameraId(camera.id);
     setCameraDraftId(camera.id);
@@ -1765,9 +1806,17 @@ export default function AdminSettings({ mode = 'settings' }) {
       cameraId: camera.id,
       presets: Array.isArray(camera.PTZ_PRESETS) ? camera.PTZ_PRESETS : undefined,
     });
-  }, [commitCameraDraft]);
+    if (source !== 'auto') {
+      trackSettingsButton(workspaceTab === 'admin' ? 'admin_camera_select' : 'settings_camera_select', {
+        source,
+        cameraId: camera.id,
+        clientId: camera.clientId,
+      });
+    }
+  }, [commitCameraDraft, trackSettingsButton, workspaceTab]);
 
-  const startNewCamera = useCallback((preferredClientId = '') => {
+  const startNewCamera = useCallback((preferredClientId = '', options = {}) => {
+    const { source = 'auto' } = options;
     const nextDraft = createEmptyCameraDraft();
     nextDraft.clientId = preferredClientId || (cameraFilterClientId !== 'all' ? cameraFilterClientId : selectedClientId) || '';
 
@@ -1780,23 +1829,41 @@ export default function AdminSettings({ mode = 'settings' }) {
     setSelectedPresetId('');
     setPresetDraftId('');
     setPresetDraft(createEmptyPresetDraft());
-  }, [cameraFilterClientId, commitCameraDraft, selectedClientId]);
+    if (source !== 'auto') {
+      trackSettingsButton('admin_camera_new', {
+        source,
+        clientId: nextDraft.clientId || '',
+      });
+    }
+  }, [cameraFilterClientId, commitCameraDraft, selectedClientId, trackSettingsButton]);
 
-  const loadPresetEditor = useCallback((preset) => {
+  const loadPresetEditor = useCallback((preset, options = {}) => {
+    const { source = 'auto' } = options;
     setPresetMode('existing');
     setSelectedPresetId(preset.id);
     setPresetDraftId(preset.id);
     setPresetDraft(hydratePresetDraft(preset));
-  }, []);
+    if (source !== 'auto') {
+      trackSettingsButton('admin_preset_select', {
+        source,
+        presetId: preset.id,
+      });
+    }
+  }, [trackSettingsButton]);
 
-  const startNewPreset = useCallback(() => {
+  const startNewPreset = useCallback((options = {}) => {
+    const { source = 'auto' } = options;
     setPresetMode('new');
     setSelectedPresetId('');
     setPresetDraftId('');
     setPresetDraft(createEmptyPresetDraft());
-  }, []);
+    if (source !== 'auto') {
+      trackSettingsButton('admin_preset_new', { source, cameraId: selectedCameraId });
+    }
+  }, [selectedCameraId, trackSettingsButton]);
 
-  const loadUserEditor = useCallback((user) => {
+  const loadUserEditor = useCallback((user, options = {}) => {
+    const { source = 'auto' } = options;
     const nextDraft = buildUserAccessDraft({
       user,
       cameraLookup,
@@ -1805,7 +1872,14 @@ export default function AdminSettings({ mode = 'settings' }) {
     setSelectedUserId(user.id);
     setUserDraft(nextDraft);
     setManualLocationText(nextDraft.manualLocationIds.join(', '));
-  }, [cameraLookup]);
+    if (source !== 'auto') {
+      trackSettingsButton('admin_user_select', {
+        source,
+        userId: user.id,
+        role: user.role === 'admin' ? 'admin' : 'client',
+      });
+    }
+  }, [cameraLookup, trackSettingsButton]);
 
   useEffect(() => {
     if (role === 'guest' || (workspaceTab === 'admin' && !isAdmin)) {
@@ -2013,11 +2087,81 @@ export default function AdminSettings({ mode = 'settings' }) {
   }, [cameraMode, loadPresetEditor, presetMode, presets, selectedPresetId, startNewPreset]);
 
   const handleRefresh = async () => {
+    trackSettingsButton(workspaceTab === 'admin' ? 'admin_refresh' : 'settings_refresh', {
+      cameraId: selectedCameraId,
+      clientId: selectedClientId,
+    });
     await refreshAllData();
     if (isAdmin && workspaceTab === 'admin' && selectedCameraId && cameraMode !== 'new') {
       await refreshPresets(selectedCameraId);
     }
   };
+
+  const handleCameraFilterChange = useCallback((value) => {
+    setCameraFilterClientId(value);
+    trackSettingsEvent('admin_camera_filter', {
+      clientId: value,
+    });
+  }, [trackSettingsEvent]);
+
+  const handleAdminTabSelect = useCallback((tabId) => {
+    setActiveTab(tabId);
+    trackSettingsButton('admin_tab_select', { nextTab: tabId });
+  }, [trackSettingsButton]);
+
+  const handleClientLogoPickerOpen = useCallback(() => {
+    trackSettingsButton('settings_location_logo_pick', {
+      clientId: selectedClientId,
+    });
+    clientLogoFileInputRef.current?.click();
+  }, [selectedClientId, trackSettingsButton]);
+
+  const handleGlobalLogoPickerOpen = useCallback(() => {
+    trackSettingsButton('admin_global_logo_pick');
+    globalLogoFileInputRef.current?.click();
+  }, [trackSettingsButton]);
+
+  const handleShowSelectedCamerasToggle = useCallback(() => {
+    let nextValue = false;
+    setShowSelectedCamerasOnly((current) => {
+      nextValue = !current;
+      return nextValue;
+    });
+    trackSettingsButton('admin_user_selected_filter', { enabled: nextValue });
+  }, [trackSettingsButton]);
+
+  const handleUseSuggestedClientId = useCallback(() => {
+    setClientDraftId(suggestedClientId);
+    trackSettingsButton('admin_client_use_suggested_id', {
+      suggestedId: suggestedClientId,
+    });
+  }, [suggestedClientId, trackSettingsButton]);
+
+  const handleUseSuggestedCameraId = useCallback(() => {
+    setCameraDraftId(suggestedCameraId);
+    trackSettingsButton('admin_camera_use_suggested_id', {
+      suggestedId: suggestedCameraId,
+    });
+  }, [suggestedCameraId, trackSettingsButton]);
+
+  const handleUseSuggestedPresetId = useCallback(() => {
+    setPresetDraftId(suggestedPresetId);
+    trackSettingsButton('admin_preset_use_suggested_id', {
+      suggestedId: suggestedPresetId,
+      cameraId: selectedCameraId,
+    });
+  }, [selectedCameraId, suggestedPresetId, trackSettingsButton]);
+
+  const handleClientWhatsAppGroupTrack = useCallback((action, params = {}) => {
+    trackSettingsButton(`settings_whatsapp_group_${action}`, {
+      clientId: selectedClientId,
+      ...params,
+    });
+  }, [selectedClientId, trackSettingsButton]);
+
+  const handleGlobalWhatsAppGroupTrack = useCallback((action, params = {}) => {
+    trackSettingsButton(`admin_global_whatsapp_group_${action}`, params);
+  }, [trackSettingsButton]);
 
   const updateCameraField = (path, value) => {
     commitCameraDraft(updateNestedValue(cameraDraft, path, value));
@@ -2080,6 +2224,8 @@ export default function AdminSettings({ mode = 'settings' }) {
   const persistCameraDraft = useCallback(async (draftToSave, {
     successText = '',
     refreshPresetList = false,
+    analyticsName = 'admin_camera_save',
+    analyticsParams = {},
   } = {}) => {
     const plan = getCameraSavePlan(draftToSave);
 
@@ -2091,6 +2237,11 @@ export default function AdminSettings({ mode = 'settings' }) {
       };
     }
 
+    trackSettingsButton(analyticsName, {
+      ...analyticsParams,
+      cameraId: plan.targetId,
+      mode: cameraMode,
+    });
     setCameraSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2129,6 +2280,12 @@ export default function AdminSettings({ mode = 'settings' }) {
         void refreshPresets(plan.targetId, { showLoading: false });
       }
 
+      trackSettingsEvent(`${analyticsName}_success`, {
+        ...analyticsParams,
+        cameraId: plan.targetId,
+        mode: cameraMode,
+      });
+
       return {
         saved: true,
         targetId: plan.targetId,
@@ -2137,6 +2294,12 @@ export default function AdminSettings({ mode = 'settings' }) {
     } catch (error) {
       console.error('Failed to save camera', error);
       const message = error?.message || 'Unable to save camera.';
+      trackSettingsEvent(`${analyticsName}_error`, {
+        ...analyticsParams,
+        cameraId: plan.targetId,
+        mode: cameraMode,
+        error: toAnalyticsError(message),
+      });
       setNotice({ type: 'error', text: message });
       return {
         saved: false,
@@ -2155,6 +2318,9 @@ export default function AdminSettings({ mode = 'settings' }) {
     presetsLoading,
     refreshAllData,
     refreshPresets,
+    cameraMode,
+    trackSettingsButton,
+    trackSettingsEvent,
   ]);
 
   const addCameraExtraField = async () => {
@@ -2189,6 +2355,8 @@ export default function AdminSettings({ mode = 'settings' }) {
     commitCameraDraft(nextDraft);
     setNewCameraField({ key: '', type: 'text', value: '' });
     const result = await persistCameraDraft(nextDraft, {
+      analyticsName: 'admin_camera_add_field',
+      analyticsParams: { fieldKey },
       successText: `Added field "${fieldKey}" to ${getCameraSavePlan(nextDraft).targetId || 'camera'}.`,
     });
 
@@ -2231,6 +2399,8 @@ export default function AdminSettings({ mode = 'settings' }) {
     commitCameraDraft(nextDraft);
 
     const result = await persistCameraDraft(nextDraft, {
+      analyticsName: 'admin_camera_remove_field',
+      analyticsParams: { fieldKey },
       successText: `Removed field "${fieldKey}" from ${getCameraSavePlan(nextDraft).targetId || 'camera'}.`,
     });
 
@@ -2262,6 +2432,10 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('admin_client_save', {
+      clientId: targetId,
+      mode: clientMode,
+    });
     setClientSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2284,9 +2458,18 @@ export default function AdminSettings({ mode = 'settings' }) {
       setClients((current) => upsertSortedItem(current, nextClient, (client) => client.name || client.id));
       loadClientEditor(nextClient);
       setNotice({ type: 'success', text: `Saved client ${targetId}.` });
+      trackSettingsEvent('admin_client_save_success', {
+        clientId: targetId,
+        mode: clientMode,
+      });
       void refreshAllData({ showLoading: false });
     } catch (error) {
       console.error('Failed to save client', error);
+      trackSettingsEvent('admin_client_save_error', {
+        clientId: targetId,
+        mode: clientMode,
+        error: toAnalyticsError(error?.message || 'Unable to save client.'),
+      });
       setNotice({ type: 'error', text: error?.message || 'Unable to save client.' });
     } finally {
       setClientSaving(false);
@@ -2309,6 +2492,7 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('settings_alert_save', { clientId: selectedClientId });
     setClientAlertSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2368,9 +2552,14 @@ export default function AdminSettings({ mode = 'settings' }) {
         }));
       }
       setNotice({ type: 'success', text: `Saved settings for ${selectedClientId}.` });
+      trackSettingsEvent('settings_alert_save_success', { clientId: selectedClientId });
       void refreshAllData({ showLoading: false });
     } catch (error) {
       console.error('Failed to save client alert settings', error);
+      trackSettingsEvent('settings_alert_save_error', {
+        clientId: selectedClientId,
+        error: toAnalyticsError(error?.details || error?.message || 'Unable to save settings.'),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to save settings.',
@@ -2383,6 +2572,8 @@ export default function AdminSettings({ mode = 'settings' }) {
     isAdmin,
     refreshAllData,
     selectedClientId,
+    trackSettingsButton,
+    trackSettingsEvent,
   ]);
 
   const uploadClientLodgeLogo = useCallback(async (file) => {
@@ -2395,6 +2586,10 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('settings_location_logo_upload', {
+      clientId: selectedClientId,
+      fileType: file.type || 'unknown',
+    });
     setClientLogoUploading(true);
     setNotice({ type: '', text: '' });
 
@@ -2435,8 +2630,15 @@ export default function AdminSettings({ mode = 'settings' }) {
         }));
       }
       setNotice({ type: 'success', text: `Uploaded ${file.name}.` });
+      trackSettingsEvent('settings_location_logo_upload_success', {
+        clientId: selectedClientId,
+      });
     } catch (error) {
       console.error('Failed to upload location image', error);
+      trackSettingsEvent('settings_location_logo_upload_error', {
+        clientId: selectedClientId,
+        error: toAnalyticsError(error?.details || error?.message || 'Unable to upload the location image.'),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to upload the location image.',
@@ -2447,7 +2649,7 @@ export default function AdminSettings({ mode = 'settings' }) {
         clientLogoFileInputRef.current.value = '';
       }
     }
-  }, [selectedClientId]);
+  }, [selectedClientId, trackSettingsButton, trackSettingsEvent]);
 
   const handleClientLogoFileChange = useCallback((event) => {
     const file = event.target.files?.[0] || null;
@@ -2464,6 +2666,7 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('admin_global_save');
     setGlobalSettingsSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2480,8 +2683,12 @@ export default function AdminSettings({ mode = 'settings' }) {
       setGlobalSettings(nextGlobalSettings);
       setGlobalSettingsDraft(nextGlobalSettings);
       setNotice({ type: 'success', text: 'Saved global defaults.' });
+      trackSettingsEvent('admin_global_save_success');
     } catch (error) {
       console.error('Failed to save global settings', error);
+      trackSettingsEvent('admin_global_save_error', {
+        error: toAnalyticsError(error?.details || error?.message || 'Unable to save global defaults.'),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to save global defaults.',
@@ -2489,7 +2696,7 @@ export default function AdminSettings({ mode = 'settings' }) {
     } finally {
       setGlobalSettingsSaving(false);
     }
-  }, [globalSettingsDraft, isAdmin]);
+  }, [globalSettingsDraft, isAdmin, trackSettingsButton, trackSettingsEvent]);
 
   const uploadGlobalLatestLogo = useCallback(async (file) => {
     if (!isAdmin) {
@@ -2501,6 +2708,9 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('admin_global_logo_upload', {
+      fileType: file.type || 'unknown',
+    });
     setGlobalLogoUploading(true);
     setNotice({ type: '', text: '' });
 
@@ -2529,8 +2739,12 @@ export default function AdminSettings({ mode = 'settings' }) {
         destBucket: savedSettings.destBucket || current.destBucket,
       }));
       setNotice({ type: 'success', text: `Uploaded ${file.name}.` });
+      trackSettingsEvent('admin_global_logo_upload_success');
     } catch (error) {
       console.error('Failed to upload global latest logo', error);
+      trackSettingsEvent('admin_global_logo_upload_error', {
+        error: toAnalyticsError(error?.details || error?.message || 'Unable to upload the latest logo.'),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to upload the latest logo.',
@@ -2541,7 +2755,7 @@ export default function AdminSettings({ mode = 'settings' }) {
         globalLogoFileInputRef.current.value = '';
       }
     }
-  }, [globalSettingsDraft.destBucket, isAdmin]);
+  }, [globalSettingsDraft.destBucket, isAdmin, trackSettingsButton, trackSettingsEvent]);
 
   const handleGlobalLogoFileChange = useCallback((event) => {
     const file = event.target.files?.[0] || null;
@@ -2576,6 +2790,10 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('settings_camera_quick_control', {
+      cameraId: selectedCameraId,
+      control,
+    });
     setCameraQuickAction(control);
     setNotice({ type: '', text: '' });
 
@@ -2600,8 +2818,17 @@ export default function AdminSettings({ mode = 'settings' }) {
         type: 'success',
         text: successText || `Ran ${control} for ${selectedCameraId}.`,
       });
+      trackSettingsEvent('settings_camera_quick_control_success', {
+        cameraId: selectedCameraId,
+        control,
+      });
     } catch (error) {
       console.error(`Failed to run quick control "${control}"`, error);
+      trackSettingsEvent('settings_camera_quick_control_error', {
+        cameraId: selectedCameraId,
+        control,
+        error: toAnalyticsError(error?.details || error?.message || `Unable to run ${control}.`),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || `Unable to run ${control}.`,
@@ -2609,7 +2836,7 @@ export default function AdminSettings({ mode = 'settings' }) {
     } finally {
       setCameraQuickAction('');
     }
-  }, [cameraMode, selectedCameraId]);
+  }, [cameraMode, selectedCameraId, trackSettingsButton, trackSettingsEvent]);
 
   const renamePresetOnCamera = useCallback(async ({ cameraId, presetId, name }) => {
     const runRename = httpsCallable(firebaseFunctions, 'renameCameraPreset');
@@ -2647,6 +2874,11 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('admin_preset_save', {
+      cameraId: selectedCameraId,
+      presetId: targetId,
+      mode: presetMode,
+    });
     setPresetSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2714,9 +2946,20 @@ export default function AdminSettings({ mode = 'settings' }) {
           ? `Saved preset ${targetId} and updated the camera preset name.`
           : `Saved preset ${targetId}.`,
       });
+      trackSettingsEvent('admin_preset_save_success', {
+        cameraId: selectedCameraId,
+        presetId: targetId,
+        mode: presetMode,
+      });
       void refreshPresets(selectedCameraId, { showLoading: false });
     } catch (error) {
       console.error('Failed to save preset', error);
+      trackSettingsEvent('admin_preset_save_error', {
+        cameraId: selectedCameraId,
+        presetId: targetId,
+        mode: presetMode,
+        error: toAnalyticsError(error?.details || error?.message || 'Unable to save preset.'),
+      });
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to save preset.',
@@ -2736,6 +2979,11 @@ export default function AdminSettings({ mode = 'settings' }) {
 
     autoImportedPresetCameraIds.current.add(selectedCameraId);
 
+    if (!automatic) {
+      trackSettingsButton('admin_preset_import', {
+        cameraId: selectedCameraId,
+      });
+    }
     setPresetImporting(true);
     if (!automatic) {
       setNotice({ type: '', text: '' });
@@ -2774,9 +3022,21 @@ export default function AdminSettings({ mode = 'settings' }) {
             ? `No presets were returned for ${selectedCameraId}.`
             : `Imported ${importedCount} presets for ${selectedCameraId} (${createdCount} new, ${updatedCount} updated).`,
         });
+        trackSettingsEvent('admin_preset_import_success', {
+          cameraId: selectedCameraId,
+          importedCount,
+          createdCount,
+          updatedCount,
+        });
       }
     } catch (error) {
       console.error('Failed to import camera presets', error);
+      if (!automatic) {
+        trackSettingsEvent('admin_preset_import_error', {
+          cameraId: selectedCameraId,
+          error: toAnalyticsError(error?.details || error?.message || 'Unable to import presets from the camera.'),
+        });
+      }
       setNotice({
         type: 'error',
         text: error?.details || error?.message || 'Unable to import presets from the camera.',
@@ -2790,6 +3050,8 @@ export default function AdminSettings({ mode = 'settings' }) {
     selectedCameraId,
     selectedPresetId,
     startNewPreset,
+    trackSettingsButton,
+    trackSettingsEvent,
   ]);
 
   const saveUserAccess = useCallback(async () => {
@@ -2798,6 +3060,10 @@ export default function AdminSettings({ mode = 'settings' }) {
       return;
     }
 
+    trackSettingsButton('admin_user_save', {
+      userId: selectedUserId,
+      role: userDraft.role,
+    });
     setUserSaving(true);
     setNotice({ type: '', text: '' });
 
@@ -2827,14 +3093,24 @@ export default function AdminSettings({ mode = 'settings' }) {
       });
       setManualLocationText(payload.locationIds.filter((value) => !payload.cameraIds.includes(value)).join(', '));
       setNotice({ type: 'success', text: `Saved access for ${selectedUserId}.` });
+      trackSettingsEvent('admin_user_save_success', {
+        userId: selectedUserId,
+        role: payload.role,
+        cameraCount: payload.cameraIds.length,
+      });
       void refreshAllData({ showLoading: false });
     } catch (error) {
       console.error('Failed to save user access', error);
+      trackSettingsEvent('admin_user_save_error', {
+        userId: selectedUserId,
+        role: userDraft.role,
+        error: toAnalyticsError(error?.message || 'Unable to save user access.'),
+      });
       setNotice({ type: 'error', text: error?.message || 'Unable to save user access.' });
     } finally {
       setUserSaving(false);
     }
-  }, [buildUserAccessPayload, manualLocationText, refreshAllData, selectedUserId, userDraft, users]);
+  }, [buildUserAccessPayload, manualLocationText, refreshAllData, selectedUserId, trackSettingsButton, trackSettingsEvent, userDraft, users]);
 
   const updateUserCameraSelection = useCallback((updater) => {
     setUserDraft((currentDraft) => {
@@ -2855,15 +3131,22 @@ export default function AdminSettings({ mode = 'settings' }) {
     });
   }, [cameraLookup]);
 
-  const toggleUserCamera = useCallback((cameraId) => {
+  const toggleUserCamera = useCallback((cameraId, source = 'list') => {
+    const currentlySelected = userDraft.cameraIds.includes(cameraId);
     updateUserCameraSelection((currentCameraIds) => (
       currentCameraIds.includes(cameraId)
         ? currentCameraIds.filter((id) => id !== cameraId)
         : [...currentCameraIds, cameraId]
     ));
-  }, [updateUserCameraSelection]);
+    trackSettingsButton('admin_user_camera_toggle', {
+      source,
+      userId: selectedUserId,
+      cameraId,
+      selected: !currentlySelected,
+    });
+  }, [selectedUserId, trackSettingsButton, updateUserCameraSelection, userDraft.cameraIds]);
 
-  const setManyUserCameras = useCallback((cameraIds, shouldInclude) => {
+  const setManyUserCameras = useCallback((cameraIds, shouldInclude, source = 'toolbar') => {
     if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
       return;
     }
@@ -2881,7 +3164,13 @@ export default function AdminSettings({ mode = 'settings' }) {
 
       return Array.from(next);
     });
-  }, [updateUserCameraSelection]);
+    trackSettingsButton('admin_user_camera_bulk', {
+      source,
+      userId: selectedUserId,
+      action: shouldInclude ? 'select' : 'clear',
+      count: cameraIds.length,
+    });
+  }, [selectedUserId, trackSettingsButton, updateUserCameraSelection]);
 
   useEffect(() => {
     if (!isAdmin || workspaceTab !== 'admin' || cameraMode === 'new' || !selectedCameraId) {
@@ -3139,7 +3428,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                       active={selectedClientId === client.id}
                       title={client.name || client.id}
                       meta={client.id}
-                      onClick={() => loadClientEditor(client)}
+                      onClick={() => loadClientEditor(client, { source: 'list' })}
                     />
                   ))}
                 </div>
@@ -3158,7 +3447,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                       active={selectedCameraId === camera.id}
                       title={camera.displayName || camera.id}
                       meta={clientLookup.get(camera.clientId)?.name || camera.clientId || 'No location'}
-                      onClick={() => loadCameraEditor(camera)}
+                      onClick={() => loadCameraEditor(camera, { source: 'list' })}
                     />
                   ))}
                 </div>
@@ -3312,7 +3601,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                           <button
                             type="button"
                             className="settingsButton settingsButton--ghost"
-                            onClick={() => clientLogoFileInputRef.current?.click()}
+                            onClick={handleClientLogoPickerOpen}
                             disabled={clientLogoUploading}
                           >
                             <FiUploadCloud />
@@ -3342,6 +3631,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                       hint="Give each location WhatsApp group a name and its group ID."
                       values={clientAlertDraft.lodgeWhatsappGroups}
                       onChange={(value) => setClientAlertDraft((current) => ({ ...current, lodgeWhatsappGroups: value }))}
+                      onTrackAction={handleClientWhatsAppGroupTrack}
                       namePlaceholder="Guests group"
                       idPlaceholder="120363421255773787"
                       addLabel="Add Group"
@@ -3379,7 +3669,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                   key={tab.id}
                   type="button"
                   className={`adminSettings__tab${activeTab === tab.id ? ' adminSettings__tab--active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleAdminTabSelect(tab.id)}
                 >
                   <Icon />
                   <span>{tab.label}</span>
@@ -3398,7 +3688,10 @@ export default function AdminSettings({ mode = 'settings' }) {
                 <button
                   type="button"
                   className="settingsButton"
-                  onClick={() => startNewCamera(cameraFilterClientId !== 'all' ? cameraFilterClientId : selectedClientId)}
+                  onClick={() => startNewCamera(
+                    cameraFilterClientId !== 'all' ? cameraFilterClientId : selectedClientId,
+                    { source: 'button' },
+                  )}
                 >
                   <FiPlusCircle />
                   <span>New Camera</span>
@@ -3408,7 +3701,7 @@ export default function AdminSettings({ mode = 'settings' }) {
               <SelectInput
                 label="Filter by client"
                 value={cameraFilterClientId}
-                onChange={setCameraFilterClientId}
+                onChange={handleCameraFilterChange}
                 options={[
                   { value: 'all', label: 'All clients' },
                   ...clients.map((client) => ({
@@ -3429,7 +3722,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                     active={cameraMode !== 'new' && selectedCameraId === camera.id}
                     title={camera.displayName || camera.id}
                     meta={clientLookup.get(camera.clientId)?.name || camera.clientId || 'No client'}
-                    onClick={() => loadCameraEditor(camera)}
+                    onClick={() => loadCameraEditor(camera, { source: 'list' })}
                   />
                 ))}
               </div>
@@ -3461,7 +3754,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                 onChange={setCameraDraftId}
                 placeholder={suggestedCameraId || 'river-house--main-ptz'}
                 suggestedValue={suggestedCameraId}
-                onUseSuggested={() => setCameraDraftId(suggestedCameraId)}
+                onUseSuggested={handleUseSuggestedCameraId}
               />
 
               <div className="settingsGrid settingsGrid--two">
@@ -3795,7 +4088,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                   <button
                     type="button"
                     className="settingsButton"
-                    onClick={startNewPreset}
+                    onClick={() => startNewPreset({ source: 'button' })}
                     disabled={!selectedCamera || cameraMode === 'new' || presetImporting}
                   >
                     <FiPlusCircle />
@@ -3830,7 +4123,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                           active={presetMode !== 'new' && selectedPresetId === preset.id}
                           title={preset.name || preset.id}
                           meta={`${preset.id}${preset.whenIsActive ? ` • ${preset.whenIsActive}` : ''}`}
-                          onClick={() => loadPresetEditor(preset)}
+                          onClick={() => loadPresetEditor(preset, { source: 'list' })}
                         />
                       ))}
                     </div>
@@ -3844,7 +4137,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                         onChange={setPresetDraftId}
                         placeholder={suggestedPresetId || '1'}
                         suggestedValue={suggestedPresetId}
-                        onUseSuggested={() => setPresetDraftId(suggestedPresetId)}
+                        onUseSuggested={handleUseSuggestedPresetId}
                       />
 
                       <div className="settingsGrid settingsGrid--two">
@@ -3958,7 +4251,7 @@ export default function AdminSettings({ mode = 'settings' }) {
               title="Client List"
               description="Create the business account once, then hang cameras under it."
               actions={(
-                <button type="button" className="settingsButton" onClick={startNewClient}>
+                <button type="button" className="settingsButton" onClick={() => startNewClient({ source: 'button' })}>
                   <FiPlusCircle />
                   <span>New Client</span>
                 </button>
@@ -3973,7 +4266,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                     active={clientMode !== 'new' && selectedClientId === client.id}
                     title={client.name || client.id}
                     meta={`${client.id}${client.timezone ? ` • ${client.timezone}` : ''}`}
-                    onClick={() => loadClientEditor(client)}
+                    onClick={() => loadClientEditor(client, { source: 'list' })}
                   />
                 ))}
               </div>
@@ -4004,7 +4297,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                 onChange={setClientDraftId}
                 placeholder={suggestedClientId || 'river-house'}
                 suggestedValue={suggestedClientId}
-                onUseSuggested={() => setClientDraftId(suggestedClientId)}
+                onUseSuggested={handleUseSuggestedClientId}
               />
 
               <div className="settingsGrid settingsGrid--two">
@@ -4134,6 +4427,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                   ...current,
                   defaultAdminWhatsappGroups: value,
                 }))}
+                onTrackAction={handleGlobalWhatsAppGroupTrack}
                 namePlaceholder="Admins"
                 idPlaceholder="120363404393118610"
                 addLabel="Add Admin Group"
@@ -4203,7 +4497,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                     <button
                       type="button"
                       className="settingsButton settingsButton--ghost"
-                      onClick={() => globalLogoFileInputRef.current?.click()}
+                      onClick={handleGlobalLogoPickerOpen}
                       disabled={globalLogoUploading}
                     >
                       <FiUploadCloud />
@@ -4264,7 +4558,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                     user={user}
                     allCameraCount={allCameraIds.length}
                     allClientCount={allClientIds.length}
-                    onClick={() => loadUserEditor(user)}
+                    onClick={() => loadUserEditor(user, { source: 'list' })}
                   />
                 ))}
               </div>
@@ -4373,14 +4667,14 @@ export default function AdminSettings({ mode = 'settings' }) {
                             <button
                               type="button"
                               className={`settingsButton settingsButton--ghost${showSelectedCamerasOnly ? ' settingsButton--active' : ''}`}
-                              onClick={() => setShowSelectedCamerasOnly((current) => !current)}
+                              onClick={handleShowSelectedCamerasToggle}
                             >
                               {showSelectedCamerasOnly ? 'Show all cameras' : 'Show selected only'}
                             </button>
                             <button
                               type="button"
                               className="settingsButton settingsButton--ghost"
-                              onClick={() => setManyUserCameras(visibleUserCameraIds, true)}
+                              onClick={() => setManyUserCameras(visibleUserCameraIds, true, 'toolbar')}
                               disabled={visibleUserCameraIds.length === 0 || allVisibleUserCamerasSelected}
                             >
                               Select visible
@@ -4388,7 +4682,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                             <button
                               type="button"
                               className="settingsButton settingsButton--ghost"
-                              onClick={() => setManyUserCameras(visibleUserCameraIds, false)}
+                              onClick={() => setManyUserCameras(visibleUserCameraIds, false, 'toolbar')}
                               disabled={visibleUserCameraIds.length === 0 || !visibleUserCameraIds.some((cameraId) => selectedUserCameraIdSet.has(cameraId))}
                             >
                               Clear visible
@@ -4423,7 +4717,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                                   key={camera.id}
                                   type="button"
                                   className="settingsSelectedCameraChip"
-                                  onClick={() => toggleUserCamera(camera.id)}
+                                  onClick={() => toggleUserCamera(camera.id, 'chip')}
                                 >
                                   <strong>{camera.displayName}</strong>
                                   <span>{camera.clientName} / {camera.id}</span>
@@ -4468,7 +4762,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                                     <button
                                       type="button"
                                       className="settingsButton settingsButton--ghost settingsButton--small"
-                                      onClick={() => setManyUserCameras(groupVisibleIds, true)}
+                                      onClick={() => setManyUserCameras(groupVisibleIds, true, 'group')}
                                       disabled={groupVisibleIds.length === 0 || allGroupVisibleSelected}
                                     >
                                       Select visible in {group.clientName}
@@ -4476,7 +4770,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                                     <button
                                       type="button"
                                       className="settingsButton settingsButton--ghost settingsButton--small"
-                                      onClick={() => setManyUserCameras(groupVisibleIds, false)}
+                                      onClick={() => setManyUserCameras(groupVisibleIds, false, 'group')}
                                       disabled={groupVisibleIds.length === 0 || !someGroupVisibleSelected}
                                     >
                                       Clear visible in {group.clientName}
@@ -4495,7 +4789,7 @@ export default function AdminSettings({ mode = 'settings' }) {
                                           <input
                                             type="checkbox"
                                             checked={isSelected}
-                                            onChange={() => toggleUserCamera(camera.id)}
+                                            onChange={() => toggleUserCamera(camera.id, 'list')}
                                           />
                                           <span className="settingsUserCameraRow__content">
                                             <span className="settingsUserCameraRow__title">

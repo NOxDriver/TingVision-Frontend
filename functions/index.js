@@ -33,6 +33,45 @@ function createHttpsError(code, message) {
   return new functions.https.HttpsError(code, message);
 }
 
+function sanitizeFirestorePath(path) {
+  return typeof path === "string" ?
+    path
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .join("/") :
+    "";
+}
+
+function sanitizeDownloadFilename(filename) {
+  const cleaned = String(filename || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+/, "")
+      .replace(/-+$/, "");
+
+  return cleaned || "sighting-media";
+}
+
+async function authenticateHttpRequest(req) {
+  const authorization = String(req.get("Authorization") || "");
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match || !match[1]) {
+    throw createHttpsError(
+        "unauthenticated",
+        "A valid authentication token is required.",
+    );
+  }
+
+  const decodedToken = await admin.auth().verifyIdToken(match[1]);
+  return {
+    auth: {
+      uid: decodedToken.uid,
+    },
+  };
+}
+
 function normalizeAccessIds(values) {
   if (!Array.isArray(values)) {
     return [];
@@ -2178,3 +2217,154 @@ exports.uploadClientLodgeLogo = functions.https.onCall(
       };
     },
 );
+
+exports.downloadSightingMedia = functions.https.onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Expose-Headers", "Content-Disposition, Content-Type, Content-Length");
+
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+
+  if (req.method !== "POST") {
+    res.status(405).json({error: "Use POST for downloads."});
+    return;
+  }
+
+  try {
+    const context = await authenticateHttpRequest(req);
+    const parentPath = sanitizeFirestorePath(req.body?.parentPath);
+    const speciesDocPath = sanitizeFirestorePath(req.body?.speciesDocPath);
+    const requestedUrl = String(req.body?.sourceUrl || "").trim();
+    const requestedFilename = sanitizeDownloadFilename(req.body?.filename);
+
+    if (!parentPath || !requestedUrl) {
+      throw createHttpsError(
+          "invalid-argument",
+          "parentPath and sourceUrl are required.",
+      );
+    }
+
+    const parentSnap = await admin.firestore().doc(parentPath).get();
+    if (!parentSnap.exists) {
+      throw createHttpsError("not-found", "The requested sighting was not found.");
+    }
+
+    const parentData = parentSnap.data() || {};
+    const cameraId = String(parentData.cameraId || "").trim();
+    const clientId = String(
+        parentData.clientId ||
+        parentData.locationId ||
+        parentData.location ||
+        "",
+    ).trim();
+
+    if (cameraId) {
+      await requireCameraAccessUser(context, cameraId);
+    } else if (clientId) {
+      await requireClientAccessUser(context, clientId);
+    } else {
+      await requireAdminUser(context);
+    }
+
+    let speciesData = {};
+    if (speciesDocPath) {
+      const speciesSnap = await admin.firestore().doc(speciesDocPath).get();
+      if (speciesSnap.exists) {
+        speciesData = speciesSnap.data() || {};
+      }
+    }
+
+    const allowedUrls = new Set(
+        [
+          parentData.mediaUrl,
+          parentData.videoUrl,
+          parentData.previewUrl,
+          parentData.debugUrl,
+          parentData.rawMediaUrl,
+          parentData.rawVideoUrl,
+          parentData.rawPreviewUrl,
+          parentData.debugPreviewUrl,
+          parentData.debugVideoUrl,
+          parentData.debugMediaUrl,
+          speciesData.mediaUrl,
+          speciesData.videoUrl,
+          speciesData.previewUrl,
+          speciesData.debugUrl,
+          speciesData.rawMediaUrl,
+          speciesData.rawVideoUrl,
+          speciesData.rawPreviewUrl,
+          speciesData.debugPreviewUrl,
+          speciesData.debugVideoUrl,
+          speciesData.debugMediaUrl,
+        ]
+            .filter((value) => typeof value === "string" && value.trim().length > 0)
+            .map((value) => value.trim()),
+    );
+
+    if (!allowedUrls.has(requestedUrl)) {
+      throw createHttpsError(
+          "permission-denied",
+          "The requested media is not attached to this sighting.",
+      );
+    }
+
+    const upstream = await fetch(requestedUrl);
+    if (!upstream.ok) {
+      throw createHttpsError(
+          "failed-precondition",
+          "The media file could not be fetched for download.",
+      );
+    }
+
+    const contentType = upstream.headers.get("content-type") ||
+      "application/octet-stream";
+    const contentLength = upstream.headers.get("content-length");
+
+    res.status(200);
+    res.set("Content-Type", contentType);
+    res.set(
+        "Content-Disposition",
+        `attachment; filename="${requestedFilename}"`,
+    );
+    if (contentLength) {
+      res.set("Content-Length", contentLength);
+    }
+
+    if (!upstream.body) {
+      const buffer = await upstream.buffer();
+      res.send(buffer);
+      return;
+    }
+
+    upstream.body.on("error", (error) => {
+      functions.logger.error("Download stream failed", error);
+      if (!res.headersSent) {
+        res.status(502).end("Download stream failed.");
+      } else {
+        res.end();
+      }
+    });
+
+    upstream.body.pipe(res);
+  } catch (error) {
+    const isHttpsError = error instanceof functions.https.HttpsError;
+    const statusCode = isHttpsError ?
+      ({
+        "invalid-argument": 400,
+        "unauthenticated": 401,
+        "permission-denied": 403,
+        "not-found": 404,
+        "failed-precondition": 412,
+      }[error.code] || 500) :
+      500;
+
+    functions.logger.error("downloadSightingMedia failed", error);
+    res.status(statusCode).json({
+      error: error?.message || "Unable to download sighting media.",
+    });
+  }
+});

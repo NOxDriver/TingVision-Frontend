@@ -1,38 +1,40 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Timestamp,
   collectionGroup,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
   query,
-  where,
+  startAfter,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import './HighlightsWidget.css';
 import useAuthStore from '../stores/authStore';
 import {
-  CATEGORY_META,
   buildHighlightEntry,
   formatCountWithSpecies,
-  formatOffset,
   formatPercent,
   formatTime,
-  getBestCenterDist,
-  mergeHighlight,
-  normalizeDate,
 } from '../utils/highlights';
 import { buildLocationSet, normalizeLocationId } from '../utils/location';
 import { resolveAccessLocationId } from '../utils/access';
 import { trackButton, trackEvent } from '../utils/analytics';
-import { isLikelyVideoUrl } from '../utils/media';
-import { FiEdit2 } from 'react-icons/fi';
+import { downloadEntryMedia, isLikelyVideoUrl } from '../utils/media';
+import { FiDownload, FiEdit2, FiStar } from 'react-icons/fi';
 import {
   applySightingCorrection,
   buildCorrectionNote,
   describeSpeciesChange,
 } from '../utils/sightings/corrections';
+import {
+  applySightingHighlight,
+  getHighlightStateKey,
+} from '../utils/sightings/highlights';
 
-const MIN_PHOTO_CONFIDENCE = 0.7;
+const RECENT_HIGHLIGHTS_LIMIT = 12;
+const HIGHLIGHTS_FETCH_BATCH_SIZE = 50;
+const HIGHLIGHTS_FETCH_MAX_BATCHES = 8;
 const SEND_WHATSAPP_ENDPOINT =
   process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT ||
   'https://send-manual-whatsapp-alert-186628423921.us-central1.run.app';
@@ -40,26 +42,66 @@ const DELETE_SIGHTING_ENDPOINT =
   process.env.REACT_APP_DELETE_SIGHTING_ENDPOINT ||
   'https://delete-sighting-media-186628423921.us-central1.run.app';
 
-const formatSpeciesName = (value) => {
-  if (typeof value !== 'string' || value.length === 0) {
-    return 'Unknown';
-  }
-  return value.charAt(0).toUpperCase() + value.slice(1);
-};
-
 const pickFirstSource = (...sources) =>
   sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+const toAnalyticsError = (value) => String(value || '').slice(0, 120);
 
-const hasMegadetectorFailure = (entry) => {
-  const verify = entry?.megadetectorVerify;
-  if (!verify || typeof verify !== 'object') {
-    return false;
+const getRecencyValue = (entry) => {
+  const candidate = entry?.highlightedAt || entry?.spottedAt || entry?.createdAt || null;
+  return candidate instanceof Date && !Number.isNaN(candidate.getTime()) ? candidate.getTime() : 0;
+};
+
+const prefersHighlightedSpeciesDoc = (entry) => {
+  const highlightedDocId = entry?.highlightSourceSpeciesDocId;
+  const speciesDocId = entry?.meta?.speciesDoc?.id;
+  return Boolean(highlightedDocId && speciesDocId && highlightedDocId === speciesDocId);
+};
+
+const pickPreferredHighlightedEntry = (current, candidate) => {
+  if (!candidate) return current;
+  if (!current) return candidate;
+
+  const candidateIsPreferred = prefersHighlightedSpeciesDoc(candidate);
+  const currentIsPreferred = prefersHighlightedSpeciesDoc(current);
+  if (candidateIsPreferred !== currentIsPreferred) {
+    return candidateIsPreferred ? candidate : current;
   }
-  return verify.passed === false;
+
+  const candidateRecency = getRecencyValue(candidate);
+  const currentRecency = getRecencyValue(current);
+  if (candidateRecency !== currentRecency) {
+    return candidateRecency > currentRecency ? candidate : current;
+  }
+
+  const candidateConfidence =
+    typeof candidate?.maxConf === 'number' && !Number.isNaN(candidate.maxConf) ? candidate.maxConf : -1;
+  const currentConfidence =
+    typeof current?.maxConf === 'number' && !Number.isNaN(current.maxConf) ? current.maxConf : -1;
+  if (candidateConfidence !== currentConfidence) {
+    return candidateConfidence > currentConfidence ? candidate : current;
+  }
+
+  const candidateCount =
+    typeof candidate?.count === 'number' && !Number.isNaN(candidate.count) ? candidate.count : -1;
+  const currentCount =
+    typeof current?.count === 'number' && !Number.isNaN(current.count) ? current.count : -1;
+  if (candidateCount !== currentCount) {
+    return candidateCount > currentCount ? candidate : current;
+  }
+
+  return current;
+};
+
+const formatDateTimeLabel = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return '';
+  }
+
+  return `${value.toLocaleDateString()} ${formatTime(value)}`.trim();
 };
 
 export default function HighlightsWidget() {
-  const [highlights, setHighlights] = useState({});
+  const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeEntry, setActiveEntry] = useState(null);
@@ -67,6 +109,8 @@ export default function HighlightsWidget() {
   const [isHdEnabled, setIsHdEnabled] = useState(false);
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
+  const [downloadStatusMap, setDownloadStatusMap] = useState({});
+  const [highlightStatusMap, setHighlightStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -129,7 +173,7 @@ export default function HighlightsWidget() {
       }
 
       if (!isAdmin && allowedLocationSet.size === 0) {
-        setHighlights({});
+        setHighlights([]);
         setLoading(false);
         setError('');
         return;
@@ -138,145 +182,115 @@ export default function HighlightsWidget() {
       setLoading(true);
       setError('');
       try {
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+        const highlightedByParent = new Map();
+        let cursor = null;
+        let hasMore = true;
+        let batchCount = 0;
 
-        const highlightQuery = query(
-          collectionGroup(db, 'perSpecies'),
-          where('createdAt', '>=', Timestamp.fromDate(start)),
-          where('createdAt', '<', Timestamp.fromDate(end)),
-        );
-
-        const snapshot = await getDocs(highlightQuery);
-        if (snapshot.empty) {
-          if (isMounted) {
-            setHighlights({});
+        while (
+          hasMore
+          && highlightedByParent.size < RECENT_HIGHLIGHTS_LIMIT
+          && batchCount < HIGHLIGHTS_FETCH_MAX_BATCHES
+        ) {
+          const constraints = [orderBy('createdAt', 'desc'), limit(HIGHLIGHTS_FETCH_BATCH_SIZE)];
+          if (cursor) {
+            constraints.splice(1, 0, startAfter(cursor));
           }
-          setLoading(false);
-          return;
-        }
 
-        const parentRefMap = new Map();
-        snapshot.docs.forEach((docSnap) => {
-          const parentRef = docSnap.ref.parent.parent;
-          if (parentRef && !parentRefMap.has(parentRef.path)) {
-            parentRefMap.set(parentRef.path, parentRef);
+          const snapshot = await getDocs(query(collectionGroup(db, 'perSpecies'), ...constraints));
+          if (snapshot.empty) {
+            hasMore = false;
+            break;
           }
-        });
 
-        const parentSnaps = await Promise.all(
-          Array.from(parentRefMap.values()).map((ref) => getDoc(ref)),
-        );
-
-        const parentDataMap = new Map();
-        parentSnaps.forEach((snap) => {
-          if (!snap.exists()) return;
-          const data = snap.data();
-          if (data?.deletedAt) return;
-          parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
-        });
-
-        const groupedBySpecies = {};
-
-        snapshot.docs.forEach((docSnap) => {
-          const speciesDoc = { id: docSnap.id, ...docSnap.data() };
-          if (speciesDoc.deletedAt) return;
-          const parentRef = docSnap.ref.parent.parent;
-          if (!parentRef) return;
-          const parentDoc = parentDataMap.get(parentRef.path);
-          if (!parentDoc || parentDoc.deletedAt) return;
-
-          if (!isAdmin) {
-            const normalizedLocation = normalizeLocationId(
-              resolveAccessLocationId(
-                parentDoc?.cameraId,
-                parentDoc?.clientId,
-                parentDoc?.locationId,
-                parentDoc?.location,
-              ),
-            );
-            if (!allowedLocationSet.has(normalizedLocation)) {
-              return;
+          const parentRefMap = new Map();
+          snapshot.docs.forEach((docSnap) => {
+            const parentRef = docSnap.ref.parent.parent;
+            if (parentRef && !parentRefMap.has(parentRef.path)) {
+              parentRefMap.set(parentRef.path, parentRef);
             }
-          }
-
-          const species = formatSpeciesName(speciesDoc.species || 'Unknown');
-          if (!groupedBySpecies[species]) {
-            groupedBySpecies[species] = {
-              biggestBoundingBox: null,
-              mostAnimals: null,
-              mostCentered: null,
-              video: null,
-            };
-          }
-
-          const buildEntry = (category, extra = {}) => ({
-            ...buildHighlightEntry({
-              category,
-              speciesDoc,
-              parentDoc,
-              extra,
-            }),
-            meta: {
-              parentPath: parentRef.path,
-              speciesDocPath: docSnap.ref.path,
-              parentDoc,
-              speciesDoc,
-            },
           });
 
-          // Biggest bounding box (higher maxArea)
-          if (typeof speciesDoc.maxArea === 'number') {
-            const highlightEntry = buildEntry('biggestBoundingBox', { score: speciesDoc.maxArea });
-            groupedBySpecies[species].biggestBoundingBox = mergeHighlight(
-              groupedBySpecies[species].biggestBoundingBox,
-              highlightEntry,
-            );
-          }
+          const parentSnaps = await Promise.all(
+            Array.from(parentRefMap.values()).map((ref) => getDoc(ref)),
+          );
 
-          // Most animals (higher count)
-          if (typeof speciesDoc.count === 'number') {
-            const highlightEntry = buildEntry('mostAnimals', { score: speciesDoc.count });
-            groupedBySpecies[species].mostAnimals = mergeHighlight(
-              groupedBySpecies[species].mostAnimals,
-              highlightEntry,
-            );
-          }
+          const parentDataMap = new Map();
+          parentSnaps.forEach((snap) => {
+            if (!snap.exists()) return;
+            const data = snap.data();
+            if (data?.deletedAt) return;
+            parentDataMap.set(snap.ref.path, { id: snap.id, ...data });
+          });
 
-          // Most centered (lower center distance)
-          const bestCenter = getBestCenterDist(speciesDoc.topBoxes);
-          if (typeof bestCenter === 'number' && !Number.isNaN(bestCenter)) {
-            const highlightEntry = buildEntry('mostCentered', { score: -bestCenter });
-            groupedBySpecies[species].mostCentered = mergeHighlight(
-              groupedBySpecies[species].mostCentered,
-              highlightEntry,
-            );
-          }
+          snapshot.docs.forEach((docSnap) => {
+            const speciesDoc = { id: docSnap.id, ...docSnap.data() };
+            if (speciesDoc.deletedAt) return;
+            const parentRef = docSnap.ref.parent.parent;
+            if (!parentRef) return;
+            const parentDoc = parentDataMap.get(parentRef.path);
+            if (!parentDoc || parentDoc.deletedAt) return;
 
-          // Video highlight (prefer higher counts, fallback to latest createdAt)
-          if (parentDoc.mediaType === 'video') {
-            const createdAt = normalizeDate(parentDoc.createdAt);
-            const fallbackScore = createdAt instanceof Date ? createdAt.getTime() : 0;
-            const score = typeof speciesDoc.count === 'number' && !Number.isNaN(speciesDoc.count)
-              ? speciesDoc.count * 100000 + fallbackScore
-              : fallbackScore;
-            const highlightEntry = buildEntry('video', { score });
-            groupedBySpecies[species].video = mergeHighlight(
-              groupedBySpecies[species].video,
-              highlightEntry,
+            const isHighlighted = Boolean(parentDoc?.isHighlighted || speciesDoc?.isHighlighted);
+            if (!isHighlighted) {
+              return;
+            }
+
+            if (!isAdmin) {
+              const normalizedLocation = normalizeLocationId(
+                resolveAccessLocationId(
+                  parentDoc?.cameraId,
+                  parentDoc?.clientId,
+                  parentDoc?.locationId,
+                  parentDoc?.location,
+                ),
+              );
+              if (!allowedLocationSet.has(normalizedLocation)) {
+                return;
+              }
+            }
+
+            const entry = {
+              ...buildHighlightEntry({
+                category: 'manualHighlight',
+                speciesDoc,
+                parentDoc,
+                extra: {
+                  label: 'Starred Highlight',
+                  description: 'Manually starred sighting',
+                },
+              }),
+              meta: {
+                parentPath: parentRef.path,
+                speciesDocPath: docSnap.ref.path,
+                parentDoc,
+                speciesDoc,
+              },
+            };
+
+            const existingEntry = highlightedByParent.get(parentRef.path);
+            highlightedByParent.set(
+              parentRef.path,
+              pickPreferredHighlightedEntry(existingEntry, entry),
             );
-          }
-        });
+          });
+
+          cursor = snapshot.docs[snapshot.docs.length - 1] || cursor;
+          hasMore = snapshot.docs.length === HIGHLIGHTS_FETCH_BATCH_SIZE;
+          batchCount += 1;
+        }
 
         if (isMounted) {
-          setHighlights(groupedBySpecies);
+          const nextHighlights = Array.from(highlightedByParent.values())
+            .sort((left, right) => getRecencyValue(right) - getRecencyValue(left))
+            .slice(0, RECENT_HIGHLIGHTS_LIMIT);
+          setHighlights(nextHighlights);
         }
       } catch (err) {
         console.error('Failed to fetch highlights', err);
         if (isMounted) {
           setError('Unable to load highlights');
-          setHighlights({});
+          setHighlights([]);
         }
       } finally {
         if (isMounted) {
@@ -299,6 +313,11 @@ export default function HighlightsWidget() {
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
+        trackButton('highlight_close', {
+          source: 'keyboard',
+          species: activeEntry?.species,
+          category: activeEntry?.category,
+        });
         setActiveEntry(null);
         setModalViewMode('standard');
       }
@@ -310,62 +329,34 @@ export default function HighlightsWidget() {
     };
   }, [activeEntry]);
 
-  const speciesList = useMemo(() => Object.entries(highlights || {}), [highlights]);
   const availableSpecies = useMemo(() => (
-    Object.keys(highlights || {})
+    highlights
+      .map((entry) => (typeof entry?.species === 'string' ? entry.species.trim() : ''))
       .filter((label) => typeof label === 'string' && label.trim().length > 0)
+      .filter((label, index, all) => all.indexOf(label) === index)
       .sort((a, b) => a.localeCompare(b))
   ), [highlights]);
+  const hasHighlights = highlights.length > 0;
 
-  const collateUniqueEntries = (categories) => {
-    const entries = Object.values(CATEGORY_META)
-      .map(({ key }) => categories[key])
-      .filter(Boolean);
-
-    const uniqueEntries = [];
-    const seenParents = new Set();
-
-    entries.forEach((entry) => {
-      const parentKey = entry.parentId || entry.id;
-      if (seenParents.has(parentKey)) {
-        return;
-      }
-      seenParents.add(parentKey);
-      uniqueEntries.push(entry);
-    });
-
-    return uniqueEntries.filter((entry) => {
-      if (hasMegadetectorFailure(entry)) {
-        return false;
-      }
-      if (entry.mediaType === 'video') {
-        return true;
-      }
-      if (typeof entry.maxConf !== 'number' || Number.isNaN(entry.maxConf)) {
-        return false;
-      }
-      return entry.maxConf >= MIN_PHOTO_CONFIDENCE;
-    });
-  };
-
-  const hasHighlights = speciesList.some(([, categories]) =>
-    collateUniqueEntries(categories).length > 0,
-  );
-
-  const handleOpenEntry = (entry) => {
+  const handleOpenEntry = (entry, source = 'card') => {
     setActiveEntry(entry);
     setModalViewMode('standard');
     trackButton('highlight_open', {
+      source,
       species: entry?.species,
       category: entry?.category,
       mediaType: entry?.mediaType,
     });
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = (source = 'dismiss') => {
     setActiveEntry(null);
     setModalViewMode('standard');
-    trackButton('highlight_close');
+    trackButton('highlight_close', {
+      source,
+      species: activeEntry?.species,
+      category: activeEntry?.category,
+    });
   };
 
   const isDebugMode = modalViewMode === 'debug';
@@ -379,6 +370,116 @@ export default function HighlightsWidget() {
       category: activeEntry?.category,
     });
   };
+
+  const handleDownloadHighlight = useCallback(
+    async (entry, source = 'card') => {
+      if (!entry) {
+        return;
+      }
+
+      setDownloadStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: { state: 'pending' },
+      }));
+
+      try {
+        const authToken =
+          typeof user?.getIdToken === 'function' ? await user.getIdToken() : '';
+        await downloadEntryMedia(entry, { authToken });
+        trackButton('highlight_download', {
+          source,
+          mediaType: entry.mediaType,
+          species: entry.species,
+          location: entry.locationId,
+        });
+      } catch (err) {
+        console.error('Failed to download highlight media', err);
+        if (typeof window !== 'undefined') {
+          window.alert(err?.message || 'Unable to download this highlight.');
+        }
+      } finally {
+        setDownloadStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'idle' },
+        }));
+      }
+    },
+    [user],
+  );
+
+  const handleRemoveHighlight = useCallback(
+    async (entry, source = 'card') => {
+      if (!entry) {
+        return;
+      }
+
+      const highlightKey = getHighlightStateKey(entry);
+      if (!highlightKey) {
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm(
+          'Remove this sighting from highlights? It will stay saved, but it will no longer appear on the home page.',
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      trackButton('highlight_remove', {
+        source,
+        species: entry.species,
+        location: entry.locationId,
+      });
+
+      setHighlightStatusMap((prev) => ({
+        ...prev,
+        [highlightKey]: {
+          state: 'pending',
+          message: 'Removing from highlights…',
+        },
+      }));
+
+      try {
+        await applySightingHighlight({
+          entry,
+          enabled: false,
+          actor: actorName,
+        });
+
+        setHighlights((prev) => prev.filter((candidate) => getHighlightStateKey(candidate) !== highlightKey));
+        setActiveEntry((current) => (getHighlightStateKey(current) === highlightKey ? null : current));
+        setHighlightStatusMap((prev) => {
+          const next = { ...prev };
+          delete next[highlightKey];
+          return next;
+        });
+        trackEvent('highlight_remove_success', {
+          source,
+          species: entry.species,
+          location: entry.locationId,
+        });
+        refreshHighlights();
+      } catch (err) {
+        console.error('Failed to remove highlight', err);
+        trackEvent('highlight_remove_error', {
+          source,
+          species: entry.species,
+          location: entry.locationId,
+          error: toAnalyticsError(err?.message || 'Unable to remove highlight.'),
+        });
+        setHighlightStatusMap((prev) => ({
+          ...prev,
+          [highlightKey]: {
+            state: 'error',
+            message: err?.message || 'Unable to remove highlight.',
+          },
+        }));
+      }
+    },
+    [actorName, refreshHighlights],
+  );
 
   const renderModalMedia = () => {
     if (!activeEntry) {
@@ -564,7 +665,7 @@ export default function HighlightsWidget() {
     });
   }, [editTarget, editChange, actorName]);
 
-  const handleOpenEditModal = useCallback((entry) => {
+  const handleOpenEditModal = useCallback((entry, source = 'card') => {
     if (!entry) {
       return;
     }
@@ -576,17 +677,29 @@ export default function HighlightsWidget() {
     setEditMode(initialMode);
     setEditSpeciesInput(initialMode === 'animal' ? normalizedSpecies : '');
     setEditError('');
+    trackButton('highlight_edit_open', {
+      source,
+      species: entry.species,
+      location: entry.locationId,
+    });
   }, []);
 
-  const handleCloseEditModal = useCallback(() => {
+  const handleCloseEditModal = useCallback((source = 'dismiss') => {
     if (editSaving) {
       return;
+    }
+    if (editTarget) {
+      trackButton('highlight_edit_close', {
+        source,
+        species: editTarget.species,
+        location: editTarget.locationId,
+      });
     }
     setEditTarget(null);
     setEditMode('animal');
     setEditSpeciesInput('');
     setEditError('');
-  }, [editSaving]);
+  }, [editSaving, editTarget]);
 
   const handleEditModeChange = useCallback((event) => {
     const nextMode = event.target.value;
@@ -594,6 +707,7 @@ export default function HighlightsWidget() {
     if (nextMode === 'background') {
       setEditSpeciesInput('');
     }
+    trackEvent('highlight_edit_mode', { mode: nextMode });
   }, []);
 
   const handleSubmitEdit = useCallback(
@@ -613,6 +727,11 @@ export default function HighlightsWidget() {
 
       setEditSaving(true);
       setEditError('');
+      trackButton('highlight_edit_save', {
+        mode: editMode,
+        species: editTarget.species,
+        location: editTarget.locationId,
+      });
 
       try {
         const change = describeSpeciesChange({ mode: editMode, species: editSpeciesInput });
@@ -637,10 +756,21 @@ export default function HighlightsWidget() {
           authToken,
         });
 
-        handleCloseEditModal();
+        trackEvent('highlight_edit_success', {
+          mode: editMode,
+          previousSpecies: editTarget.species,
+          nextSpecies: change.label,
+          location: editTarget.locationId,
+        });
+        handleCloseEditModal('save');
         refreshHighlights();
       } catch (err) {
         console.error('Failed to correct highlight sighting', err);
+        trackEvent('highlight_edit_error', {
+          mode: editMode,
+          location: editTarget.locationId,
+          error: toAnalyticsError(err?.message || 'Unable to update sighting.'),
+        });
         setEditError(err?.message || 'Unable to update sighting.');
       } finally {
         setEditSaving(false);
@@ -797,7 +927,8 @@ export default function HighlightsWidget() {
   );
 
   const handleDeleteHighlights = useCallback(
-    async (entries) => {
+    async (entries, options = {}) => {
+      const { source = 'card' } = options;
       const targets = entries.filter((entry) => entry && entry.id);
       if (targets.length === 0) {
         return;
@@ -812,6 +943,11 @@ export default function HighlightsWidget() {
           return;
         }
       }
+
+      trackButton('highlight_delete', {
+        source,
+        count: targets.length,
+      });
 
       setDeleteStatusMap((prev) => {
         const next = { ...prev };
@@ -890,11 +1026,24 @@ export default function HighlightsWidget() {
           return next;
         });
 
+        const successCount = results.filter(({ status }) => status === 'success').length;
+        const errorCount = results.length - successCount;
+        trackEvent('highlight_delete_result', {
+          source,
+          successCount,
+          errorCount,
+        });
+
         if (results.some(({ status }) => status === 'success')) {
           refreshHighlights();
         }
       } catch (err) {
         console.error('Failed to delete highlights', err);
+        trackEvent('highlight_delete_error', {
+          source,
+          count: targets.length,
+          error: toAnalyticsError(err?.message || 'Failed to delete highlights'),
+        });
       }
     },
     [actorName, refreshHighlights, user],
@@ -904,8 +1053,8 @@ export default function HighlightsWidget() {
     <section className="highlights">
       <header className="highlights__header">
         <div>
-          <h2>Today&apos;s Highlights</h2>
-          <p>Top activity across recent sightings. Photos appear when confidence is at least 70%.</p>
+          <h2>Recent Highlights</h2>
+          <p>Showing the most recently starred sightings for the cameras this account can access.</p>
         </div>
         {loading && <span className="highlights__status">Loading…</span>}
         {!loading && error && <span className="highlights__status highlights__status--error">{error}</span>}
@@ -919,153 +1068,172 @@ export default function HighlightsWidget() {
       )}
 
       {!loading && !error && !hasHighlights && !noAssignedLocations && (
-        <div className="highlights__empty">No highlights recorded so far today.</div>
+        <div className="highlights__empty">No highlights have been starred yet.</div>
       )}
 
-      {speciesList.map(([species, categories]) => {
-        const filteredEntries = collateUniqueEntries(categories);
+      {hasHighlights && (
+        <div className="highlights__grid">
+          {highlights.map((entry) => {
+            const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
+            const isSending = sendStatus.state === 'pending';
+            const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
+            const isDeleting = deleteStatus.state === 'pending';
+            const downloadStatus = downloadStatusMap[entry.id] || { state: 'idle' };
+            const isDownloading = downloadStatus.state === 'pending';
+            const highlightStatusKey = getHighlightStateKey(entry);
+            const highlightStatus = highlightStatusMap[highlightStatusKey] || { state: 'idle', message: '' };
+            const isHighlighting = highlightStatus.state === 'pending';
 
-        if (filteredEntries.length === 0) {
-          return null;
-        }
-
-        return (
-          <div className="highlights__species" key={species}>
-            <div className="highlights__speciesHeader">
-              <h3>{species}</h3>
-            </div>
-            <div className="highlights__grid">
-              {filteredEntries.map((entry) => {
-                const sendStatus = sendStatusMap[entry.id] || { state: 'idle', message: '' };
-                const isSending = sendStatus.state === 'pending';
-                const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
-                const isDeleting = deleteStatus.state === 'pending';
-
-                return (
-                  <article className="highlightCard" key={entry.parentId || entry.id}>
-                    <div className="highlightCard__media">
+            return (
+              <article className="highlightCard" key={entry.parentId || entry.id}>
+                <div className="highlightCard__media">
+                  <button
+                    type="button"
+                    className="highlightCard__mediaButton"
+                    onClick={() => handleOpenEntry(entry)}
+                    aria-label={`Open highlight preview for ${entry.species}`}
+                  >
+                    {(() => {
+                      const fallbackImage = entry.mediaType !== 'video' ? entry.mediaUrl : null;
+                      const debugImage = !isLikelyVideoUrl(entry.debugUrl)
+                        ? entry.debugUrl
+                        : null;
+                      const previewSrc = entry.previewUrl || fallbackImage || debugImage;
+                      if (previewSrc) {
+                        return <img src={previewSrc} alt={`${entry.species} highlight`} />;
+                      }
+                      return <div className="highlightCard__placeholder">No preview available</div>;
+                    })()}
+                    <span className="highlightCard__badge">
+                      {entry.mediaType === 'video' ? 'Video' : 'Image'}
+                    </span>
+                  </button>
+                </div>
+                <div className="highlightCard__body">
+                  <div className="highlightCard__headline">
+                    <span className="highlightCard__label">Starred Highlight</span>
+                    <h4 className="highlightCard__title">{formatCountWithSpecies(entry.species, entry.count)}</h4>
+                  </div>
+                  <div className="highlightCard__meta">
+                    {entry.highlightedAt && (
+                      <span>Starred: {formatDateTimeLabel(entry.highlightedAt)}</span>
+                    )}
+                    {typeof entry.maxConf === 'number' && (
+                      <span>Confidence: {formatPercent(entry.maxConf)}</span>
+                    )}
+                  </div>
+                  <div className="highlightCard__footer">
+                    <div className="highlightCard__footerGroup">
+                      <span className="highlightCard__footerLabel">Location</span>
+                      <span className="highlightCard__location" title={entry.locationId}>{entry.locationId}</span>
+                    </div>
+                    {entry.createdAt && (
+                      <div className="highlightCard__footerGroup">
+                        <span className="highlightCard__footerLabel">Captured</span>
+                        <time className="highlightCard__time" dateTime={entry.createdAt.toISOString()}>
+                          {formatDateTimeLabel(entry.createdAt)}
+                        </time>
+                      </div>
+                    )}
+                  </div>
+                  <div className="highlightCard__actions">
+                    <div className="highlightCard__actionsRow">
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="highlightCard__editButton"
+                          onClick={() => handleOpenEditModal(entry, 'card')}
+                          disabled={editSaving || isDeleting || isHighlighting}
+                          aria-label={`Edit sighting for ${entry.species}`}
+                          title="Edit sighting"
+                        >
+                          <FiEdit2 />
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="highlightCard__actionsButton highlightCard__actionsButton--highlight"
+                          onClick={() => handleRemoveHighlight(entry, 'card')}
+                          disabled={isHighlighting || isDeleting || isSending || isDownloading}
+                        >
+                          <FiStar />
+                          {isHighlighting ? 'Removing…' : 'Remove highlight'}
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className="highlightCard__mediaButton"
-                        onClick={() => handleOpenEntry(entry)}
-                        aria-label={`Open highlight preview for ${entry.species}`}
+                        className="highlightCard__actionsButton highlightCard__actionsButton--download"
+                        onClick={() => handleDownloadHighlight(entry)}
+                        disabled={isDeleting || isDownloading || isHighlighting}
                       >
-                        {(() => {
-                          const fallbackImage = entry.mediaType !== 'video' ? entry.mediaUrl : null;
-                          const debugImage = !isLikelyVideoUrl(entry.debugUrl)
-                            ? entry.debugUrl
-                            : null;
-                          const previewSrc = entry.previewUrl || fallbackImage || debugImage;
-                          if (previewSrc) {
-                            return <img src={previewSrc} alt={`${entry.species} highlight`} />;
-                          }
-                          return <div className="highlightCard__placeholder">No preview available</div>;
-                        })()}
-                        <span className="highlightCard__badge">
-                          {entry.mediaType === 'video' ? 'Video' : 'Image'}
-                        </span>
+                        {isDownloading ? <span className="highlightCard__buttonSpinner" /> : <FiDownload />}
+                        {isDownloading ? 'Downloading…' : 'Download'}
                       </button>
+                      <button
+                        type="button"
+                        className="highlightCard__actionsButton"
+                        onClick={() => handleSendToWhatsApp(entry)}
+                        disabled={isSending || isDeleting || isHighlighting}
+                      >
+                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                      </button>
+                      <button
+                        type="button"
+                        className="highlightCard__actionsButton highlightCard__actionsButton--alert"
+                        onClick={() =>
+                          handleSendToWhatsApp(entry, {
+                            alertStyle: 'emoji',
+                            confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                          })
+                        }
+                        disabled={isSending || isDeleting || isHighlighting}
+                      >
+                        {isSending ? 'Sending…' : 'Alert'}
+                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="highlightCard__actionsButton highlightCard__actionsButton--danger"
+                          onClick={() => handleDeleteHighlights([entry], { source: 'card' })}
+                          disabled={isDeleting || isSending || isHighlighting}
+                        >
+                          {isDeleting ? 'Deleting…' : 'Delete'}
+                        </button>
+                      )}
                     </div>
-                    <div className="highlightCard__body">
-                      <div className="highlightCard__headline">
-                        <span className="highlightCard__label">{entry.label}</span>
-                        <h4 className="highlightCard__title">{formatCountWithSpecies(entry.species, entry.count)}</h4>
-                      </div>
-                      <div className="highlightCard__meta">
-                        {typeof entry.maxConf === 'number' && (
-                          <span>Confidence: {formatPercent(entry.maxConf)}</span>
-                        )}
-                        {entry.category === 'mostCentered' && typeof entry.bestCenterDist === 'number' && (
-                          <span>{formatOffset(entry.bestCenterDist)}</span>
-                        )}
-                      </div>
-                      <div className="highlightCard__footer">
-                        <div className="highlightCard__footerGroup">
-                          <span className="highlightCard__footerLabel">Location</span>
-                          <span className="highlightCard__location" title={entry.locationId}>{entry.locationId}</span>
-                        </div>
-                        {entry.createdAt && (
-                          <div className="highlightCard__footerGroup">
-                            <span className="highlightCard__footerLabel">Captured</span>
-                            <time className="highlightCard__time" dateTime={entry.createdAt.toISOString()}>{formatTime(entry.createdAt)}</time>
-                          </div>
-                        )}
-                      </div>
-                      <div className="highlightCard__actions">
-                        <div className="highlightCard__actionsRow">
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              className="highlightCard__editButton"
-                              onClick={() => handleOpenEditModal(entry)}
-                              disabled={editSaving || isDeleting}
-                              aria-label={`Edit sighting for ${entry.species}`}
-                              title="Edit sighting"
-                            >
-                              <FiEdit2 />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="highlightCard__actionsButton"
-                            onClick={() => handleSendToWhatsApp(entry)}
-                            disabled={isSending || isDeleting}
-                          >
-                            {isSending ? 'Sending…' : 'Send to WhatsApp'}
-                          </button>
-                          <button
-                            type="button"
-                            className="highlightCard__actionsButton highlightCard__actionsButton--alert"
-                            onClick={() =>
-                              handleSendToWhatsApp(entry, {
-                                alertStyle: 'emoji',
-                                confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                              })
-                            }
-                            disabled={isSending || isDeleting}
-                          >
-                            {isSending ? 'Sending…' : 'Alert'}
-                          </button>
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              className="highlightCard__actionsButton highlightCard__actionsButton--danger"
-                              onClick={() => handleDeleteHighlights([entry])}
-                              disabled={isDeleting || isSending}
-                            >
-                              {isDeleting ? 'Deleting…' : 'Delete'}
-                            </button>
-                          )}
-                        </div>
-                        {sendStatus.state === 'success' && sendStatus.message && (
-                          <span className="highlightCard__actionsMessage highlightCard__actionsMessage--success">
-                            {sendStatus.message}
-                          </span>
-                        )}
-                        {sendStatus.state === 'error' && sendStatus.message && (
-                          <span className="highlightCard__actionsMessage highlightCard__actionsMessage--error">
-                            {sendStatus.message}
-                          </span>
-                        )}
-                        {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
-                          <span className="highlightCard__actionsMessage highlightCard__actionsMessage--success">
-                            {deleteStatus.message}
-                          </span>
-                        )}
-                        {isAdmin && deleteStatus.state === 'error' && deleteStatus.message && (
-                          <span className="highlightCard__actionsMessage highlightCard__actionsMessage--error">
-                            {deleteStatus.message}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+                    {sendStatus.state === 'success' && sendStatus.message && (
+                      <span className="highlightCard__actionsMessage highlightCard__actionsMessage--success">
+                        {sendStatus.message}
+                      </span>
+                    )}
+                    {sendStatus.state === 'error' && sendStatus.message && (
+                      <span className="highlightCard__actionsMessage highlightCard__actionsMessage--error">
+                        {sendStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && highlightStatus.state === 'error' && highlightStatus.message && (
+                      <span className="highlightCard__actionsMessage highlightCard__actionsMessage--error">
+                        {highlightStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
+                      <span className="highlightCard__actionsMessage highlightCard__actionsMessage--success">
+                        {deleteStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && deleteStatus.state === 'error' && deleteStatus.message && (
+                      <span className="highlightCard__actionsMessage highlightCard__actionsMessage--error">
+                        {deleteStatus.message}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
       {activeEntry && (
         <div
@@ -1074,7 +1242,7 @@ export default function HighlightsWidget() {
           aria-modal="true"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              handleCloseModal();
+              handleCloseModal('overlay');
             }
           }}
         >
@@ -1082,7 +1250,7 @@ export default function HighlightsWidget() {
             <button
               type="button"
               className="highlightModal__close"
-              onClick={handleCloseModal}
+              onClick={() => handleCloseModal('button')}
               aria-label="Close highlight preview"
             >
               ×
@@ -1128,14 +1296,29 @@ export default function HighlightsWidget() {
                 {typeof activeEntry.maxConf === 'number' && (
                   <span>Confidence: {formatPercent(activeEntry.maxConf)}</span>
                 )}
-                {activeEntry.category === 'mostCentered' && typeof activeEntry.bestCenterDist === 'number' && (
-                  <span>{formatOffset(activeEntry.bestCenterDist)}</span>
+                {activeEntry.highlightedAt && (
+                  <span>Starred: {formatDateTimeLabel(activeEntry.highlightedAt)}</span>
                 )}
                 {activeEntry.createdAt && (
                   <time dateTime={activeEntry.createdAt.toISOString()}>
-                    {`${activeEntry.createdAt.toLocaleDateString()} ${formatTime(activeEntry.createdAt)}`}
+                    Captured: {formatDateTimeLabel(activeEntry.createdAt)}
                   </time>
                 )}
+              </div>
+              <div className="highlightModal__actions">
+                <button
+                  type="button"
+                  className="highlightCard__actionsButton highlightCard__actionsButton--download"
+                  onClick={() => handleDownloadHighlight(activeEntry, 'modal')}
+                  disabled={(downloadStatusMap[activeEntry.id] || { state: 'idle' }).state === 'pending'}
+                >
+                  {(downloadStatusMap[activeEntry.id] || { state: 'idle' }).state === 'pending'
+                    ? <span className="highlightCard__buttonSpinner" />
+                    : <FiDownload />}
+                  {(downloadStatusMap[activeEntry.id] || { state: 'idle' }).state === 'pending'
+                    ? 'Downloading…'
+                    : 'Download'}
+                </button>
               </div>
             </div>
           </div>
@@ -1148,7 +1331,7 @@ export default function HighlightsWidget() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="highlightEditModalTitle"
-          onClick={handleCloseEditModal}
+          onClick={() => handleCloseEditModal('overlay')}
         >
           <div
             className="highlightEditModal__content"
@@ -1157,7 +1340,7 @@ export default function HighlightsWidget() {
             <button
               type="button"
               className="highlightEditModal__close"
-              onClick={handleCloseEditModal}
+              onClick={() => handleCloseEditModal('button')}
               disabled={editSaving}
             >
               Close
@@ -1230,7 +1413,7 @@ export default function HighlightsWidget() {
                 <button
                   type="button"
                   className="highlightEditModal__secondary"
-                  onClick={handleCloseEditModal}
+                  onClick={() => handleCloseEditModal('cancel')}
                   disabled={editSaving}
                 >
                   Cancel

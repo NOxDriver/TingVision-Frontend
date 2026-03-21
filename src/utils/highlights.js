@@ -150,6 +150,7 @@ export function buildHighlightEntry({
     || null;
   const createdAt = normalizeDate(parentDoc?.createdAt || speciesDoc?.createdAt);
   const spottedAt = normalizeDate(parentDoc?.spottedAt || speciesDoc?.spottedAt);
+  const highlightedAt = normalizeDate(parentDoc?.highlightedAt || speciesDoc?.highlightedAt);
   const meta = CATEGORY_META[category] || {};
   const displayLocationId =
     resolveAccessLocationId(
@@ -181,6 +182,13 @@ export function buildHighlightEntry({
     accessId,
     createdAt,
     spottedAt,
+    isHighlighted: Boolean(parentDoc?.isHighlighted || speciesDoc?.isHighlighted),
+    highlightedAt,
+    highlightedBy: parentDoc?.highlightedBy || speciesDoc?.highlightedBy || null,
+    highlightSourceSpeciesDocId:
+      parentDoc?.highlightSourceSpeciesDocId
+      || speciesDoc?.highlightSourceSpeciesDocId
+      || null,
     count: speciesDoc?.count ?? null,
     maxArea: speciesDoc?.maxArea ?? null,
     maxConf: speciesDoc?.maxConf ?? null,

@@ -226,6 +226,10 @@ export const applySightingCorrection = async ({
     sanitizePathSegments(entry.meta.speciesDocPath).slice(-1)[0];
 
   const nextSpeciesDocId = change.slug || oldSpeciesDocId;
+  const shouldRetargetHighlightSource =
+    typeof parentDocData.highlightSourceSpeciesDocId === 'string'
+    && parentDocData.highlightSourceSpeciesDocId === oldSpeciesDocId
+    && nextSpeciesDocId !== oldSpeciesDocId;
 
   const batch = writeBatch(db);
 
@@ -268,6 +272,11 @@ export const applySightingCorrection = async ({
     parentUpdatesState.primarySpecies = nextSpeciesKey;
   }
 
+  if (shouldRetargetHighlightSource) {
+    parentUpdatesFirestore.highlightSourceSpeciesDocId = nextSpeciesDocId;
+    parentUpdatesState.highlightSourceSpeciesDocId = nextSpeciesDocId;
+  }
+
   batch.update(parentRef, parentUpdatesFirestore);
 
   // ----- perSpecies doc update / recreation -----
@@ -306,6 +315,7 @@ export const applySightingCorrection = async ({
       corrected: true,
       correctedBy: actor || null,
       updatedAt: serverTimestamp(),
+      ...(shouldRetargetHighlightSource ? { highlightSourceSpeciesDocId: nextSpeciesDocId } : {}),
       ...(clientId ? { clientId } : {}),
       ...(cameraId ? { cameraId } : {}),
       ...(!clonedSpeciesData.createdAt && parentDocData.createdAt ? { createdAt: parentDocData.createdAt } : {}),

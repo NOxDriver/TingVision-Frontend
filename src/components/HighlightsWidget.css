@@ -188,6 +188,10 @@
 }
 
 .highlightCard__actionsButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid rgba(203, 146, 74, 0.55);
@@ -196,6 +200,27 @@
   cursor: pointer;
   font-size: 0.85rem;
   transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.highlightCard__actionsButton--download {
+  border-color: rgba(98, 175, 255, 0.55);
+  background: rgba(98, 175, 255, 0.18);
+}
+
+.highlightCard__actionsButton--highlight {
+  border-color: rgba(242, 196, 79, 0.55);
+  background: rgba(242, 196, 79, 0.16);
+}
+
+.highlightCard__buttonSpinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: highlightCardSpin 0.7s linear infinite;
 }
 
 .highlightCard__actionsButton--alert {
@@ -218,6 +243,16 @@
 .highlightCard__actionsButton:not(:disabled):focus-visible {
   transform: translateY(-1px);
   background: rgba(255, 140, 26, 0.18);
+}
+
+.highlightCard__actionsButton--download:not(:disabled):hover,
+.highlightCard__actionsButton--download:not(:disabled):focus-visible {
+  background: rgba(98, 175, 255, 0.28);
+}
+
+.highlightCard__actionsButton--highlight:not(:disabled):hover,
+.highlightCard__actionsButton--highlight:not(:disabled):focus-visible {
+  background: rgba(242, 196, 79, 0.24);
 }
 
 .highlightCard__editButton {
@@ -368,6 +403,18 @@
 .highlightModal__details time {
   color: var(--color-text-secondary);
   font-size: 0.9rem;
+}
+
+.highlightModal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@keyframes highlightCardSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .highlightModal__placeholder {

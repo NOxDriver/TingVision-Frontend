@@ -24,21 +24,25 @@ import useAuthStore from '../../stores/authStore';
 import { buildLocationSet, normalizeLocationId } from '../../utils/location';
 import { trackButton, trackEvent } from '../../utils/analytics';
 import usePageTitle from '../../hooks/usePageTitle';
-import { FiEdit2 } from 'react-icons/fi';
+import { FiDownload, FiEdit2, FiStar, FiTrash2 } from 'react-icons/fi';
+import { FaStar } from 'react-icons/fa';
 import {
   applySightingCorrection,
   describeSpeciesChange,
   buildCorrectionNote,
 } from '../../utils/sightings/corrections';
 import { hydrateCameraDraft, hydrateClientDraft } from '../../utils/adminSettings';
+import { downloadEntryMedia } from '../../utils/media';
+import {
+  applySightingHighlight,
+  getHighlightStateKey,
+} from '../../utils/sightings/highlights';
 
 
 
 const SIGHTINGS_PAGE_SIZE = 50;
 const SIGHTINGS_PAGE_STORAGE_KEY = 'tingvision:sightings:page';
 const LOOKUP_BATCH_SIZE = 10;
-const DEFAULT_MOTION_MASK_WIDTH = 872;
-const DEFAULT_MOTION_MASK_HEIGHT = 503;
 const SEND_WHATSAPP_ENDPOINT =
   process.env.REACT_APP_SEND_WHATSAPP_ENDPOINT ||
   'https://send-manual-whatsapp-alert-186628423921.us-central1.run.app';
@@ -84,6 +88,37 @@ const formatTimestampLabel = (value) => {
   }
 
   return `${dateLabel} at ${timeLabel}`;
+};
+
+const formatCompactTimestampLabel = (value) => {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return '';
+  }
+
+  const now = new Date();
+  const timeLabel = formatTime(value);
+  if (!timeLabel) {
+    return '';
+  }
+
+  const todayKey = now.toDateString();
+  const valueKey = value.toDateString();
+  if (valueKey === todayKey) {
+    return `Today ${timeLabel}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (valueKey === yesterday.toDateString()) {
+    return `Yesterday ${timeLabel}`;
+  }
+
+  const dateLabel = formatDate(value);
+  if (!dateLabel) {
+    return '';
+  }
+
+  return `${dateLabel} ${timeLabel}`;
 };
 
 const isDateToday = (value) => {
@@ -136,6 +171,7 @@ const writeStoredSightingsPageIndex = (pageIndex) => {
 };
 
 const pickFirstSource = (...sources) => sources.find((src) => typeof src === 'string' && src.length > 0) || null;
+const toAnalyticsError = (value) => String(value || '').slice(0, 120);
 
 const chunkItems = (items, chunkSize) => {
   if (!Array.isArray(items) || items.length === 0 || chunkSize <= 0) {
@@ -185,6 +221,8 @@ const pickEntryDebugValue = (entry, key) => {
   }
   return null;
 };
+
+const HighlightIcon = ({ filled = false }) => (filled ? <FaStar /> : <FiStar />);
 
 const normalizeBoundingBoxes = (rawBoxes, frameW, frameH, source = 'debug') => {
   if (!Array.isArray(rawBoxes)) {
@@ -613,35 +651,6 @@ const normalizeNumericValue = (value) => {
   return null;
 };
 
-const pickPositiveDimension = (values, fallback) => {
-  for (const value of values) {
-    const normalized = normalizeNumericValue(value);
-    if (typeof normalized === 'number' && normalized > 0) {
-      return Math.round(normalized);
-    }
-  }
-  return fallback;
-};
-
-const resolveMotionMaskDimensions = (entry) => ({
-  width: pickPositiveDimension(
-    [
-      pickEntryDebugValue(entry, 'frameW'),
-      pickEntryDebugValue(entry, 'frameWidth'),
-      pickEntryDebugValue(entry, 'width'),
-    ],
-    DEFAULT_MOTION_MASK_WIDTH,
-  ),
-  height: pickPositiveDimension(
-    [
-      pickEntryDebugValue(entry, 'frameH'),
-      pickEntryDebugValue(entry, 'frameHeight'),
-      pickEntryDebugValue(entry, 'height'),
-    ],
-    DEFAULT_MOTION_MASK_HEIGHT,
-  ),
-});
-
 const normalizeTrigger = (rawTrigger) => {
   if (!rawTrigger || typeof rawTrigger !== 'object') {
     return null;
@@ -955,6 +964,8 @@ export default function Sightings() {
   const [selectedSightings, setSelectedSightings] = useState(() => new Set());
   const [sendStatusMap, setSendStatusMap] = useState({});
   const [deleteStatusMap, setDeleteStatusMap] = useState({});
+  const [downloadStatusMap, setDownloadStatusMap] = useState({});
+  const [highlightStatusMap, setHighlightStatusMap] = useState({});
   const [editTarget, setEditTarget] = useState(null);
   const [editMode, setEditMode] = useState('animal');
   const [editSpeciesInput, setEditSpeciesInput] = useState('');
@@ -1662,11 +1673,15 @@ export default function Sightings() {
     });
   }, []);
 
-  const handleCloseSighting = useCallback(() => {
+  const handleCloseSighting = useCallback((source = 'dismiss') => {
     const targetId = activeSighting?.id;
     setActiveSighting(null);
     setModalViewMode('standard');
-    trackButton('sighting_close');
+    trackButton('sighting_close', {
+      source,
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
 
     if (targetId && typeof document !== 'undefined') {
       const escapedId = typeof window !== 'undefined' && window.CSS?.escape
@@ -1681,7 +1696,7 @@ export default function Sightings() {
     }
   }, [activeSighting]);
 
-  const handleNavigateSighting = useCallback((direction) => {
+  const handleNavigateSighting = useCallback((direction, source = 'button') => {
     if (!activeSighting || filteredSightings.length === 0) {
       return;
     }
@@ -1693,10 +1708,16 @@ export default function Sightings() {
     if (nextIndex < 0 || nextIndex >= filteredSightings.length) {
       return;
     }
+    trackButton('sighting_navigate', {
+      source,
+      direction: direction > 0 ? 'next' : 'previous',
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
     handleOpenSighting(filteredSightings[nextIndex]);
   }, [activeSighting, filteredSightings, handleOpenSighting]);
 
-  const handleSetActiveSightingSelection = useCallback((shouldSelect) => {
+  const handleSetActiveSightingSelection = useCallback((shouldSelect, source = 'keyboard') => {
     if (!activeSighting?.id) {
       return;
     }
@@ -1709,7 +1730,47 @@ export default function Sightings() {
       }
       return next;
     });
+    trackButton('sightings_select_toggle', {
+      source,
+      selected: shouldSelect,
+      sightingId: activeSighting.id,
+      species: activeSighting.species,
+      location: activeSighting.locationId,
+    });
   }, [activeSighting]);
+
+  const handleDebugViewToggle = useCallback((enabled, source = 'filters') => {
+    setIsDebugViewEnabled(enabled);
+    trackButton('sightings_toggle_debug', { enabled, source });
+  }, []);
+
+  const handleMotionMaskToggle = useCallback((enabled, source = 'filters') => {
+    setIsMotionMaskEnabled(enabled);
+    trackButton('sighting_toggle_motion', {
+      enabled,
+      source,
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
+  }, [activeSighting]);
+
+  const handleAnimalBoxesToggle = useCallback((enabled, source = 'filters') => {
+    setIsAnimalBoxesEnabled(enabled);
+    trackButton('sightings_toggle_boxes', {
+      enabled,
+      source,
+      species: activeSighting?.species,
+      location: activeSighting?.locationId,
+    });
+  }, [activeSighting]);
+
+  const handleSpeciesMenuToggle = useCallback(() => {
+    setIsSpeciesMenuOpen((prev) => {
+      const nextOpen = !prev;
+      trackButton('sightings_species_menu', { open: nextOpen });
+      return nextOpen;
+    });
+  }, []);
 
   const handleConfidenceChange = (event) => {
     const nextValue = Number(event.target.value) / 100;
@@ -1857,7 +1918,7 @@ export default function Sightings() {
     });
   }, [editTarget, editChange, actorName]);
 
-  const handleOpenEditModal = useCallback((entry) => {
+  const handleOpenEditModal = useCallback((entry, source = 'card') => {
     if (!entry) {
       return;
     }
@@ -1869,17 +1930,29 @@ export default function Sightings() {
     setEditMode(initialMode);
     setEditSpeciesInput(initialMode === 'animal' ? normalizedSpecies : '');
     setEditError('');
+    trackButton('sighting_edit_open', {
+      source,
+      species: entry.species,
+      location: entry.locationId,
+    });
   }, []);
 
-  const handleCloseEditModal = useCallback(() => {
+  const handleCloseEditModal = useCallback((source = 'dismiss') => {
     if (editSaving) {
       return;
+    }
+    if (editTarget) {
+      trackButton('sighting_edit_close', {
+        source,
+        species: editTarget.species,
+        location: editTarget.locationId,
+      });
     }
     setEditTarget(null);
     setEditMode('animal');
     setEditSpeciesInput('');
     setEditError('');
-  }, [editSaving]);
+  }, [editSaving, editTarget]);
 
   const handleEditModeChange = useCallback((event) => {
     const nextMode = event.target.value;
@@ -1887,10 +1960,46 @@ export default function Sightings() {
     if (nextMode === 'background') {
       setEditSpeciesInput('');
     }
+    trackEvent('sighting_edit_mode', { mode: nextMode });
   }, []);
 
   const handleDismissFeedback = useCallback(() => {
     setEditFeedback({ type: '', text: '' });
+    trackButton('sighting_edit_feedback_dismiss');
+  }, []);
+
+  const syncHighlightStateForParent = useCallback((parentPath, updates) => {
+    if (!parentPath || !updates) {
+      return;
+    }
+
+    const applyUpdates = (entry) => {
+      if (!entry || entry?.meta?.parentPath !== parentPath) {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        ...updates,
+        meta: entry.meta
+          ? {
+            ...entry.meta,
+            parentDoc: {
+              ...(entry.meta.parentDoc || {}),
+              ...updates,
+            },
+            speciesDoc: {
+              ...(entry.meta.speciesDoc || {}),
+              ...updates,
+            },
+          }
+          : entry.meta,
+      };
+    };
+
+    setSightings((prev) => prev.map(applyUpdates));
+    setActiveSighting((prev) => applyUpdates(prev));
+    setEditTarget((prev) => applyUpdates(prev));
   }, []);
 
   const handleSubmitEdit = useCallback(
@@ -1910,6 +2019,11 @@ export default function Sightings() {
 
       setEditSaving(true);
       setEditError('');
+      trackButton('sighting_edit_save', {
+        mode: editMode,
+        species: editTarget.species,
+        location: editTarget.locationId,
+      });
 
       try {
         const change = describeSpeciesChange({ mode: editMode, species: editSpeciesInput });
@@ -1935,6 +2049,11 @@ export default function Sightings() {
         });
 
         if (result.mediaRelocationError) {
+          trackEvent('sighting_edit_media_error', {
+            mode: editMode,
+            location: editTarget.locationId,
+            error: toAnalyticsError(result.mediaRelocationError),
+          });
           setEditFeedback({
             type: 'error',
             text: `Sighting corrected, but media move failed: ${result.mediaRelocationError}`,
@@ -1969,6 +2088,7 @@ export default function Sightings() {
 
             return {
               ...item,
+              ...result.parentDocUpdates,
               id: nextEntryId,
               species: result.change.label,
               mediaUrl: result.parentDocUpdates.mediaUrl ?? item.mediaUrl,
@@ -2003,6 +2123,7 @@ export default function Sightings() {
 
           return {
             ...prev,
+            ...result.parentDocUpdates,
             id: nextEntryId,
             species: result.change.label,
             mediaUrl: result.parentDocUpdates.mediaUrl ?? prev.mediaUrl,
@@ -2027,11 +2148,23 @@ export default function Sightings() {
           setEditFeedback({ type: 'success', text: `Sighting corrected to ${result.change.label}.` });
         }
 
+        trackEvent('sighting_edit_success', {
+          mode: editMode,
+          previousSpecies: editTarget.species,
+          nextSpecies: result.change.label,
+          location: editTarget.locationId,
+          mediaMoveFailed: Boolean(result.mediaRelocationError),
+        });
         setEditTarget(null);
         setEditMode('animal');
         setEditSpeciesInput('');
       } catch (err) {
         console.error('Failed to correct sighting', err);
+        trackEvent('sighting_edit_error', {
+          mode: editMode,
+          location: editTarget.locationId,
+          error: toAnalyticsError(err?.message || 'Unable to update sighting.'),
+        });
         setEditError(err?.message || 'Unable to update sighting.');
       } finally {
         setEditSaving(false);
@@ -2197,8 +2330,45 @@ export default function Sightings() {
     [],
   );
 
+  const handleDownloadSighting = useCallback(
+    async (entry, source = 'card') => {
+      if (!entry) {
+        return;
+      }
+
+      setDownloadStatusMap((prev) => ({
+        ...prev,
+        [entry.id]: { state: 'pending' },
+      }));
+
+      try {
+        const authToken =
+          typeof user?.getIdToken === 'function' ? await user.getIdToken() : '';
+        await downloadEntryMedia(entry, { authToken });
+        trackButton('sighting_download', {
+          source,
+          mediaType: entry.mediaType,
+          species: entry.species,
+          location: entry.locationId,
+        });
+      } catch (err) {
+        console.error('Failed to download sighting media', err);
+        if (typeof window !== 'undefined') {
+          window.alert(err?.message || 'Unable to download this sighting.');
+        }
+      } finally {
+        setDownloadStatusMap((prev) => ({
+          ...prev,
+          [entry.id]: { state: 'idle' },
+        }));
+      }
+    },
+    [user],
+  );
+
   const handleDeleteSightings = useCallback(
-    async (entries) => {
+    async (entries, options = {}) => {
+      const { source = 'card' } = options;
       const targets = entries.filter((entry) => entry && entry.id);
       if (targets.length === 0) {
         return;
@@ -2213,6 +2383,11 @@ export default function Sightings() {
           return;
         }
       }
+
+      trackButton('sightings_delete', {
+        source,
+        count: targets.length,
+      });
 
       setDeleteStatusMap((prev) => {
         const next = { ...prev };
@@ -2298,6 +2473,13 @@ export default function Sightings() {
           });
         }
 
+        const errorCount = results.length - deletedIds.length;
+        trackEvent('sightings_delete_result', {
+          source,
+          successCount: deletedIds.length,
+          errorCount,
+        });
+
         setDeleteStatusMap((prev) => {
           const next = { ...prev };
           results.forEach(({ id, status, message }) => {
@@ -2307,32 +2489,113 @@ export default function Sightings() {
         });
       } catch (err) {
         console.error('Failed to delete sightings', err);
+        trackEvent('sightings_delete_error', {
+          source,
+          count: targets.length,
+          error: toAnalyticsError(err?.message || 'Failed to delete sightings'),
+        });
       }
     },
     [actorName, user],
   );
 
+  const handleToggleHighlight = useCallback(
+    async (entry, source = 'card') => {
+      if (!entry) {
+        return;
+      }
 
-  const handleToggleSightingSelection = useCallback((sightingId) => {
+      const highlightKey = getHighlightStateKey(entry);
+      if (!highlightKey) {
+        return;
+      }
+
+      const nextEnabled = !entry.isHighlighted;
+
+      setHighlightStatusMap((prev) => ({
+        ...prev,
+        [highlightKey]: {
+          state: 'pending',
+          message: nextEnabled ? 'Adding to highlights…' : 'Removing from highlights…',
+        },
+      }));
+
+      try {
+        const updates = await applySightingHighlight({
+          entry,
+          enabled: nextEnabled,
+          actor: actorName,
+        });
+
+        syncHighlightStateForParent(entry?.meta?.parentPath, updates);
+        setHighlightStatusMap((prev) => ({
+          ...prev,
+          [highlightKey]: {
+            state: 'success',
+            message: nextEnabled ? 'Added to highlights.' : 'Removed from highlights.',
+          },
+        }));
+        trackButton('sighting_highlight_toggle', {
+          enabled: nextEnabled,
+          source,
+          species: entry.species,
+          location: entry.locationId,
+        });
+      } catch (err) {
+        console.error('Failed to update sighting highlight', err);
+        trackEvent('sighting_highlight_error', {
+          enabled: nextEnabled,
+          source,
+          species: entry.species,
+          location: entry.locationId,
+          error: toAnalyticsError(err?.message || 'Unable to update highlight.'),
+        });
+        setHighlightStatusMap((prev) => ({
+          ...prev,
+          [highlightKey]: {
+            state: 'error',
+            message: err?.message || 'Unable to update highlight.',
+          },
+        }));
+      }
+    },
+    [actorName, syncHighlightStateForParent],
+  );
+
+
+  const handleToggleSightingSelection = useCallback((sightingId, source = 'card') => {
     if (!sightingId) {
       return;
     }
+    let nextSelected = false;
     setSelectedSightings((prev) => {
       const next = new Set(prev);
       if (next.has(sightingId)) {
         next.delete(sightingId);
+        nextSelected = false;
       } else {
         next.add(sightingId);
+        nextSelected = true;
       }
       return next;
     });
-  }, []);
+    const selectedEntry = sightings.find((entry) => entry.id === sightingId);
+    trackButton('sightings_select_toggle', {
+      source,
+      selected: nextSelected,
+      sightingId,
+      species: selectedEntry?.species,
+      location: selectedEntry?.locationId,
+    });
+  }, [sightings]);
 
   const handleSelectAllFiltered = useCallback(() => {
+    let shouldSelect = false;
+    const filteredIds = filteredSightings.map((entry) => entry.id);
     setSelectedSightings((prev) => {
-      const filteredIds = filteredSightings.map((entry) => entry.id);
       const next = new Set(prev);
       const shouldDeselect = filteredIds.length > 0 && filteredIds.every((id) => next.has(id));
+      shouldSelect = !shouldDeselect;
       if (shouldDeselect) {
         filteredIds.forEach((id) => next.delete(id));
       } else {
@@ -2340,18 +2603,23 @@ export default function Sightings() {
       }
       return next;
     });
+    trackButton('sightings_select_page', {
+      selected: shouldSelect,
+      count: filteredIds.length,
+    });
   }, [filteredSightings]);
 
   const handleClearSelection = useCallback(() => {
+    trackButton('sightings_select_clear', { count: selectedSightings.size });
     setSelectedSightings(new Set());
-  }, []);
+  }, [selectedSightings.size]);
 
-  const handleBulkDeleteSelected = useCallback(() => {
+  const handleBulkDeleteSelected = useCallback((source = 'selection_bar') => {
     if (selectedSightings.size === 0) {
       return;
     }
     const selectedEntries = sightings.filter((entry) => selectedSightings.has(entry.id));
-    handleDeleteSightings(selectedEntries);
+    handleDeleteSightings(selectedEntries, { source });
   }, [handleDeleteSightings, selectedSightings, sightings]);
 
   useEffect(() => {
@@ -2385,7 +2653,7 @@ export default function Sightings() {
       }
 
       if (key === 'Escape') {
-        handleCloseSighting();
+        handleCloseSighting('keyboard');
         return;
       }
 
@@ -2393,16 +2661,16 @@ export default function Sightings() {
       event.stopPropagation();
 
       if (key === 'ArrowRight') {
-        handleNavigateSighting(1);
+        handleNavigateSighting(1, 'keyboard');
       }
       if (key === 'ArrowLeft') {
-        handleNavigateSighting(-1);
+        handleNavigateSighting(-1, 'keyboard');
       }
       if (key === 'ArrowUp') {
-        handleSetActiveSightingSelection(true);
+        handleSetActiveSightingSelection(true, 'keyboard');
       }
       if (key === 'ArrowDown') {
-        handleSetActiveSightingSelection(false);
+        handleSetActiveSightingSelection(false, 'keyboard');
       }
     };
 
@@ -2544,7 +2812,7 @@ export default function Sightings() {
                       id="debugViewToggle"
                       type="checkbox"
                       checked={isDebugViewEnabled}
-                      onChange={(event) => setIsDebugViewEnabled(event.target.checked)}
+                      onChange={(event) => handleDebugViewToggle(event.target.checked)}
                     />
                     <span>Debug</span>
                   </label>
@@ -2557,7 +2825,7 @@ export default function Sightings() {
                       id="motionMaskToggle"
                       type="checkbox"
                       checked={isMotionMaskEnabled}
-                      onChange={(event) => setIsMotionMaskEnabled(event.target.checked)}
+                      onChange={(event) => handleMotionMaskToggle(event.target.checked)}
                     />
                     <span>Motion</span>
                   </label>
@@ -2569,7 +2837,7 @@ export default function Sightings() {
                     id="animalBoxesToggle"
                     type="checkbox"
                     checked={isAnimalBoxesEnabled}
-                    onChange={(event) => setIsAnimalBoxesEnabled(event.target.checked)}
+                    onChange={(event) => handleAnimalBoxesToggle(event.target.checked)}
                   />
                   <span>Boxes</span>
                 </label>
@@ -2594,7 +2862,7 @@ export default function Sightings() {
                   className={`multiSelect__trigger${isSpeciesMenuOpen ? ' is-open' : ''}`}
                   aria-haspopup="true"
                   aria-expanded={isSpeciesMenuOpen}
-                  onClick={() => setIsSpeciesMenuOpen((prev) => !prev)}
+                  onClick={handleSpeciesMenuToggle}
                 >
                   {selectedSpeciesSummary}
                 </button>
@@ -2713,7 +2981,7 @@ export default function Sightings() {
               <button
                 type="button"
                 className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingsPage__selectionDelete"
-                onClick={handleBulkDeleteSelected}
+                onClick={() => handleBulkDeleteSelected('selection_bar')}
                 disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
               >
                 {hasPendingSelectedDeletes
@@ -2758,10 +3026,15 @@ export default function Sightings() {
             const isSending = sendStatus.state === 'pending';
             const deleteStatus = deleteStatusMap[entry.id] || { state: 'idle', message: '' };
             const isDeleting = deleteStatus.state === 'pending';
+            const downloadStatus = downloadStatusMap[entry.id] || { state: 'idle' };
+            const isDownloading = downloadStatus.state === 'pending';
+            const highlightStatusKey = getHighlightStateKey(entry);
+            const highlightStatus = highlightStatusMap[highlightStatusKey] || { state: 'idle', message: '' };
+            const isHighlighting = highlightStatus.state === 'pending';
             const isSelected = selectedSightings.has(entry.id);
             const isNew = newSightingIds.has(entry.id);
+            const confidenceClass = getConfidenceClass(entry.maxConf);
             const pickDebugField = (key) => pickEntryDebugValue(entry, key);
-            const motionMaskDimensions = resolveMotionMaskDimensions(entry);
             const debugFields = [
               { key: 'docid', value: entry.id },
               { key: 'TRIGGER', value: buildDebugTrigger(pickDebugField('trigger')) },
@@ -2791,9 +3064,13 @@ export default function Sightings() {
               : '';
             const shouldShowDebugOverlay = (isDebugViewEnabled || isAnimalBoxesEnabled)
               && debugBoxes.length > 0;
+            const captureTimestamp = getCaptureTimestamp(entry);
+            const captureLabel = captureTimestamp ? formatCompactTimestampLabel(captureTimestamp) : '';
+            const locationLabel = getLocationLabel(entry.locationId);
+            const hasStatusTags = entry.isHighlighted || isMegadetectorFailed;
             return (
               <article
-                className={`sightingCard ${getConfidenceClass(entry.maxConf)}${isNew ? ' sightingCard--new' : ''}`}
+                className={`sightingCard ${confidenceClass}${entry.isHighlighted ? ' sightingCard--highlighted' : ''}${isNew ? ' sightingCard--new' : ''}`}
                 key={entry.id}
                 data-sighting-id={entry.id}
               >
@@ -2846,48 +3123,63 @@ export default function Sightings() {
                     </span>
                   </button>
                 </div>
-                {isAdmin && isMotionMaskEnabled && fgMaskUrl && (
-                  <div className="sightingCard__motion">
-                    <span className="sightingCard__motionLabel">Motion mask</span>
-                    <img
-                      src={fgMaskUrl}
-                      alt={`${entry.species} motion mask`}
-                      className="sightingCard__motionImage"
-                      width={motionMaskDimensions.width}
-                      height={motionMaskDimensions.height}
-                    />
-                  </div>
-                )}
                 <div className="sightingCard__body">
-                  {isAdmin && (
-                    <div className="sightingCard__selector">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSightingSelection(entry.id)}
-                          disabled={isDeleting}
-                        />
-                        <span>Select</span>
-                      </label>
+                  {isAdmin && isMotionMaskEnabled && fgMaskUrl && (
+                    <div className="sightingCard__motion">
+                      <span className="sightingCard__motionLabel">Motion mask</span>
+                      <img
+                        src={fgMaskUrl}
+                        alt={`${entry.species} motion mask`}
+                        className="sightingCard__motionImage"
+                        loading="lazy"
+                      />
                     </div>
                   )}
                   <div className="sightingCard__header">
-                    <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
-                    {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
-                      <span className="sightingCard__subtitle">{entry.species}</span>
-                    )}
+                    <div className="sightingCard__titleBlock">
+                      <h3>{formatCountWithSpecies(entry.species, entry.count)}</h3>
+                      {!(typeof entry.count === 'number' && !Number.isNaN(entry.count) && entry.count > 0) && (
+                        <span className="sightingCard__subtitle">{entry.species}</span>
+                      )}
+                    </div>
+                    <div className="sightingCard__headerAside">
+                      {typeof entry.maxConf === 'number' && (
+                        <span
+                          className={`sightingCard__confidence ${confidenceClass.replace('sightingCard--', 'sightingCard__confidence--')}`}
+                        >
+                          {formatPercent(entry.maxConf)}
+                        </span>
+                      )}
+                      {isAdmin && (
+                        <div className="sightingCard__selector">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSightingSelection(entry.id, 'card')}
+                              disabled={isDeleting}
+                            />
+                            <span>Select</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="sightingCard__meta">
-                    {typeof entry.maxConf === 'number' && (
-                      <span>Confidence: {formatPercent(entry.maxConf)}</span>
-                    )}
-                    {isMegadetectorFailed && (
-                      <span className="sightingCard__megadetector">
-                        {secondaryVerificationMessage}
-                      </span>
-                    )}
-                  </div>
+                  {hasStatusTags && (
+                    <div className="sightingCard__meta">
+                      {entry.isHighlighted && (
+                        <span className="sightingCard__highlightTag is-visible">
+                          <HighlightIcon filled />
+                          Highlighted
+                        </span>
+                      )}
+                      {isMegadetectorFailed && (
+                        <span className="sightingCard__megadetector">
+                          {secondaryVerificationMessage}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {isDebugViewEnabled && entry.trigger && (
                     <div className="sightingCard__trigger">
                       <div className="sightingCard__triggerHeader">
@@ -2987,47 +3279,83 @@ export default function Sightings() {
                       </div>
                     </div>
                   )}
-                  <div className="sightingCard__footer">
-                    <div className="sightingCard__footerGroup">
-                      <span className="sightingCard__footerLabel">Location</span>
-                      <span className="sightingCard__location" title={entry.locationId}>
-                        {getLocationLabel(entry.locationId)}
-                      </span>
-                    </div>
-                    {(() => {
-                      const captureTimestamp = getCaptureTimestamp(entry);
-                      if (!captureTimestamp) return null;
-                      return (
-                        <div className="sightingCard__footerGroup sightingCard__footerGroup--time">
-                          <span className="sightingCard__footerLabel">Captured</span>
-                          <time dateTime={captureTimestamp.toISOString()}>
-                            {formatTimestampLabel(captureTimestamp)}
-                          </time>
-                        </div>
-                      );
-                    })()}
+                  <div className="sightingCard__summary">
+                    <span className="sightingCard__location" title={entry.locationId}>
+                      {locationLabel}
+                    </span>
+                    {captureTimestamp && (
+                      <>
+                        <span className="sightingCard__summaryDivider" aria-hidden="true">•</span>
+                        <time dateTime={captureTimestamp.toISOString()}>
+                          {captureLabel}
+                        </time>
+                      </>
+                    )}
                   </div>
                   <div className="sightingCard__actions">
-                    <div className="sightingCard__actionsRow">
-                      {isAdmin && (
+                    {isAdmin && (
+                      <div className="sightingCard__quickActions">
                         <button
                           type="button"
-                          className="sightingCard__editButton"
-                          onClick={() => handleOpenEditModal(entry)}
-                          disabled={editSaving || isDeleting}
+                          className="sightingCard__quickActionButton sightingCard__quickActionButton--edit"
+                          onClick={() => handleOpenEditModal(entry, 'card')}
+                          disabled={editSaving || isDeleting || isHighlighting}
                           aria-label={`Edit sighting for ${entry.species}`}
                           title="Edit sighting"
                         >
                           <FiEdit2 />
+                        </button>
+                        <button
+                          type="button"
+                          className={`sightingCard__quickActionButton sightingCard__quickActionButton--highlight${entry.isHighlighted ? ' is-active' : ''}`}
+                          onClick={() => handleToggleHighlight(entry)}
+                          disabled={isHighlighting || isDeleting}
+                          aria-label={entry.isHighlighted ? `Remove highlight from ${entry.species}` : `Highlight ${entry.species}`}
+                          title={entry.isHighlighted ? 'Remove highlight' : 'Highlight'}
+                        >
+                          <HighlightIcon filled={entry.isHighlighted} />
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__quickActionButton sightingCard__quickActionButton--download"
+                          onClick={() => handleDownloadSighting(entry)}
+                          disabled={isDeleting || isDownloading}
+                          aria-label={`Download media for ${entry.species}`}
+                          title="Download"
+                        >
+                          {isDownloading ? <span className="sightingCard__buttonSpinner" /> : <FiDownload />}
+                        </button>
+                        <button
+                          type="button"
+                          className="sightingCard__quickActionButton sightingCard__quickActionButton--danger"
+                          onClick={() => handleDeleteSightings([entry], { source: 'card' })}
+                          disabled={isDeleting || isSending || isHighlighting}
+                          aria-label={`Delete ${entry.species} sighting`}
+                          title="Delete"
+                        >
+                          <FiTrash2 />
+                        </button>
+                      </div>
+                    )}
+                    <div className="sightingCard__actionsRow">
+                      {!isAdmin && (
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--download"
+                          onClick={() => handleDownloadSighting(entry)}
+                          disabled={isDeleting || isDownloading}
+                        >
+                          {isDownloading ? <span className="sightingCard__buttonSpinner" /> : <FiDownload />}
+                          {isDownloading ? 'Downloading…' : 'Download'}
                         </button>
                       )}
                       <button
                         type="button"
                         className="sightingCard__actionsButton"
                         onClick={() => handleSendToWhatsApp(entry)}
-                        disabled={isSending || isDeleting}
+                        disabled={isSending || isDeleting || isHighlighting}
                       >
-                        {isSending ? 'Sending…' : 'Send to WhatsApp'}
+                        {isSending ? 'Sending…' : 'WhatsApp'}
                       </button>
                       <button
                         type="button"
@@ -3035,30 +3363,20 @@ export default function Sightings() {
                         onClick={() =>
                           handleSendToWhatsApp(entry, {
                             alertStyle: 'emoji',
-                            confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
-                          })
+                              confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
+                            })
                         }
-                        disabled={isSending || isDeleting}
+                        disabled={isSending || isDeleting || isHighlighting}
                       >
                         {isSending ? 'Sending…' : 'Alert'}
                       </button>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                          onClick={() => handleDeleteSightings([entry])}
-                          disabled={isDeleting || isSending}
-                        >
-                          {isDeleting ? 'Deleting…' : 'Delete'}
-                        </button>
-                      )}
                     </div>
                     {isAdmin && selectedSightingsCount > 1 && (
                       <div className="sightingCard__bulkActions">
                         <button
                           type="button"
                           className="sightingCard__actionsButton sightingCard__actionsButton--danger sightingCard__bulkDelete"
-                          onClick={handleBulkDeleteSelected}
+                          onClick={() => handleBulkDeleteSelected('card')}
                           disabled={hasPendingSelectedDeletes}
                         >
                           {hasPendingSelectedDeletes
@@ -3075,6 +3393,16 @@ export default function Sightings() {
                     {sendStatus.state === 'error' && sendStatus.message && (
                       <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
                         {sendStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && highlightStatus.state === 'success' && highlightStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--success">
+                        {highlightStatus.message}
+                      </span>
+                    )}
+                    {isAdmin && highlightStatus.state === 'error' && highlightStatus.message && (
+                      <span className="sightingCard__actionsMessage sightingCard__actionsMessage--error">
+                        {highlightStatus.message}
                       </span>
                     )}
                     {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
@@ -3125,7 +3453,7 @@ export default function Sightings() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="sightingEditModalTitle"
-          onClick={handleCloseEditModal}
+          onClick={() => handleCloseEditModal('overlay')}
         >
           <div
             className="sightingEditModal__content"
@@ -3134,7 +3462,7 @@ export default function Sightings() {
             <button
               type="button"
               className="sightingEditModal__close"
-              onClick={handleCloseEditModal}
+              onClick={() => handleCloseEditModal('button')}
               disabled={editSaving}
             >
               Close
@@ -3207,7 +3535,7 @@ export default function Sightings() {
                 <button
                   type="button"
                   className="sightingEditModal__secondary"
-                  onClick={handleCloseEditModal}
+                  onClick={() => handleCloseEditModal('cancel')}
                   disabled={editSaving}
                 >
                   Cancel
@@ -3230,7 +3558,7 @@ export default function Sightings() {
           className="sightingModal"
           role="dialog"
           aria-modal="true"
-          onClick={handleCloseSighting}
+          onClick={() => handleCloseSighting('overlay')}
         >
           <div
             className={`sightingModal__content${isAdmin && isMotionMaskEnabled ? ' sightingModal__content--motion' : ''}`}
@@ -3239,8 +3567,13 @@ export default function Sightings() {
             {(() => {
               const sendStatus = sendStatusMap[activeSighting.id] || { state: 'idle', message: '' };
               const deleteStatus = deleteStatusMap[activeSighting.id] || { state: 'idle', message: '' };
+              const downloadStatus = downloadStatusMap[activeSighting.id] || { state: 'idle' };
+              const highlightStatusKey = getHighlightStateKey(activeSighting);
+              const highlightStatus = highlightStatusMap[highlightStatusKey] || { state: 'idle', message: '' };
               const isSending = sendStatus.state === 'pending';
               const isDeleting = deleteStatus.state === 'pending';
+              const isDownloading = downloadStatus.state === 'pending';
+              const isHighlighting = highlightStatus.state === 'pending';
               const currentIndex = filteredSightings.findIndex((entry) => entry.id === activeSighting.id);
               const hasPrevious = currentIndex > 0;
               const hasNext = currentIndex !== -1 && currentIndex < filteredSightings.length - 1;
@@ -3254,7 +3587,7 @@ export default function Sightings() {
                   <button
                     type="button"
                     className="sightingModal__close"
-                    onClick={handleCloseSighting}
+                    onClick={() => handleCloseSighting('button')}
                     aria-label="Close sighting preview"
                   >
                     Close
@@ -3290,7 +3623,7 @@ export default function Sightings() {
                                 <button
                                   type="button"
                                   className="sightingModal__navButton"
-                                  onClick={() => handleNavigateSighting(-1)}
+                                  onClick={() => handleNavigateSighting(-1, 'modal')}
                                   disabled={!hasPrevious}
                                 >
                                   ← Previous
@@ -3298,7 +3631,7 @@ export default function Sightings() {
                                 <button
                                   type="button"
                                   className="sightingModal__navButton"
-                                  onClick={() => handleNavigateSighting(1)}
+                                  onClick={() => handleNavigateSighting(1, 'modal')}
                                   disabled={!hasNext}
                                 >
                                   Next →
@@ -3310,7 +3643,7 @@ export default function Sightings() {
                                 <input
                                   type="checkbox"
                                   checked={selectedSightings.has(activeSighting.id)}
-                                  onChange={() => handleToggleSightingSelection(activeSighting.id)}
+                                  onChange={() => handleToggleSightingSelection(activeSighting.id, 'modal')}
                                 />
                                 <span>
                                   {selectedSightings.has(activeSighting.id)
@@ -3361,7 +3694,7 @@ export default function Sightings() {
                               <button
                                 type="button"
                                 className={`sightingModal__toggle${isAnimalBoxesEnabled ? ' is-active' : ''}`}
-                                onClick={() => setIsAnimalBoxesEnabled((prev) => !prev)}
+                                onClick={() => handleAnimalBoxesToggle(!isAnimalBoxesEnabled, 'modal')}
                               >
                                 {isAnimalBoxesEnabled ? 'Hide Animal Boxes' : 'Animal Boxes'}
                               </button>
@@ -3372,12 +3705,7 @@ export default function Sightings() {
                                 className={`sightingModal__toggle${isMotionMaskEnabled ? ' is-active' : ''}`}
                                 onClick={() => {
                                   const nextValue = !isMotionMaskEnabled;
-                                  setIsMotionMaskEnabled(nextValue);
-                                  trackButton('sighting_toggle_motion', {
-                                    enabled: nextValue,
-                                    species: activeSighting?.species,
-                                    location: activeSighting?.locationId,
-                                  });
+                                  handleMotionMaskToggle(nextValue, 'modal');
                                 }}
                               >
                                 {isMotionMaskEnabled ? 'Hide Motion' : 'Motion'}
@@ -3411,6 +3739,15 @@ export default function Sightings() {
                           </span>
                         </div>
                       )}
+                      {activeSighting.isHighlighted && (
+                        <div className="sightingModal__metaRow">
+                          <span className="sightingModal__metaLabel">Highlight</span>
+                          <span className="sightingCard__highlightTag is-visible">
+                            <HighlightIcon filled />
+                            Starred
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="sightingModal__admin">
                       <div className="sightingModal__actions">
@@ -3419,19 +3756,41 @@ export default function Sightings() {
                             type="button"
                             className="sightingCard__actionsButton"
                             onClick={() => {
-                              handleOpenEditModal(activeSighting);
-                              handleCloseSighting();
+                              handleOpenEditModal(activeSighting, 'modal');
+                              handleCloseSighting('edit');
                             }}
-                            disabled={editSaving || isDeleting}
+                            disabled={editSaving || isDeleting || isHighlighting}
                           >
                             Edit sighting
                           </button>
                         )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className={`sightingCard__actionsButton sightingCard__actionsButton--highlight${activeSighting.isHighlighted ? ' is-active' : ''}`}
+                          onClick={() => handleToggleHighlight(activeSighting, 'modal')}
+                          disabled={isHighlighting || isDeleting}
+                        >
+                          <HighlightIcon filled={activeSighting.isHighlighted} />
+                          {isHighlighting
+                            ? (activeSighting.isHighlighted ? 'Removing…' : 'Starring…')
+                            : (activeSighting.isHighlighted ? 'Highlighted' : 'Highlight')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="sightingCard__actionsButton sightingCard__actionsButton--download"
+                          onClick={() => handleDownloadSighting(activeSighting, 'modal')}
+                          disabled={isDeleting || isDownloading}
+                        >
+                          {isDownloading ? <span className="sightingCard__buttonSpinner" /> : <FiDownload />}
+                          {isDownloading ? 'Downloading…' : 'Download'}
+                        </button>
                         <button
                           type="button"
                           className="sightingCard__actionsButton"
                           onClick={() => handleSendToWhatsApp(activeSighting)}
-                          disabled={isSending || isDeleting}
+                          disabled={isSending || isDeleting || isHighlighting}
                         >
                           {isSending ? 'Sending…' : 'Send to WhatsApp'}
                         </button>
@@ -3444,7 +3803,7 @@ export default function Sightings() {
                               confirmationMessage: 'Send this sighting as an alert to WhatsApp groups?',
                             })
                           }
-                          disabled={isSending || isDeleting}
+                          disabled={isSending || isDeleting || isHighlighting}
                         >
                           {isSending ? 'Sending…' : 'Alert'}
                         </button>
@@ -3453,15 +3812,15 @@ export default function Sightings() {
                             <button
                               type="button"
                               className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                              onClick={() => handleDeleteSightings([activeSighting])}
-                              disabled={isDeleting || isSending}
+                              onClick={() => handleDeleteSightings([activeSighting], { source: 'modal' })}
+                              disabled={isDeleting || isSending || isHighlighting}
                             >
                               {isDeleting ? 'Deleting…' : 'Delete'}
                             </button>
                             <button
                               type="button"
                               className="sightingCard__actionsButton sightingCard__actionsButton--danger"
-                              onClick={handleBulkDeleteSelected}
+                              onClick={() => handleBulkDeleteSelected('modal')}
                               disabled={selectedSightingsCount === 0 || hasPendingSelectedDeletes}
                             >
                               {hasPendingSelectedDeletes
@@ -3479,6 +3838,16 @@ export default function Sightings() {
                       {sendStatus.state === 'error' && sendStatus.message && (
                         <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
                           {sendStatus.message}
+                        </span>
+                      )}
+                      {isAdmin && highlightStatus.state === 'success' && highlightStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--success">
+                          {highlightStatus.message}
+                        </span>
+                      )}
+                      {isAdmin && highlightStatus.state === 'error' && highlightStatus.message && (
+                        <span className="sightingModal__actionsMessage sightingModal__actionsMessage--error">
+                          {highlightStatus.message}
                         </span>
                       )}
                       {isAdmin && deleteStatus.state === 'success' && deleteStatus.message && (
